@@ -180,6 +180,62 @@ async def debug_check():
             results[t] = {"ok": False, "error": str(e)[:200]}
     return results
 
+# ══════════════════════════════════════════════
+# WHATSAPP FLOW ENDPOINTS (Dynamic Data Exchange)
+# ══════════════════════════════════════════════
+
+@app.post("/flows/onboarding")
+async def flow_onboarding(request: Request):
+    """Dynamic endpoint for the Onboarding WhatsApp Flow."""
+    from app.flows.crypto import decrypt_request, encrypt_response
+    from app.flows.onboarding import handle_onboarding
+    
+    try:
+        body = await request.json()
+        flow_data, aes_key, iv = decrypt_request(
+            body["encrypted_flow_data"],
+            body["encrypted_aes_key"],
+            body["initial_vector"],
+        )
+        
+        # Handle the flow logic
+        response_data = await handle_onboarding(flow_data)
+        
+        # Encrypt and return
+        encrypted = encrypt_response(response_data, aes_key, iv)
+        return PlainTextResponse(encrypted)
+    
+    except Exception as e:
+        logger.error(f"Flow onboarding error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/flows/catalogo")
+async def flow_catalogo(request: Request):
+    """Dynamic endpoint for the Catálogo WhatsApp Flow."""
+    from app.flows.crypto import decrypt_request, encrypt_response
+    from app.flows.catalogo import handle_catalogo
+    
+    try:
+        body = await request.json()
+        flow_data, aes_key, iv = decrypt_request(
+            body["encrypted_flow_data"],
+            body["encrypted_aes_key"],
+            body["initial_vector"],
+        )
+        
+        # Handle the flow logic
+        response_data = await handle_catalogo(flow_data)
+        
+        # Encrypt and return
+        encrypted = encrypt_response(response_data, aes_key, iv)
+        return PlainTextResponse(encrypted)
+    
+    except Exception as e:
+        logger.error(f"Flow catalogo error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/api/pedidos")
 async def list_pedidos(estado: str = None):
     q = db.sb.table("pedidos").select("*, bodegas(nombre_comercial, telefono_whatsapp), distribuidores(nombre_comercial)")

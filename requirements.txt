@@ -7,4 +7,5 @@ bcrypt==4.2.0
 httpx>=0.27.0
 pydantic>=2.9.0
 python-multipart==0.0.12
-# force rebuild v4
+cryptography>=42.0.0
+# force rebuild v5 - added flows infrastructure
