@@ -1,0 +1,368 @@
+{
+  "version": "7.0",
+  "data_api_version": "3.0",
+  "routing_model": {
+    "RUC_INPUT": ["RUC_CONFIRM"],
+    "RUC_CONFIRM": ["TERMS"],
+    "TERMS": ["PIN_CREATE"],
+    "PIN_CREATE": ["PIN_CONFIRM"],
+    "PIN_CONFIRM": ["SUCCESS"],
+    "SUCCESS": []
+  },
+  "screens": [
+    {
+      "id": "RUC_INPUT",
+      "title": "Activar cuenta",
+      "data": {
+        "error_msg": {
+          "type": "string",
+          "__example__": ""
+        }
+      },
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "Form",
+            "name": "ruc_form",
+            "error-messages": "${data.error_msg}",
+            "children": [
+              {
+                "type": "TextSubheading",
+                "text": "📋 Ingresa tu RUC"
+              },
+              {
+                "type": "TextBody",
+                "text": "Validamos tu negocio con SUNAT en tiempo real."
+              },
+              {
+                "type": "TextInput",
+                "name": "ruc",
+                "label": "RUC (11 dígitos)",
+                "input-type": "number",
+                "required": true,
+                "min-chars": 11,
+                "max-chars": 11,
+                "helper-text": "Debe empezar con 10 o 20"
+              },
+              {
+                "type": "Footer",
+                "label": "Verificar →",
+                "on-click-action": {
+                  "name": "data_exchange",
+                  "payload": {
+                    "ruc": "${form.ruc}"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+
+    {
+      "id": "RUC_CONFIRM",
+      "title": "Verificar datos",
+      "data": {
+        "ruc": {
+          "type": "string",
+          "__example__": "20512345678"
+        },
+        "razon_social": {
+          "type": "string",
+          "__example__": "BODEGA DON PEPE E.I.R.L."
+        },
+        "direccion": {
+          "type": "string",
+          "__example__": "Jr. Lima 234, Surquillo, Lima"
+        },
+        "rep_legal": {
+          "type": "string",
+          "__example__": "Juan Pérez Quispe"
+        },
+        "bodega_id": {
+          "type": "string",
+          "__example__": "b0000000-0000-0000-0000-000000000000"
+        },
+        "linea_aprobada": {
+          "type": "number",
+          "__example__": 500
+        }
+      },
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "Form",
+            "name": "confirm_form",
+            "children": [
+              {
+                "type": "TextSubheading",
+                "text": "✅ Negocio encontrado"
+              },
+              {
+                "type": "TextBody",
+                "text": "Razón Social:"
+              },
+              {
+                "type": "TextSubheading",
+                "text": "${data.razon_social}"
+              },
+              {
+                "type": "TextBody",
+                "text": "RUC: ${data.ruc}"
+              },
+              {
+                "type": "TextBody",
+                "text": "Dirección: ${data.direccion}"
+              },
+              {
+                "type": "TextBody",
+                "text": "Rep. Legal: ${data.rep_legal}"
+              },
+              {
+                "type": "TextCaption",
+                "text": "📍 La dirección fiscal será tu dirección de despacho."
+              },
+              {
+                "type": "Footer",
+                "label": "Confirmar datos →",
+                "on-click-action": {
+                  "name": "data_exchange",
+                  "payload": {
+                    "bodega_id": "${data.bodega_id}",
+                    "ruc": "${data.ruc}",
+                    "razon_social": "${data.razon_social}",
+                    "linea_aprobada": "${data.linea_aprobada}"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+
+    {
+      "id": "TERMS",
+      "title": "Términos",
+      "data": {
+        "bodega_id": {
+          "type": "string",
+          "__example__": "b0000000-0000-0000-0000-000000000000"
+        },
+        "ruc": {
+          "type": "string",
+          "__example__": "20512345678"
+        },
+        "razon_social": {
+          "type": "string",
+          "__example__": "BODEGA DON PEPE E.I.R.L."
+        },
+        "linea_aprobada": {
+          "type": "number",
+          "__example__": 500
+        },
+        "terms_bullets": {
+          "type": "string",
+          "__example__": "• Línea de crédito revolving\n• Tasas de 5% a 12% según plazo"
+        },
+        "contrato_url": {
+          "type": "string",
+          "__example__": "https://circa-production-c517.up.railway.app/static/contrato_circa.pdf"
+        }
+      },
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "Form",
+            "name": "terms_form",
+            "children": [
+              {
+                "type": "TextSubheading",
+                "text": "📄 Términos y Condiciones"
+              },
+              {
+                "type": "TextBody",
+                "text": "Línea para: ${data.razon_social}"
+              },
+              {
+                "type": "TextBody",
+                "text": "${data.terms_bullets}"
+              },
+              {
+                "type": "EmbeddedLink",
+                "text": "Ver contrato completo (PDF)",
+                "on-click-action": {
+                  "name": "open_url",
+                  "url": "${data.contrato_url}"
+                }
+              },
+              {
+                "type": "OptIn",
+                "name": "acepta_terminos",
+                "label": "Acepto los términos y condiciones de Circa",
+                "required": true
+              },
+              {
+                "type": "Footer",
+                "label": "Aceptar y continuar →",
+                "on-click-action": {
+                  "name": "data_exchange",
+                  "payload": {
+                    "bodega_id": "${data.bodega_id}",
+                    "acepta_terminos": "${form.acepta_terminos}"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+
+    {
+      "id": "PIN_CREATE",
+      "title": "Crear clave",
+      "data": {
+        "bodega_id": {
+          "type": "string",
+          "__example__": "b0000000-0000-0000-0000-000000000000"
+        },
+        "description": {
+          "type": "string",
+          "__example__": "Crea tu clave Circa de 4 dígitos."
+        },
+        "hint": {
+          "type": "string",
+          "__example__": "No uses fechas ni secuencias como 1234."
+        }
+      },
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "Form",
+            "name": "pin_form",
+            "children": [
+              {
+                "type": "TextSubheading",
+                "text": "🔐 Crea tu clave Circa"
+              },
+              {
+                "type": "TextBody",
+                "text": "${data.description}"
+              },
+              {
+                "type": "TextCaption",
+                "text": "${data.hint}"
+              },
+              {
+                "type": "TextInput",
+                "name": "pin",
+                "label": "Clave de 4 dígitos",
+                "input-type": "passcode",
+                "required": true,
+                "min-chars": 4,
+                "max-chars": 4
+              },
+              {
+                "type": "Footer",
+                "label": "Continuar →",
+                "on-click-action": {
+                  "name": "data_exchange",
+                  "payload": {
+                    "bodega_id": "${data.bodega_id}",
+                    "pin": "${form.pin}"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+
+    {
+      "id": "PIN_CONFIRM",
+      "title": "Confirmar clave",
+      "data": {
+        "bodega_id": {
+          "type": "string",
+          "__example__": "b0000000-0000-0000-0000-000000000000"
+        },
+        "pin_hash_temp": {
+          "type": "string",
+          "__example__": "a1b2c3d4e5f6..."
+        }
+      },
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "Form",
+            "name": "pin_confirm_form",
+            "children": [
+              {
+                "type": "TextSubheading",
+                "text": "🔐 Confirma tu clave"
+              },
+              {
+                "type": "TextBody",
+                "text": "Repite los 4 dígitos para confirmar."
+              },
+              {
+                "type": "TextInput",
+                "name": "pin_confirm",
+                "label": "Repetir clave",
+                "input-type": "passcode",
+                "required": true,
+                "min-chars": 4,
+                "max-chars": 4
+              },
+              {
+                "type": "Footer",
+                "label": "Activar cuenta →",
+                "on-click-action": {
+                  "name": "data_exchange",
+                  "payload": {
+                    "bodega_id": "${data.bodega_id}",
+                    "pin_confirm": "${form.pin_confirm}",
+                    "pin_hash_temp": "${data.pin_hash_temp}"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+
+    {
+      "id": "SUCCESS",
+      "title": "¡Listo!",
+      "terminal": true,
+      "data": {
+        "message": {
+          "type": "string",
+          "__example__": "Tu cuenta ha sido activada."
+        }
+      },
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "TextSubheading",
+            "text": "✅ ¡Cuenta activada!"
+          },
+          {
+            "type": "TextBody",
+            "text": "${data.message}"
+          }
+        ]
+      }
+    }
+  ]
+}
