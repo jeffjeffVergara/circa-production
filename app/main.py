@@ -369,24 +369,56 @@ async def get_pedido(pedido_id: str):
     return {"pedido": pedido, "items": items}
 
 @app.post("/api/pedidos/{pedido_id}/estado")
-async def update_estado(pedido_id: str, estado: str = Form(...), actor: str = Form(default="distribuidor")):
-    valid_transitions = {
-        "aprobado": ["despachado"], "despachado": ["en_camino"], "en_camino": ["entregado"],
-    }
-    pedido = db.sb.table("pedidos").select("estado, bodega_id, numero").eq("id", pedido_id).single().execute().data
-    if not pedido:
-        raise HTTPException(404, "Pedido no encontrado")
-    if estado not in valid_transitions.get(pedido["estado"], []):
-        raise HTTPException(400, f"No se puede cambiar de {pedido['estado']} a {estado}")
-    db.update_pedido_estado(pedido_id, estado, actor)
-    bodega = db.sb.table("bodegas").select("telefono_whatsapp").eq("id", pedido["bodega_id"]).single().execute().data
-    from services import messages as msg
-    status_msgs = {"despachado": "📦 Tu pedido fue despachado.", "en_camino": "🚚 En camino. Llegada: 2-4 horas.", "entregado": "🎉 ¡Entregado!"}
-    try:
-        send_whatsapp(bodega["telefono_whatsapp"], msg.msg_status(pedido["numero"], estado, status_msgs.get(estado, "")))
-    except Exception as e:
-        logger.error(f"Notify failed: {e}")
-    return {"ok": True, "nuevo_estado": estado}
+async def update_estado(pedido_id: str, estado: str = Form(...), actor: str = Form(default="distribuidor"),
+                         notas: str = Form(default=None), estimado_entrega: str = Form(default=None)):
+    """Update order status with tracking notifications."""
+    from app.services.tracking import update_order_status
+    result = await update_order_status(pedido_id, estado, actor, notas, estimado_entrega)
+    if not result["ok"]:
+        raise HTTPException(400, result["message"])
+    return result
+
+@app.get("/api/pedidos/{pedido_id}/timeline")
+async def get_timeline(pedido_id: str):
+    """Get order event timeline."""
+    from app.services.tracking import get_order_timeline
+    return await get_order_timeline(pedido_id)
+
+# ── Cobranza ──
+
+@app.post("/api/cobranza/confirmar-pago")
+async def confirmar_pago(financiamiento_id: str = Form(...), monto: float = Form(default=None),
+                          metodo: str = Form(default="yape"), actor: str = Form(default="backoffice")):
+    """Confirm a payment and renew credit line (backoffice)."""
+    from app.services.cobranza import confirm_payment
+    result = await confirm_payment(financiamiento_id, monto, metodo, actor)
+    if not result["ok"]:
+        raise HTTPException(400, result["message"])
+    return result
+
+@app.get("/api/cobranza/pendientes")
+async def pagos_pendientes(bodega_id: str = None):
+    """List pending payments, optionally filtered by bodega."""
+    query = db.sb.table("financiamientos").select(
+        "*, pedidos(numero), bodegas(nombre_comercial, telefono_whatsapp)"
+    ).in_("estado", ["activo", "verificando", "vencido"])
+    if bodega_id:
+        query = query.eq("bodega_id", bodega_id)
+    return query.order("fecha_vencimiento").execute().data
+
+@app.post("/api/cobranza/check-overdue")
+async def check_overdue():
+    """Check and mark overdue loans. Call daily."""
+    from app.services.cobranza import check_overdue_loans
+    overdue = await check_overdue_loans()
+    return {"overdue_count": len(overdue), "overdue": overdue}
+
+@app.post("/api/cobranza/send-reminders")
+async def send_reminders():
+    """Send pending payment reminders. Call daily."""
+    from app.services.cobranza import send_pending_reminders
+    count = await send_pending_reminders()
+    return {"reminders_sent": count}
 
 @app.get("/api/bodegas")
 async def list_bodegas():
