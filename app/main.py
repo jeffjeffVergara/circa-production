@@ -236,6 +236,125 @@ async def flow_catalogo(request: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ══════════════════════════════════════════════
+# META CLOUD API WEBHOOK (replaces Twilio webhook)
+# ══════════════════════════════════════════════
+
+@app.get("/webhook/meta")
+async def meta_webhook_verify(request: Request):
+    """Verify webhook subscription from Meta."""
+    from app.services.meta_webhook import verify_webhook
+    
+    mode = request.query_params.get("hub.mode", "")
+    token = request.query_params.get("hub.verify_token", "")
+    challenge = request.query_params.get("hub.challenge", "")
+    
+    result = verify_webhook(mode, token, challenge)
+    if result:
+        return PlainTextResponse(result)
+    raise HTTPException(status_code=403, detail="Verification failed")
+
+
+@app.post("/webhook/meta")
+async def meta_webhook_incoming(request: Request):
+    """Handle incoming messages from Meta Cloud API."""
+    from app.services.meta_webhook import parse_incoming, verify_signature
+    from app.services import meta_client
+    
+    body = await request.json()
+    
+    # Parse incoming messages
+    messages = parse_incoming(body)
+    
+    for msg in messages:
+        telefono = msg["from"]
+        body_text = msg["body"]
+        media_url = None
+        
+        # Handle image (DNI photo)
+        if msg["type"] == "image" and msg["media_id"]:
+            # TODO: Download and store DNI image
+            pass
+        
+        # Handle Flow response
+        if body_text == "__FLOW_RESPONSE__" and msg["flow_data"]:
+            flow_data = msg["flow_data"]
+            logger.info(f"Flow response from {telefono}: {flow_data}")
+            
+            # Check if it's an order confirmation
+            if flow_data.get("status") == "order_confirmed":
+                await meta_client.send_order_confirmation(
+                    to=telefono,
+                    order_number=flow_data.get("order_number", ""),
+                    total_credito=flow_data.get("total_credito", 0),
+                    pago_contado=flow_data.get("pago_contado", 0),
+                )
+            elif flow_data.get("status") == "activated":
+                bodega = db.get_bodega_by_phone(telefono) or db.get_bodega_by_phone(f"+{telefono}")
+                linea = bodega.get("linea_disponible", 500) if bodega else 500
+                await meta_client.send_menu(to=telefono, linea_disponible=linea)
+            
+            # Mark as read
+            if msg["message_id"]:
+                await meta_client.mark_as_read(msg["message_id"])
+            continue
+        
+        # Handle catalog order (cart submission)
+        if body_text == "__ORDER__" and msg["order"]:
+            # TODO: Process catalog cart order
+            logger.info(f"Catalog order from {telefono}: {msg['order']}")
+            continue
+        
+        # Regular message processing via state machine
+        try:
+            responses = handle_message(telefono, body_text, media_url)
+            
+            for resp in responses:
+                if isinstance(resp, dict):
+                    signal = resp.get("signal", "")
+                    
+                    # Handle signals — send appropriate message type
+                    if signal == "MENU":
+                        await meta_client.send_menu(telefono, resp.get("linea", 500))
+                    elif signal == "ONBOARDING_FLOW":
+                        await meta_client.send_onboarding_flow(
+                            telefono, resp.get("bodega_id", ""),
+                            resp.get("nombre", ""), resp.get("linea", 500)
+                        )
+                    elif signal == "CATALOGO_FLOW":
+                        await meta_client.send_catalogo_flow(
+                            telefono, resp.get("bodega_id", "")
+                        )
+                    elif signal in ("CATEGORIAS", "PRODUCTOS", "PACK", "CANTIDAD",
+                                     "AGREGADO", "CARRITO", "MONTO", "PLAZO"):
+                        # Legacy signals from old state machine → redirect to Flow
+                        bodega = db.get_bodega_by_phone(telefono) or db.get_bodega_by_phone(f"+{telefono}")
+                        if bodega:
+                            await meta_client.send_catalogo_flow(telefono, bodega["id"])
+                    else:
+                        logger.warning(f"Unknown signal: {signal}")
+                
+                elif isinstance(resp, str):
+                    await meta_client.send_text(telefono, resp)
+            
+        except Exception as e:
+            import traceback
+            print(f"❌ META WEBHOOK ERROR: {type(e).__name__}: {e}", flush=True)
+            print(traceback.format_exc(), flush=True)
+            logger.error(f"❌ Error: {e}", exc_info=True)
+            await meta_client.send_text(
+                telefono,
+                "⚠️ Hubo un error. Intenta de nuevo en un momento."
+            )
+        
+        # Mark as read
+        if msg["message_id"]:
+            await meta_client.mark_as_read(msg["message_id"])
+    
+    # Always return 200 to Meta (required)
+    return {"status": "ok"}
+
+
 @app.get("/api/pedidos")
 async def list_pedidos(estado: str = None):
     q = db.sb.table("pedidos").select("*, bodegas(nombre_comercial, telefono_whatsapp), distribuidores(nombre_comercial)")

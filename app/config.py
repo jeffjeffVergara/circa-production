@@ -7,14 +7,27 @@ load_dotenv()
 SUPABASE_URL = os.getenv("SUPABASE_URL", "")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_KEY", "")
 
-# ── Twilio ──
+# ── Twilio (legacy — being replaced by Meta Cloud API) ──
 TWILIO_SID = os.getenv("TWILIO_ACCOUNT_SID", "")
 TWILIO_TOKEN = os.getenv("TWILIO_AUTH_TOKEN", "")
 TWILIO_FROM = os.getenv("TWILIO_WHATSAPP_FROM", "whatsapp:+14155238886")
 
+# ── Meta Cloud API (WhatsApp) ──
+META_PHONE_NUMBER_ID = os.getenv("META_PHONE_NUMBER_ID", "")
+META_ACCESS_TOKEN = os.getenv("META_ACCESS_TOKEN", "")
+META_APP_SECRET = os.getenv("META_APP_SECRET", "")
+META_VERIFY_TOKEN = os.getenv("META_VERIFY_TOKEN", "circa-webhook-verify-2026")
+META_WABA_ID = os.getenv("META_WABA_ID", "")
+
+# ── WhatsApp Flow IDs ──
+FLOW_ONBOARDING_ID = os.getenv("FLOW_ONBOARDING_ID", "")
+FLOW_CATALOGO_ID = os.getenv("FLOW_CATALOGO_ID", "")
+FLOW_PRIVATE_KEY = os.getenv("FLOW_PRIVATE_KEY", "")
+
 # ── App ──
 APP_BASE_URL = os.getenv("APP_BASE_URL", "http://localhost:8000")
 YAPE_PHONE = os.getenv("YAPE_PHONE", "987654321")
+YAPE_NAME = os.getenv("YAPE_NAME", "Circa Lab S.A.C.")
 PLIN_PHONE = os.getenv("PLIN_PHONE", "987654321")
 
 # ── Security ──
