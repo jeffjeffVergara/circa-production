@@ -268,6 +268,9 @@ async def meta_webhook_incoming(request: Request):
     
     for msg in messages:
         telefono = msg["from"]
+        # Meta sends "51993557282", DB stores "+51993557282"
+        if not telefono.startswith("+"):
+            telefono = f"+{telefono}"
         body_text = msg["body"]
         media_url = None
         
