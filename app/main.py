@@ -188,6 +188,11 @@ Para solicitar la eliminación de tus datos personales, envía un mensaje a cont
 Contacto: contacto@circa.pe | +51 986 311 567
 """, media_type="text/plain; charset=utf-8")
 
+@app.get("/delete")
+@app.post("/delete")
+async def data_deletion_short(request: Request = None):
+    return await data_deletion(request)
+
 @app.get("/api/debug")
 async def debug_check():
     """Temporary debug endpoint — remove after fixing."""
