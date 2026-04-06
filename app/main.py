@@ -155,6 +155,39 @@ async def twilio_webhook(
 async def health():
     return {"status": "ok", "service": "circa-mvp", "version": "2.3.0"}
 
+@app.get("/privacy")
+async def privacy():
+    return PlainTextResponse("""
+POLÍTICA DE PRIVACIDAD — CIRCA (PALI S.A.C.)
+Última actualización: 6 de abril de 2026
+
+Circa, operado por PALI S.A.C. (RUC 20600627806), recopila datos personales (RUC, DNI, nombre, dirección, teléfono, historial de pedidos y pagos) exclusivamente para la evaluación crediticia, gestión de pedidos y cobranza. Los datos son almacenados en servidores seguros y no se comparten con terceros sin consentimiento, salvo requerimiento legal. El usuario puede ejercer sus derechos ARCO escribiendo a contacto@circa.pe. Cumplimos con la Ley 29733 de Protección de Datos Personales del Perú.
+
+Contacto: contacto@circa.pe | +51 986 311 567
+""", media_type="text/plain; charset=utf-8")
+
+@app.get("/terms")
+async def terms():
+    return PlainTextResponse("""
+CONDICIONES DEL SERVICIO — CIRCA (PALI S.A.C.)
+Última actualización: 6 de abril de 2026
+
+Circa es una plataforma de crédito embebido para bodegas peruanas operada por PALI S.A.C. Al usar el servicio, el usuario acepta las condiciones del contrato de línea de crédito revolving, incluyendo comisiones (3% a 7 días, 5% a 15 días, 7% a 30 días), interés moratorio (0.30% diario), y las políticas de cobranza. El servicio está sujeto a las leyes de la República del Perú, jurisdicción de Lima.
+
+Contacto: contacto@circa.pe | +51 986 311 567
+""", media_type="text/plain; charset=utf-8")
+
+@app.get("/data-deletion")
+@app.post("/data-deletion")
+async def data_deletion(request: Request = None):
+    return PlainTextResponse("""
+ELIMINACIÓN DE DATOS — CIRCA (PALI S.A.C.)
+
+Para solicitar la eliminación de tus datos personales, envía un mensaje a contacto@circa.pe con tu RUC y número de teléfono. Procesaremos tu solicitud en un plazo máximo de 30 días hábiles conforme a la Ley 29733.
+
+Contacto: contacto@circa.pe | +51 986 311 567
+""", media_type="text/plain; charset=utf-8")
+
 @app.get("/api/debug")
 async def debug_check():
     """Temporary debug endpoint — remove after fixing."""
