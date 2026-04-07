@@ -418,8 +418,23 @@ async def send_contrato(to: str, linea: float):
     )
 
 
-async def send_pin_request(to: str, mode: str = "create"):
-    """Ask to create or enter PIN."""
+async def send_pin_request(to: str, mode: str = "create", bodega_id: str = ""):
+    """Ask to create or enter PIN via WhatsApp Flow (masked input)."""
+    flow_id = os.getenv("FLOW_PIN_ID", "")
+    
+    # If flow is configured, use it for hidden PIN input
+    if flow_id and mode == "create":
+        return await send_flow(
+            to=to,
+            flow_id=flow_id,
+            flow_cta="Crear clave 🔐",
+            body="Crea tu clave Circa de 4 dígitos. La necesitarás para confirmar cada pedido financiado.",
+            screen="PIN_CREATE",
+            data={"bodega_id": bodega_id},
+            mode="draft",
+        )
+    
+    # Fallback to text if flow not configured
     if mode == "create":
         return await send_text(
             to=to,

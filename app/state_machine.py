@@ -171,7 +171,7 @@ def handle_message(telefono: str, body: str, media_url: str = None) -> list:
             # If this is a PIN reset, skip to reg_pin
             if datos.get("is_reset"):
                 db.upsert_session(telefono, "reg_pin", datos, bodega_id)
-                return [{"signal": "PIN_ASK", "mode": "create"}]
+                return [{"signal": "PIN_ASK", "mode": "create", "bodega_id": datos.get("bodega_id", "")}]
 
             db.upsert_session(telefono, "reg_biometria", datos, bodega_id)
             return [{
@@ -231,7 +231,7 @@ def handle_message(telefono: str, body: str, media_url: str = None) -> list:
             contract_hash = hashlib.sha256(contract_data.encode()).hexdigest()
             db.sign_contract(datos["bodega_id"], contract_hash)
             db.upsert_session(telefono, "reg_pin", datos, datos["bodega_id"])
-            return [{"signal": "PIN_ASK", "mode": "create"}]
+            return [{"signal": "PIN_ASK", "mode": "create", "bodega_id": datos.get("bodega_id", "")}]
 
         if datos.get("contrato_shown"):
             return ["Escribe *ACEPTO* para firmar el contrato digitalmente."]
@@ -264,7 +264,7 @@ def handle_message(telefono: str, body: str, media_url: str = None) -> list:
                 db.upsert_session(telefono, "menu", {}, datos["bodega_id"])
                 return [{"signal": "CUENTA_ACTIVA", "linea": bodega_pin["linea_disponible"]}]
 
-        return [{"signal": "PIN_ASK", "mode": "create"}]
+        return [{"signal": "PIN_ASK", "mode": "create", "bodega_id": datos.get("bodega_id", "")}]
 
     # ═══════════════════════════════════════════════
     # MENÚ PRINCIPAL

@@ -274,6 +274,30 @@ async def flow_catalogo(request: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.post("/flows/pin")
+async def flow_pin(request: Request):
+    """Dynamic endpoint for the PIN creation WhatsApp Flow."""
+    from app.flows.crypto import decrypt_request, encrypt_response
+    from app.flows.pin_flow import handle_pin_flow
+    
+    try:
+        body = await request.json()
+        flow_data, aes_key, iv = decrypt_request(
+            body["encrypted_flow_data"],
+            body["encrypted_aes_key"],
+            body["initial_vector"],
+        )
+        
+        response_data = await handle_pin_flow(flow_data)
+        
+        encrypted = encrypt_response(response_data, aes_key, iv)
+        return PlainTextResponse(encrypted)
+    
+    except Exception as e:
+        logger.error(f"Flow PIN error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ══════════════════════════════════════════════
 # META CLOUD API WEBHOOK (replaces Twilio webhook)
 # ══════════════════════════════════════════════
@@ -385,7 +409,8 @@ async def meta_webhook_incoming(request: Request):
                         )
                     elif signal == "PIN_ASK":
                         await meta_client.send_pin_request(
-                            telefono, resp.get("mode", "create")
+                            telefono, resp.get("mode", "create"),
+                            bodega_id=resp.get("bodega_id", "")
                         )
                     elif signal == "CUENTA_ACTIVA":
                         await meta_client.send_cuenta_activa(
