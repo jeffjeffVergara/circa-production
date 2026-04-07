@@ -274,29 +274,194 @@ async def mark_as_read(message_id: str) -> dict | None:
 # ══════════════════════════════════════════════
 
 async def send_menu(to: str, linea_disponible: float):
-    """Send the main menu with quick reply buttons."""
+    """Send the main menu with 4 options as list."""
+    return await send_list(
+        to=to,
+        body=f"✅ *Cuenta activada*\nLínea disponible: *S/{linea_disponible:.2f}*\n\n¿Qué deseas hacer?",
+        button_text="Ver opciones",
+        header="Circa",
+        sections=[{
+            "title": "Menú principal",
+            "rows": [
+                {"id": "PEDIDO", "title": "🛍 Hacer un pedido", "description": "Arma tu pedido del catálogo"},
+                {"id": "REPETIR", "title": "🔄 Repetir último pedido", "description": "Pide lo mismo que la vez pasada"},
+                {"id": "LINEA", "title": "💰 Ver mi línea", "description": "Consulta tu crédito disponible"},
+                {"id": "ESTADO", "title": "📋 Mis pedidos", "description": "Revisa el estado de tus pedidos"},
+            ]
+        }]
+    )
+
+
+async def send_welcome(to: str, nombre: str, linea: float, distribuidor: str):
+    """Send rich welcome message — Circa initiates conversation."""
     return await send_buttons(
         to=to,
-        body=f"📋 ¿Qué deseas hacer?\n\nLínea disponible: S/{linea_disponible:.2f}",
+        header="Circa — Crédito para tu bodega",
+        body=(
+            f"¡Hola! 👋 Soy *Circa*, tu aliado para financiar inventario.\n\n"
+            f"🎉 *¡Buenas noticias!*\n"
+            f"Bodega *\"{nombre}\"* tiene una línea pre-aprobada de hasta\n\n"
+            f"💰 *S/{linea:.2f}*\n\n"
+            f"Distribuidor: {distribuidor}\n\n"
+            f"¿Deseas activar tu cuenta?"
+        ),
         buttons=[
-            {"id": "PEDIDO", "title": "🛒 Hacer pedido"},
-            {"id": "LINEA", "title": "💰 Mi línea"},
-            {"id": "ESTADO", "title": "📦 Mis pedidos"},
+            {"id": "ACTIVAR", "title": "Sí, activar 🚀"},
+            {"id": "MAS_INFO", "title": "Más info"},
         ]
     )
 
 
-async def send_onboarding_flow(to: str, bodega_id: str, nombre: str, linea: float):
-    """Send the onboarding Flow to activate account."""
-    flow_id = os.getenv("FLOW_ONBOARDING_ID", "")
-    return await send_flow(
+async def send_ruc_request(to: str):
+    """Ask bodeguero to enter RUC."""
+    return await send_text(
         to=to,
-        flow_id=flow_id,
-        flow_cta="Activar cuenta 🚀",
-        body=f"¡Hola! {nombre} tiene una línea de crédito pre-aprobada de S/{linea:.2f}.\n\nActiva tu cuenta para empezar a comprar inventario financiado.",
-        header="Circa — Crédito para tu bodega",
-        screen="RUC_INPUT",
-        data={"bodega_id": bodega_id},
+        text="Para activar, necesito verificar tu negocio.\n\n📝 *Escribe tu RUC (11 dígitos):*"
+    )
+
+
+async def send_ruc_verified(to: str, razon_social: str, ruc: str, direccion: str, representante: str):
+    """Show verified RUC info from SUNAT."""
+    return await send_text(
+        to=to,
+        text=(
+            f"✅ *RUC verificado en SUNAT:*\n\n"
+            f"*{razon_social}*\n"
+            f"RUC: {ruc}\n"
+            f"📍 {direccion}\n"
+            f"👤 Rep. Legal: {representante}\n\n"
+            f"La dirección fiscal será tu dirección de despacho."
+        )
+    )
+
+
+async def send_dni_request(to: str):
+    """Ask for DNI photo."""
+    return await send_buttons(
+        to=to,
+        body=(
+            "📷 Para verificar tu identidad, necesito una *foto de tu DNI* (anverso).\n\n"
+            "Esto es solo una vez, para cumplir con los requisitos de seguridad.\n\n"
+            "⚠️ La foto debe ser tomada en este momento."
+        ),
+        buttons=[
+            {"id": "SIMULAR_DNI", "title": "📸 Simular subir DNI"},
+        ]
+    )
+
+
+async def send_biometria_request(to: str, nombre_rep: str):
+    """Ask for facial biometry after DNI verified."""
+    return await send_buttons(
+        to=to,
+        body=(
+            f"✅ DNI verificado contra RENIEC.\n\n"
+            f"Ahora necesito una *selfie en vivo* para verificación biométrica.\n\n"
+            f"🤳 {nombre_rep}, toma una foto de tu rostro mirando a la cámara."
+        ),
+        buttons=[
+            {"id": "SIMULAR_SELFIE", "title": "🤳 Tomar selfie"},
+        ]
+    )
+
+
+async def send_linea_oferta(to: str, nombre: str, linea: float, distribuidor: str):
+    """Show credit line offer for explicit acceptance."""
+    return await send_buttons(
+        to=to,
+        body=(
+            f"✅ *Biometría facial verificada.*\n"
+            f"Identidad confirmada.\n\n"
+            f"━━━━━━━━━━━━━━━━━━\n"
+            f"📋 *Línea de crédito pre-aprobada*\n\n"
+            f"Bodega: *{nombre}*\n"
+            f"Monto: *S/{linea:.2f}*\n"
+            f"Distribuidor: {distribuidor}\n"
+            f"━━━━━━━━━━━━━━━━━━\n\n"
+            f"Al aceptar, podrás financiar tus compras con pago diferido a 7, 15 o 30 días.\n\n"
+            f"¿Aceptas esta línea de crédito?"
+        ),
+        buttons=[
+            {"id": "ACEPTO_LINEA", "title": "Sí, acepto ✅"},
+            {"id": "NO_GRACIAS", "title": "No, gracias"},
+        ]
+    )
+
+
+async def send_contrato(to: str, linea: float):
+    """Show contract summary with terms."""
+    return await send_buttons(
+        to=to,
+        body=(
+            f"📋 *Contrato de Facilidad de Financiamiento Circa*\n\n"
+            f"*Resumen de términos:*\n"
+            f"• Línea de crédito revolving (se renueva al pagar)\n"
+            f"• Tasas: 3% (7d), 5% (15d), 7% (30d) — mín. S/5\n"
+            f"• Plazos: 7, 15 o 30 días\n"
+            f"• El dinero va directo al proveedor\n"
+            f"• Sin costo de apertura ni mantenimiento\n"
+            f"• Mora: 0.30% diario sobre saldo pendiente\n\n"
+            f"Al aceptar, autorizas:\n"
+            f"✅ Tratamiento de datos personales (Ley 29733)\n"
+            f"✅ Distribuidor comparta historial de compras\n"
+            f"✅ Consulta en centrales de riesgo"
+        ),
+        buttons=[
+            {"id": "ACEPTO", "title": "Acepto los términos ✅"},
+        ],
+        footer="Ver contrato completo: circa.pe/contrato"
+    )
+
+
+async def send_pin_request(to: str, mode: str = "create"):
+    """Ask to create or enter PIN."""
+    if mode == "create":
+        return await send_text(
+            to=to,
+            text=(
+                "🔐 *Crea tu clave Circa de 4 dígitos.*\n\n"
+                "La necesitarás para confirmar cada pedido financiado.\n"
+                "No uses fechas de nacimiento ni números consecutivos.\n\n"
+                "Escribe tu clave ahora:"
+            )
+        )
+    else:
+        return await send_text(
+            to=to,
+            text="🔐 *Ingresa tu clave Circa para confirmar:*\n\n⏱ Tienes 5 minutos."
+        )
+
+
+async def send_cuenta_activa(to: str, linea: float):
+    """Send account activation confirmation + menu."""
+    await send_text(
+        to=to,
+        text=(
+            f"🎉 *¡Tu cuenta Circa está activa!*\n\n"
+            f"Tu clave fue creada correctamente.\n"
+            f"Línea disponible: *S/{linea:.2f}*"
+        )
+    )
+    # Follow with menu
+    return await send_menu(to, linea)
+
+
+async def send_linea_info(to: str, aprobada: float, disponible: float, scoring: float):
+    """Show credit line details."""
+    barra = "█" * int(disponible/aprobada*10) + "░" * (10 - int(disponible/aprobada*10))
+    return await send_buttons(
+        to=to,
+        body=(
+            f"💰 *Tu línea de crédito*\n\n"
+            f"Aprobada: S/{aprobada:.2f}\n"
+            f"Disponible: *S/{disponible:.2f}*\n"
+            f"[{barra}]\n"
+            f"Scoring: {scoring}/100"
+        ),
+        buttons=[
+            {"id": "PEDIDO", "title": "🛍 Hacer pedido"},
+            {"id": "MENU", "title": "🏠 Menú principal"},
+        ]
     )
 
 

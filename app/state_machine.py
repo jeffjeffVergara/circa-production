@@ -92,13 +92,12 @@ def handle_message(telefono: str, body: str, media_url: str = None) -> list:
                     .data
                 )
                 db.upsert_session(telefono, "welcome", {}, bodega["id"])
-                return [
-                    msg.msg_welcome(
-                        bodega["nombre_comercial"] or bodega["razon_social"],
-                        bodega["linea_aprobada"],
-                        dist["nombre_comercial"],
-                    )
-                ]
+                return [{
+                    "signal": "WELCOME",
+                    "nombre": bodega["nombre_comercial"] or bodega["razon_social"],
+                    "linea": bodega["linea_aprobada"],
+                    "distribuidor": dist["nombre_comercial"],
+                }]
         return ["👋 Hola, este número no está pre-aprobado en Circa. Contacta a tu distribuidor."]
 
     fase = session["fase"]
@@ -106,26 +105,31 @@ def handle_message(telefono: str, body: str, media_url: str = None) -> list:
 
     # ═══ WELCOME ═══
     if fase == "welcome":
-        if body_n in ("SI", "ACTIVAR", "1", "HOLA", "HI"):
+        if body_n in ("SI", "ACTIVAR", "1", "HOLA", "HI", "MAS_INFO", "MAS INFO"):
             db.upsert_session(telefono, "reg_ruc", datos, bodega["id"] if bodega else None)
-            return [msg.msg_pedir_ruc()]
-        return [msg.msg_welcome(bodega["nombre_comercial"], bodega["linea_aprobada"], "tu distribuidor")]
+            return [{"signal": "RUC_ASK"}]
+        return [{
+            "signal": "WELCOME",
+            "nombre": bodega["nombre_comercial"] or bodega["razon_social"],
+            "linea": bodega["linea_aprobada"],
+            "distribuidor": "tu distribuidor",
+        }]
 
     # ═══ RUC ═══
     if fase == "reg_ruc":
         if datos.get("ruc"):
             if body_n in ("SI", "CONFIRMO", "CORRECTO"):
                 db.upsert_session(telefono, "reg_dni", datos, datos.get("bodega_id"))
-                return [msg.msg_pedir_dni()]
+                return [{"signal": "DNI_ASK"}]
             return ["Escribe *SI* si los datos son correctos, o *NO* para corregir."]
 
         ruc = body_raw.replace(" ", "")
         if len(ruc) != 11 or not ruc.isdigit() or ruc[:2] not in ("10", "20"):
-            return [msg.msg_ruc_invalido()]
+            return ["❌ RUC inválido. Debe tener 11 dígitos y empezar con 10 o 20.\n\n📝 Escribe tu RUC:"]
 
         bodega = db.get_bodega_by_ruc(ruc)
         if not bodega:
-            return [msg.msg_ruc_no_encontrado()]
+            return ["❌ Este RUC no está pre-aprobado en Circa.\n\nVerifica el número e intenta de nuevo."]
 
         if bodega["telefono_whatsapp"] != telefono and bodega["telefono_whatsapp"] != f"+{telefono.lstrip('+')}":
             return ["❌ Este RUC no está asociado a tu número de WhatsApp."]
@@ -133,11 +137,17 @@ def handle_message(telefono: str, body: str, media_url: str = None) -> list:
         datos["ruc"] = ruc
         datos["bodega_id"] = bodega["id"]
         db.upsert_session(telefono, "reg_ruc", datos, bodega["id"])
-        return [msg.msg_ruc_verificado(bodega["razon_social"], ruc, bodega["direccion_fiscal"], bodega["representante_legal"])]
+        return [{
+            "signal": "RUC_VERIFIED",
+            "razon_social": bodega["razon_social"],
+            "ruc": ruc,
+            "direccion": bodega["direccion_fiscal"] or "Sin dirección",
+            "representante": bodega["representante_legal"] or "Sin representante",
+        }]
 
     # ═══ DNI ═══
     if fase == "reg_dni":
-        if media_url or body_n in ("DNI", "FOTO", "LISTO", "SI"):
+        if media_url or body_n in ("DNI", "FOTO", "LISTO", "SI", "SIMULAR_DNI", "SIMULAR DNI"):
             bodega = db.sb.table("bodegas").select("*").eq("id", datos["bodega_id"]).single().execute().data
             if media_url:
                 db.update_bodega(datos["bodega_id"], {"dni_foto_url": media_url})
@@ -146,54 +156,94 @@ def handle_message(telefono: str, body: str, media_url: str = None) -> list:
             # If this is a PIN reset, skip to reg_pin
             if datos.get("is_reset"):
                 db.upsert_session(telefono, "reg_pin", datos, datos["bodega_id"])
-                pin_url = get_pin_url(datos["bodega_id"], "create")
-                return [f"✅ Identidad verificada.\n\n🔐 Crea tu nueva *clave Circa* con el teclado seguro:\n👉 {pin_url}"]
+                return [{"signal": "PIN_ASK", "mode": "create"}]
 
-            db.upsert_session(telefono, "reg_contrato", datos, datos["bodega_id"])
-            return [msg.msg_dni_verificado(bodega["representante_legal"], bodega["dni_representante"])]
+            db.upsert_session(telefono, "reg_biometria", datos, datos["bodega_id"])
+            return [{
+                "signal": "BIOMETRIA_ASK",
+                "representante": bodega.get("representante_legal", ""),
+            }]
 
         if datos.get("is_reset"):
-            return ["📷 Envía una *foto de tu DNI* para verificar tu identidad.\nEscribe *MENU* para cancelar."]
-        return ["📷 Envía una *foto de tu DNI* o escribe *DNI* para simular."]
+            return ["📷 Envía una *foto de tu DNI* para verificar tu identidad."]
+        return [{"signal": "DNI_ASK"}]
+
+    # ═══ BIOMETRIA ═══
+    if fase == "reg_biometria":
+        if media_url or body_n in ("SELFIE", "SIMULAR_SELFIE", "SIMULAR SELFIE", "SI", "LISTO"):
+            datos["biometria_verified"] = True
+            bodega = db.sb.table("bodegas").select("*").eq("id", datos["bodega_id"]).single().execute().data
+            dist = db.sb.table("distribuidores").select("nombre_comercial").eq("id", bodega["distribuidor_id"]).single().execute().data
+            db.upsert_session(telefono, "reg_linea_acepta", datos, datos["bodega_id"])
+            return [{
+                "signal": "LINEA_OFERTA",
+                "nombre": bodega.get("nombre_comercial") or bodega.get("razon_social", ""),
+                "linea": bodega.get("linea_aprobada", 500),
+                "distribuidor": dist["nombre_comercial"] if dist else "",
+            }]
+        return [{
+            "signal": "BIOMETRIA_ASK",
+            "representante": "",
+        }]
+
+    # ═══ ACEPTAR LÍNEA ═══
+    if fase == "reg_linea_acepta":
+        if body_n in ("SI", "ACEPTO", "ACEPTO_LINEA", "ACEPTO LINEA", "1"):
+            bodega = db.sb.table("bodegas").select("linea_aprobada").eq("id", datos["bodega_id"]).single().execute().data
+            db.upsert_session(telefono, "reg_contrato", datos, datos["bodega_id"])
+            return [{"signal": "CONTRATO", "linea": bodega["linea_aprobada"]}]
+        if body_n in ("NO", "NO_GRACIAS", "NO GRACIAS"):
+            db.upsert_session(telefono, "welcome", {}, datos.get("bodega_id"))
+            return ["Entendido. Cuando quieras activar tu línea, escríbenos."]
+        return ["Escribe *SI* para aceptar la línea o *NO* para rechazar."]
 
     # ═══ CONTRATO ═══
     if fase == "reg_contrato":
-        if body_n in ("SI", "VER", "CONTINUAR", "1") and not datos.get("contrato_shown"):
-            bodega = db.sb.table("bodegas").select("linea_aprobada").eq("id", datos["bodega_id"]).single().execute().data
-            db.upsert_session(telefono, "reg_contrato", {**datos, "contrato_shown": True}, datos["bodega_id"])
-            return [msg.msg_contrato(bodega["linea_aprobada"])]
+        if body_n in ("ACEPTO", "SI", "1") or (body_n in ("SI", "VER", "CONTINUAR") and not datos.get("contrato_shown")):
+            if not datos.get("contrato_shown"):
+                bodega = db.sb.table("bodegas").select("linea_aprobada").eq("id", datos["bodega_id"]).single().execute().data
+                db.upsert_session(telefono, "reg_contrato", {**datos, "contrato_shown": True}, datos["bodega_id"])
+                return [{"signal": "CONTRATO", "linea": bodega["linea_aprobada"]}]
 
-        if body_n == "ACEPTO" and datos.get("contrato_shown"):
+            # Already shown, user accepts
             contract_data = f"{datos['bodega_id']}|{telefono}|{datetime.utcnow().isoformat()}"
             contract_hash = hashlib.sha256(contract_data.encode()).hexdigest()
             db.sign_contract(datos["bodega_id"], contract_hash)
             db.upsert_session(telefono, "reg_pin", datos, datos["bodega_id"])
-            pin_url = get_pin_url(datos["bodega_id"], "create")
-            return [
-                msg.msg_contrato_firmado(),
-                f"🔐 *Crea tu clave Circa*\n\nUsa el teclado seguro aquí:\n👉 {pin_url}\n\nTu clave debe ser de 4 dígitos y no puede usar números repetidos o consecutivos."
-            ]
+            return [{"signal": "PIN_ASK", "mode": "create"}]
 
         if datos.get("contrato_shown"):
             return ["Escribe *ACEPTO* para firmar el contrato digitalmente."]
-        return ["Escribe *SI* para ver los términos del servicio."]
+        return [{"signal": "CONTRATO", "linea": 500}]
 
     # ═══ CREAR PIN ═══
     if fase == "reg_pin":
-        pin_url = get_pin_url(datos["bodega_id"], "create")
+        # User enters PIN directly in chat (4 digits)
+        pin_raw = body_raw.strip()
+        if len(pin_raw) == 4 and pin_raw.isdigit():
+            from app.services.pin import validate_pin_format, hash_pin
+            valid, error_msg = validate_pin_format(pin_raw)
+            if not valid:
+                return [f"❌ {error_msg}\n\nIntenta con otra clave de 4 dígitos:"]
+            
+            pin_hashed = hash_pin(pin_raw)
+            db.update_bodega(datos["bodega_id"], {
+                "estado": "activo",
+                "pin_hash": pin_hashed,
+                "pin_intentos": 0,
+                "pin_bloqueado_hasta": None,
+            })
+            bodega_updated = db.sb.table("bodegas").select("linea_disponible").eq("id", datos["bodega_id"]).single().execute().data
+            db.upsert_session(telefono, "menu", {}, datos["bodega_id"])
+            return [{"signal": "CUENTA_ACTIVA", "linea": bodega_updated["linea_disponible"]}]
 
         if body_n == "PIN_CREADO":
             bodega_pin = db.sb.table("bodegas").select("linea_disponible, pin_hash, estado").eq("id", datos["bodega_id"]).single().execute().data
-            if not bodega_pin or not bodega_pin.get("pin_hash"):
-                return [f"⚠️ No pudimos registrar tu clave todavía.\n\nIntenta nuevamente aquí:\n👉 {pin_url}"]
+            if bodega_pin and bodega_pin.get("pin_hash"):
+                db.upsert_session(telefono, "menu", {}, datos["bodega_id"])
+                return [{"signal": "CUENTA_ACTIVA", "linea": bodega_pin["linea_disponible"]}]
 
-            db.upsert_session(telefono, "menu", {}, datos["bodega_id"])
-            return [
-                "✅ ¡Tu cuenta Circa está activa!\n\nTu clave fue creada correctamente.",
-                {"signal": "MENU", "linea": bodega_pin["linea_disponible"]},
-            ]
-
-        return [f"🔐 *Crea tu clave Circa*\n\nUsa el teclado seguro aquí:\n👉 {pin_url}"]
+        return [{"signal": "PIN_ASK", "mode": "create"}]
 
     # ═══════════════════════════════════════════════
     # MENÚ PRINCIPAL
@@ -217,12 +267,12 @@ def handle_message(telefono: str, body: str, media_url: str = None) -> list:
             return ["No tienes un pedido anterior. Escribe *PEDIDO* para empezar."]
 
         if body_n in ("LINEA", "2", "linea"):
-            return [
-                f"💰 *Tu línea de crédito:*\n\n"
-                f"Aprobada: S/{bodega['linea_aprobada']:.2f}\n"
-                f"Disponible: *S/{bodega['linea_disponible']:.2f}*\n"
-                f"Scoring: {bodega['scoring']}/100"
-            ]
+            return [{
+                "signal": "LINEA_INFO",
+                "aprobada": bodega["linea_aprobada"],
+                "disponible": bodega["linea_disponible"],
+                "scoring": bodega.get("scoring", 0) or 0,
+            }]
 
         if body_n in ("ESTADO", "3", "estado"):
             pedidos = db.get_pedidos_activos(bodega["id"])

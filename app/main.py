@@ -354,24 +354,80 @@ async def meta_webhook_incoming(request: Request):
                 if isinstance(resp, dict):
                     signal = resp.get("signal", "")
                     
-                    # Handle signals — send appropriate message type
-                    if signal == "MENU":
+                    # ── Onboarding signals ──
+                    if signal == "WELCOME":
+                        await meta_client.send_welcome(
+                            telefono, resp.get("nombre", ""),
+                            resp.get("linea", 500), resp.get("distribuidor", "")
+                        )
+                    elif signal == "RUC_ASK":
+                        await meta_client.send_ruc_request(telefono)
+                    elif signal == "RUC_VERIFIED":
+                        await meta_client.send_ruc_verified(
+                            telefono, resp.get("razon_social", ""),
+                            resp.get("ruc", ""), resp.get("direccion", ""),
+                            resp.get("representante", "")
+                        )
+                    elif signal == "DNI_ASK":
+                        await meta_client.send_dni_request(telefono)
+                    elif signal == "BIOMETRIA_ASK":
+                        await meta_client.send_biometria_request(
+                            telefono, resp.get("representante", "")
+                        )
+                    elif signal == "LINEA_OFERTA":
+                        await meta_client.send_linea_oferta(
+                            telefono, resp.get("nombre", ""),
+                            resp.get("linea", 500), resp.get("distribuidor", "")
+                        )
+                    elif signal == "CONTRATO":
+                        await meta_client.send_contrato(
+                            telefono, resp.get("linea", 500)
+                        )
+                    elif signal == "PIN_ASK":
+                        await meta_client.send_pin_request(
+                            telefono, resp.get("mode", "create")
+                        )
+                    elif signal == "CUENTA_ACTIVA":
+                        await meta_client.send_cuenta_activa(
+                            telefono, resp.get("linea", 500)
+                        )
+                    
+                    # ── Menu signals ──
+                    elif signal == "MENU":
                         await meta_client.send_menu(telefono, resp.get("linea", 500))
+                    elif signal == "LINEA_INFO":
+                        await meta_client.send_linea_info(
+                            telefono, resp.get("aprobada", 500),
+                            resp.get("disponible", 500), resp.get("scoring", 0)
+                        )
+                    
+                    # ── Legacy catalog signals → redirect to text for now ──
                     elif signal == "ONBOARDING_FLOW":
-                        await meta_client.send_onboarding_flow(
-                            telefono, resp.get("bodega_id", ""),
-                            resp.get("nombre", ""), resp.get("linea", 500)
+                        await meta_client.send_welcome(
+                            telefono, resp.get("nombre", ""),
+                            resp.get("linea", 500), ""
                         )
                     elif signal == "CATALOGO_FLOW":
-                        await meta_client.send_catalogo_flow(
-                            telefono, resp.get("bodega_id", "")
-                        )
+                        bodega_cat = db.get_bodega_by_phone(telefono)
+                        if bodega_cat:
+                            url = f"{os.getenv('APP_BASE_URL', '')}/catalogo?b={bodega_cat['id']}"
+                            await meta_client.send_text(
+                                telefono,
+                                f"📦 *Catálogo de productos*\n\n"
+                                f"Abre el catálogo y arma tu pedido:\n👉 {url}\n\n"
+                                f"Filtra por categoría o marca.\n"
+                                f"Precios por pack (6, 12 o 24u)."
+                            )
                     elif signal in ("CATEGORIAS", "PRODUCTOS", "PACK", "CANTIDAD",
                                      "AGREGADO", "CARRITO", "MONTO", "PLAZO"):
-                        # Legacy signals from old state machine → redirect to Flow
-                        bodega = db.get_bodega_by_phone(telefono) or db.get_bodega_by_phone(f"+{telefono}")
-                        if bodega:
-                            await meta_client.send_catalogo_flow(telefono, bodega["id"])
+                        # Legacy catalog signals — send catalog URL for now
+                        bodega_leg = db.get_bodega_by_phone(telefono)
+                        if bodega_leg:
+                            url = f"{os.getenv('APP_BASE_URL', '')}/catalogo?b={bodega_leg['id']}"
+                            await meta_client.send_text(
+                                telefono,
+                                f"📦 Abre el catálogo para armar tu pedido:\n👉 {url}"
+                            )
                     else:
                         logger.warning(f"Unknown signal: {signal}")
                 
