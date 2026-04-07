@@ -210,6 +210,7 @@ def handle_message(telefono: str, body: str, media_url: str = None) -> list:
     if fase == "reg_linea_acepta":
         if body_n in ("SI", "ACEPTO", "ACEPTO_LINEA", "ACEPTO LINEA", "1"):
             bodega = db.sb.table("bodegas").select("linea_aprobada").eq("id", datos["bodega_id"]).single().execute().data
+            datos["contrato_shown"] = True
             db.upsert_session(telefono, "reg_contrato", datos, datos["bodega_id"])
             return [{"signal": "CONTRATO", "linea": bodega["linea_aprobada"]}]
         if body_n in ("NO", "NO_GRACIAS", "NO GRACIAS"):
