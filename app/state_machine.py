@@ -153,17 +153,27 @@ def handle_message(telefono: str, body: str, media_url: str = None) -> list:
     # ═══ DNI ═══
     if fase == "reg_dni":
         if media_url or body_n in ("DNI", "FOTO", "LISTO", "SI", "SIMULAR_DNI", "SIMULAR DNI"):
-            bodega = db.sb.table("bodegas").select("*").eq("id", datos["bodega_id"]).single().execute().data
+            bodega_id = datos.get("bodega_id")
+            if not bodega_id:
+                db.upsert_session(telefono, "welcome", {}, None)
+                return [{"signal": "WELCOME", "nombre": "", "linea": 500, "distribuidor": ""}]
+            
+            result = db.sb.table("bodegas").select("*").eq("id", bodega_id).execute()
+            bodega = result.data[0] if result.data else None
+            if not bodega:
+                db.upsert_session(telefono, "welcome", {}, None)
+                return ["❌ Error al consultar tu bodega. Escribe *Hola* para reiniciar."]
+            
             if media_url:
-                db.update_bodega(datos["bodega_id"], {"dni_foto_url": media_url})
+                db.update_bodega(bodega_id, {"dni_foto_url": media_url})
             datos["dni_verified"] = True
 
             # If this is a PIN reset, skip to reg_pin
             if datos.get("is_reset"):
-                db.upsert_session(telefono, "reg_pin", datos, datos["bodega_id"])
+                db.upsert_session(telefono, "reg_pin", datos, bodega_id)
                 return [{"signal": "PIN_ASK", "mode": "create"}]
 
-            db.upsert_session(telefono, "reg_biometria", datos, datos["bodega_id"])
+            db.upsert_session(telefono, "reg_biometria", datos, bodega_id)
             return [{
                 "signal": "BIOMETRIA_ASK",
                 "representante": bodega.get("representante_legal", ""),
@@ -177,9 +187,14 @@ def handle_message(telefono: str, body: str, media_url: str = None) -> list:
     if fase == "reg_biometria":
         if media_url or body_n in ("SELFIE", "SIMULAR_SELFIE", "SIMULAR SELFIE", "SI", "LISTO"):
             datos["biometria_verified"] = True
-            bodega = db.sb.table("bodegas").select("*").eq("id", datos["bodega_id"]).single().execute().data
-            dist = db.sb.table("distribuidores").select("nombre_comercial").eq("id", bodega["distribuidor_id"]).single().execute().data
-            db.upsert_session(telefono, "reg_linea_acepta", datos, datos["bodega_id"])
+            bodega_id = datos.get("bodega_id")
+            result = db.sb.table("bodegas").select("*").eq("id", bodega_id).execute()
+            bodega = result.data[0] if result.data else None
+            if not bodega:
+                return ["❌ Error al consultar tu bodega. Escribe *Hola* para reiniciar."]
+            dist_r = db.sb.table("distribuidores").select("nombre_comercial").eq("id", bodega["distribuidor_id"]).execute()
+            dist = dist_r.data[0] if dist_r.data else None
+            db.upsert_session(telefono, "reg_linea_acepta", datos, bodega_id)
             return [{
                 "signal": "LINEA_OFERTA",
                 "nombre": bodega.get("nombre_comercial") or bodega.get("razon_social", ""),
