@@ -15,12 +15,15 @@ import logging
 logger = logging.getLogger("circa.financing")
 
 # ── Fee table (configurable) ──
-# plazo_dias → tasa (as decimal, e.g., 0.05 = 5%)
+# plazo_dias → tasa (as decimal) — flat per contract
+# Minimum fee: S/5.00
 DEFAULT_FEE_TABLE = {
-    7: Decimal("0.05"),    # 5%
-    15: Decimal("0.08"),   # 8%
-    30: Decimal("0.12"),   # 12%
+    7: Decimal("0.03"),    # 3%
+    15: Decimal("0.05"),   # 5%
+    30: Decimal("0.07"),   # 7%
 }
+
+MIN_FEE = Decimal("5.00")
 
 
 def calculate_eligibility(cart_total: float, linea_disponible: float) -> dict:
@@ -85,6 +88,7 @@ def calculate_quote(monto_financiar: float, fee_table: dict = None) -> dict:
     plazos = []
     for dias, tasa in sorted(table.items()):
         fee = (monto * tasa).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        fee = max(fee, MIN_FEE)
         total = monto + fee
         venc = hoy + timedelta(days=dias)
         
@@ -124,8 +128,9 @@ def calculate_summary(cart_total: float, monto_financiar: float, plazo_dias: int
     table = fee_table or DEFAULT_FEE_TABLE
     cart = Decimal(str(cart_total))
     monto = Decimal(str(monto_financiar))
-    tasa = table.get(plazo_dias, Decimal("0.12"))
+    tasa = table.get(plazo_dias, Decimal("0.07"))
     fee = (monto * tasa).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    fee = max(fee, MIN_FEE)
     total_credito = monto + fee
     contado = cart - monto
     venc = date.today() + timedelta(days=plazo_dias)
