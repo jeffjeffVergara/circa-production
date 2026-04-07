@@ -346,8 +346,39 @@ async def meta_webhook_incoming(request: Request):
             flow_data = msg["flow_data"]
             logger.info(f"Flow response from {telefono}: {flow_data}")
             
-            # Check if it's an order confirmation
-            if flow_data.get("status") == "order_confirmed":
+            # ── PIN Flow response ──
+            if "pin" in flow_data and "pin_confirm" in flow_data:
+                pin = flow_data["pin"]
+                pin_confirm = flow_data["pin_confirm"]
+                
+                if pin != pin_confirm:
+                    await meta_client.send_text(telefono, "❌ Las claves no coinciden. Intenta de nuevo.")
+                    # Re-send PIN flow
+                    bodega = db.get_bodega_by_phone(telefono)
+                    if bodega:
+                        await meta_client.send_pin_request(telefono, "create", bodega["id"])
+                elif len(pin) != 4 or not pin.isdigit():
+                    await meta_client.send_text(telefono, "❌ La clave debe ser 4 dígitos. Intenta de nuevo.")
+                else:
+                    # Valid PIN — activate account
+                    from app.services.pin import hash_pin
+                    bodega = db.get_bodega_by_phone(telefono)
+                    if bodega:
+                        pin_hashed = hash_pin(pin)
+                        db.update_bodega(bodega["id"], {
+                            "estado": "activo",
+                            "pin_hash": pin_hashed,
+                            "pin_intentos": 0,
+                        })
+                        import hashlib
+                        contract_hash = hashlib.sha256(f"{bodega['id']}|{telefono}|pin_flow".encode()).hexdigest()
+                        db.sign_contract(bodega["id"], contract_hash[:16])
+                        db.upsert_session(telefono, "menu", {}, bodega["id"])
+                        await meta_client.send_cuenta_activa(telefono, bodega.get("linea_disponible", 500))
+                        logger.info(f"Bodega {bodega['id']} activated via PIN Flow")
+            
+            # ── Order confirmation ──
+            elif flow_data.get("status") == "order_confirmed":
                 await meta_client.send_order_confirmation(
                     to=telefono,
                     order_number=flow_data.get("order_number", ""),
