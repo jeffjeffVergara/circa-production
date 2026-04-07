@@ -121,6 +121,11 @@ def handle_message(telefono: str, body: str, media_url: str = None) -> list:
             if body_n in ("SI", "CONFIRMO", "CORRECTO"):
                 db.upsert_session(telefono, "reg_dni", datos, datos.get("bodega_id"))
                 return [{"signal": "DNI_ASK"}]
+            if body_n in ("NO", "CORREGIR"):
+                datos.pop("ruc", None)
+                datos.pop("bodega_id", None)
+                db.upsert_session(telefono, "reg_ruc", datos, None)
+                return [{"signal": "RUC_ASK"}]
             return ["Escribe *SI* si los datos son correctos, o *NO* para corregir."]
 
         ruc = body_raw.replace(" ", "")

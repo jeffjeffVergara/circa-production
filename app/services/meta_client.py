@@ -321,17 +321,22 @@ async def send_ruc_request(to: str):
 
 
 async def send_ruc_verified(to: str, razon_social: str, ruc: str, direccion: str, representante: str):
-    """Show verified RUC info from SUNAT."""
-    return await send_text(
+    """Show verified RUC info from SUNAT with confirm button."""
+    return await send_buttons(
         to=to,
-        text=(
+        body=(
             f"✅ *RUC verificado en SUNAT:*\n\n"
             f"*{razon_social}*\n"
             f"RUC: {ruc}\n"
             f"📍 {direccion}\n"
             f"👤 Rep. Legal: {representante}\n\n"
-            f"La dirección fiscal será tu dirección de despacho."
-        )
+            f"La dirección fiscal será tu dirección de despacho.\n\n"
+            f"¿Los datos son correctos?"
+        ),
+        buttons=[
+            {"id": "SI", "title": "Sí, correcto ✅"},
+            {"id": "NO", "title": "No, corregir"},
+        ]
     )
 
 
