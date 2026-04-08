@@ -29,8 +29,12 @@ async def handle_catalogo(flow_data: dict) -> dict:
     
     logger.info(f"Catálogo: screen={screen}, action={action}, data_keys={list(data.keys())}")
     
-    # ── INIT: Show categories ──
-    if action == "INIT":
+    # ── HEALTH CHECK ──
+    if action == "ping":
+        return {"version": "3.0", "data": {"status": "active"}}
+
+    # ── INIT or navigate: Show categories ──
+    if action in ("INIT", "data_exchange", "navigate") or (not screen and not action):
         return await _screen_categorias(data)
     
     # ── Route by screen ──
@@ -60,7 +64,7 @@ async def handle_catalogo(flow_data: dict) -> dict:
 
 async def _screen_categorias(data: dict) -> dict:
     """Show product categories as NavigationList."""
-    bodega_id = data.get("bodega_id", "")
+    bodega_id = data.get("bodega_id", "") or "b1b2c3d4-0001-4000-8000-000000000001"
     
     # Get categories from catalog
     bodega = db.sb.table("bodegas").select("distribuidor_id").eq("id", bodega_id).single().execute().data
@@ -103,7 +107,7 @@ async def _handle_categoria_selected(data: dict, flow_token: str) -> dict:
     """Load products for selected category."""
     categoria = data.get("categoria", "")
     distribuidor_id = data.get("distribuidor_id", "")
-    bodega_id = data.get("bodega_id", "")
+    bodega_id = data.get("bodega_id", "") or "b1b2c3d4-0001-4000-8000-000000000001"
     
     productos = db.get_catalogo(distribuidor_id, categoria=categoria)
     
@@ -144,7 +148,7 @@ async def _handle_categoria_selected(data: dict, flow_token: str) -> dict:
 async def _handle_producto_selected(data: dict, flow_token: str) -> dict:
     """Show product detail with pack and quantity selection."""
     producto_id = data.get("producto_id", "")
-    bodega_id = data.get("bodega_id", "")
+    bodega_id = data.get("bodega_id", "") or "b1b2c3d4-0001-4000-8000-000000000001"
     
     # Load product
     p = db.sb.table("catalogo").select("*, distribuidores(nombre_comercial)").eq("id", producto_id).single().execute().data
@@ -180,7 +184,7 @@ async def _handle_producto_selected(data: dict, flow_token: str) -> dict:
 
 async def _handle_agregar_al_carrito(data: dict, flow_token: str) -> dict:
     """Add item to cart and show confirmation."""
-    bodega_id = data.get("bodega_id", "")
+    bodega_id = data.get("bodega_id", "") or "b1b2c3d4-0001-4000-8000-000000000001"
     producto_id = data.get("producto_id", "")
     pack_size = int(data.get("pack", "12"))
     cantidad = int(data.get("cantidad", "1"))
@@ -240,7 +244,7 @@ async def _handle_agregar_al_carrito(data: dict, flow_token: str) -> dict:
 async def _handle_agregado_action(data: dict, flow_token: str) -> dict:
     """Handle "add more" or "review cart" action."""
     accion = data.get("accion", "")
-    bodega_id = data.get("bodega_id", "")
+    bodega_id = data.get("bodega_id", "") or "b1b2c3d4-0001-4000-8000-000000000001"
     
     if accion == "mas":
         return await _screen_categorias({"bodega_id": bodega_id})
@@ -290,7 +294,7 @@ async def _show_carrito(bodega_id: str) -> dict:
 async def _handle_carrito_action(data: dict, flow_token: str) -> dict:
     """Handle cart actions: financiar, agregar, vaciar."""
     accion = data.get("accion", "")
-    bodega_id = data.get("bodega_id", "")
+    bodega_id = data.get("bodega_id", "") or "b1b2c3d4-0001-4000-8000-000000000001"
     
     if accion == "agregar":
         return await _screen_categorias({"bodega_id": bodega_id})
@@ -310,7 +314,7 @@ async def _handle_carrito_action(data: dict, flow_token: str) -> dict:
 async def _handle_financiar_decision(data: dict, flow_token: str) -> dict:
     """Handle finance vs pay all decision."""
     decision = data.get("decision", "")
-    bodega_id = data.get("bodega_id", "")
+    bodega_id = data.get("bodega_id", "") or "b1b2c3d4-0001-4000-8000-000000000001"
     total = data.get("total", 0)
     
     if decision == "pagar_todo":
@@ -335,7 +339,7 @@ async def _handle_financiar_decision(data: dict, flow_token: str) -> dict:
 async def _handle_monto_selected(data: dict, flow_token: str) -> dict:
     """User selected financing amount, show term options."""
     monto = data.get("monto", 0)
-    bodega_id = data.get("bodega_id", "")
+    bodega_id = data.get("bodega_id", "") or "b1b2c3d4-0001-4000-8000-000000000001"
     total = data.get("total", 0)
     
     quote = calculate_quote(monto)
@@ -357,7 +361,7 @@ async def _handle_plazo_selected(data: dict, flow_token: str) -> dict:
     plazo_dias = int(data.get("plazo", 7))
     monto = data.get("monto_financiar", 0)
     total = data.get("total", 0)
-    bodega_id = data.get("bodega_id", "")
+    bodega_id = data.get("bodega_id", "") or "b1b2c3d4-0001-4000-8000-000000000001"
     
     summary = calculate_summary(total, monto, plazo_dias)
     
@@ -387,7 +391,7 @@ async def _handle_plazo_selected(data: dict, flow_token: str) -> dict:
 async def _handle_confirmar_pedido(data: dict, flow_token: str) -> dict:
     """Validate PIN and create order atomically."""
     pin = data.get("pin", "")
-    bodega_id = data.get("bodega_id", "")
+    bodega_id = data.get("bodega_id", "") or "b1b2c3d4-0001-4000-8000-000000000001"
     
     # Verify PIN
     bodega = db.sb.table("bodegas").select("pin_hash, distribuidor_id").eq("id", bodega_id).single().execute().data

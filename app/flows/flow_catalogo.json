@@ -2,14 +2,32 @@
   "version": "7.0",
   "data_api_version": "3.0",
   "routing_model": {
-    "CATEGORIAS": ["PRODUCTOS"],
-    "PRODUCTOS": ["DETALLE"],
-    "DETALLE": ["AGREGADO"],
-    "AGREGADO": ["CATEGORIAS", "CARRITO"],
-    "CARRITO": ["CATEGORIAS", "MONTO"],
-    "MONTO": ["PLAZO"],
-    "PLAZO": ["RESUMEN_PIN"],
-    "RESUMEN_PIN": ["SUCCESS"],
+    "CATEGORIAS": [
+      "PRODUCTOS"
+    ],
+    "PRODUCTOS": [
+      "DETALLE"
+    ],
+    "DETALLE": [
+      "AGREGADO"
+    ],
+    "AGREGADO": [
+      "CATEGORIAS",
+      "CARRITO"
+    ],
+    "CARRITO": [
+      "CATEGORIAS",
+      "MONTO"
+    ],
+    "MONTO": [
+      "PLAZO"
+    ],
+    "PLAZO": [
+      "RESUMEN_PIN"
+    ],
+    "RESUMEN_PIN": [
+      "SUCCESS"
+    ],
     "SUCCESS": []
   },
   "screens": [
@@ -20,11 +38,44 @@
         "categorias": {
           "type": "array",
           "__example__": [
-            {"id": "bebidas", "title": "Bebidas", "description": "Gaseosas, agua, jugos"},
-            {"id": "lacteos", "title": "Lácteos", "description": "Leche, yogurt, quesos"},
-            {"id": "abarrotes", "title": "Abarrotes", "description": "Limpieza, azúcar, aceite"},
-            {"id": "cuidado", "title": "Cuidado", "description": "Shampoo, pañales, higiene"}
-          ]
+            {
+              "id": "bebidas",
+              "main-content": {
+                "title": "Bebidas",
+                "description": "Gaseosas, agua, jugos"
+              }
+            }
+          ],
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "main-content": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  }
+                }
+              },
+              "end": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
         },
         "bodega_id": {
           "type": "string",
@@ -59,7 +110,6 @@
         ]
       }
     },
-
     {
       "id": "PRODUCTOS",
       "title": "Productos",
@@ -70,11 +120,46 @@
           "__example__": [
             {
               "id": "prod1",
-              "title": "Coca-Cola 500ml",
-              "description": "DistribuMax",
-              "end": {"title": "S/9.60", "description": "Pack 6"}
+              "main-content": {
+                "title": "Coca-Cola 500ml",
+                "description": "DistribuMax"
+              },
+              "end": {
+                "title": "S/9.60",
+                "description": "Pack 6"
+              }
             }
-          ]
+          ],
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "main-content": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  }
+                }
+              },
+              "end": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
         },
         "categoria": {
           "type": "string",
@@ -108,7 +193,6 @@
         ]
       }
     },
-
     {
       "id": "DETALLE",
       "title": "Detalle",
@@ -121,33 +205,69 @@
           "type": "string",
           "__example__": "Coca-Cola 500ml"
         },
-        "distribuidor": {
-          "type": "string",
-          "__example__": "DistribuMax"
-        },
-        "categoria": {
-          "type": "string",
-          "__example__": "Bebidas"
-        },
         "packs": {
           "type": "array",
           "__example__": [
-            {"id": "6", "title": "Pack 6 — S/9.60"},
-            {"id": "12", "title": "Pack 12 — S/18.00"},
-            {"id": "24", "title": "Pack 24 — S/34.00"}
-          ]
+            {
+              "id": "6",
+              "title": "Pack 6 — S/9.60"
+            },
+            {
+              "id": "12",
+              "title": "Pack 12 — S/18.00"
+            },
+            {
+              "id": "24",
+              "title": "Pack 24 — S/34.00"
+            }
+          ],
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              }
+            }
+          }
         },
         "cantidades": {
           "type": "array",
           "__example__": [
-            {"id": "1", "title": "1"},
-            {"id": "2", "title": "2"},
-            {"id": "3", "title": "3"}
-          ]
+            {
+              "id": "1",
+              "title": "1"
+            },
+            {
+              "id": "2",
+              "title": "2"
+            },
+            {
+              "id": "3",
+              "title": "3"
+            }
+          ],
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              }
+            }
+          }
         },
         "bodega_id": {
           "type": "string",
           "__example__": "b0000000-0000-0000-0000-000000000000"
+        },
+        "distribuidor_cat": {
+          "type": "string",
+          "__example__": "DistribuMax · Bebidas"
         }
       },
       "layout": {
@@ -163,7 +283,7 @@
               },
               {
                 "type": "TextCaption",
-                "text": "${data.distribuidor} · ${data.categoria}"
+                "text": "${data.distribuidor_cat}"
               },
               {
                 "type": "RadioButtonsGroup",
@@ -197,7 +317,6 @@
         ]
       }
     },
-
     {
       "id": "AGREGADO",
       "title": "Agregado",
@@ -217,9 +336,26 @@
         "acciones": {
           "type": "array",
           "__example__": [
-            {"id": "mas", "title": "+ Agregar más productos"},
-            {"id": "revisar", "title": "🛒 Revisar carrito"}
-          ]
+            {
+              "id": "mas",
+              "title": "+ Agregar más productos"
+            },
+            {
+              "id": "revisar",
+              "title": "🛒 Revisar carrito"
+            }
+          ],
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              }
+            }
+          }
         }
       },
       "layout": {
@@ -260,7 +396,6 @@
         ]
       }
     },
-
     {
       "id": "CARRITO",
       "title": "Tu carrito",
@@ -284,15 +419,35 @@
         },
         "total": {
           "type": "number",
-          "__example__": 187.80
+          "__example__": 187.8
         },
         "acciones_carrito": {
           "type": "array",
           "__example__": [
-            {"id": "financiar", "title": "💚 Financiar con Circa"},
-            {"id": "agregar", "title": "+ Agregar más productos"},
-            {"id": "vaciar", "title": "🗑 Vaciar carrito"}
-          ]
+            {
+              "id": "financiar",
+              "title": "💚 Financiar con Circa"
+            },
+            {
+              "id": "agregar",
+              "title": "+ Agregar más productos"
+            },
+            {
+              "id": "vaciar",
+              "title": "🗑 Vaciar carrito"
+            }
+          ],
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              }
+            }
+          }
         }
       },
       "layout": {
@@ -342,22 +497,41 @@
         ]
       }
     },
-
     {
       "id": "MONTO",
       "title": "Financiamiento",
       "data": {
         "total": {
           "type": "number",
-          "__example__": 970.40
+          "__example__": 970.4
         },
         "opciones": {
           "type": "array",
           "__example__": [
-            {"id": "500.00", "title": "100% — S/500.00"},
-            {"id": "250.00", "title": "50% — S/250.00"},
-            {"id": "125.00", "title": "25% — S/125.00"}
-          ]
+            {
+              "id": "500.00",
+              "title": "100% — S/500.00"
+            },
+            {
+              "id": "250.00",
+              "title": "50% — S/250.00"
+            },
+            {
+              "id": "125.00",
+              "title": "25% — S/125.00"
+            }
+          ],
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              }
+            }
+          }
         },
         "bodega_id": {
           "type": "string",
@@ -403,30 +577,49 @@
         ]
       }
     },
-
     {
       "id": "PLAZO",
       "title": "Plazo de pago",
       "data": {
         "monto_financiar": {
           "type": "number",
-          "__example__": 250.00
+          "__example__": 250.0
         },
         "contado": {
           "type": "number",
-          "__example__": 720.40
+          "__example__": 720.4
         },
         "total": {
           "type": "number",
-          "__example__": 970.40
+          "__example__": 970.4
         },
         "plazos": {
           "type": "array",
           "__example__": [
-            {"id": "7", "title": "7 días — Fee S/12.50 — Total S/262.50"},
-            {"id": "15", "title": "15 días — Fee S/20.00 — Total S/270.00"},
-            {"id": "30", "title": "30 días — Fee S/30.00 — Total S/280.00"}
-          ]
+            {
+              "id": "7",
+              "title": "7 días — Fee S/12.50 — Total S/262.50"
+            },
+            {
+              "id": "15",
+              "title": "15 días — Fee S/20.00 — Total S/270.00"
+            },
+            {
+              "id": "30",
+              "title": "30 días — Fee S/30.00 — Total S/280.00"
+            }
+          ],
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              }
+            }
+          }
         },
         "bodega_id": {
           "type": "string",
@@ -473,7 +666,6 @@
         ]
       }
     },
-
     {
       "id": "RESUMEN_PIN",
       "title": "Confirmar pedido",
@@ -488,11 +680,11 @@
         },
         "pedido_total": {
           "type": "number",
-          "__example__": 970.40
+          "__example__": 970.4
         },
         "monto_financiado": {
           "type": "number",
-          "__example__": 250.00
+          "__example__": 250.0
         },
         "tasa": {
           "type": "number",
@@ -504,15 +696,15 @@
         },
         "fee": {
           "type": "number",
-          "__example__": 12.50
+          "__example__": 12.5
         },
         "total_credito": {
           "type": "number",
-          "__example__": 262.50
+          "__example__": 262.5
         },
         "pago_contado": {
           "type": "number",
-          "__example__": 720.40
+          "__example__": 720.4
         }
       },
       "layout": {
@@ -567,7 +759,6 @@
         ]
       }
     },
-
     {
       "id": "SUCCESS",
       "title": "¡Pedido confirmado!",
