@@ -34,7 +34,7 @@ async def handle_catalogo(flow_data: dict) -> dict:
         return {"version": "3.0", "data": {"status": "active"}}
 
     # ── INIT or navigate: Show categories ──
-    if action in ("INIT", "data_exchange", "navigate") or (not screen and not action):
+    if action in ("INIT", "data_exchange", "navigate") or screen == "INICIO" or (not screen and not action):
         return await _screen_categorias(data)
     
     # ── Route by screen ──

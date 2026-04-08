@@ -32,6 +32,85 @@
   },
   "screens": [
     {
+      "id": "INICIO",
+      "title": "Catálogo Circa",
+      "data": {
+        "categorias": {
+          "type": "array",
+          "__example__": [
+            {
+              "id": "bebidas",
+              "main-content": {
+                "title": "Bebidas",
+                "description": "Gaseosas, agua, jugos"
+              }
+            }
+          ],
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "main-content": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  }
+                }
+              },
+              "end": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "bodega_id": {
+          "type": "string",
+          "__example__": "b0000000-0000-0000-0000-000000000000"
+        },
+        "distribuidor_id": {
+          "type": "string",
+          "__example__": "d0000000-0000-0000-0000-000000000000"
+        },
+        "cart_summary": {
+          "type": "string",
+          "__example__": ""
+        }
+      },
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "NavigationList",
+            "name": "cat_selection",
+            "label": "¿Qué buscas hoy?",
+            "list-items": "${data.categorias}",
+            "on-click-action": {
+              "name": "data_exchange",
+              "payload": {
+                "categoria": "${form.cat_selection}",
+                "bodega_id": "${data.bodega_id}",
+                "distribuidor_id": "${data.distribuidor_id}"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
       "id": "CATEGORIAS",
       "title": "Catálogo Circa",
       "data": {
