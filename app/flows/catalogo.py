@@ -27,7 +27,7 @@ async def handle_catalogo(flow_data: dict) -> dict:
     data = flow_data.get("data", {})
     flow_token = flow_data.get("flow_token", "")
     
-    logger.info(f"Catálogo: screen={screen}, action={action}, data_keys={list(data.keys())}")
+    logger.info(f"Catálogo: screen={screen}, action={action}, data={data}")
     
     # ── HEALTH CHECK ──
     if action == "ping":
