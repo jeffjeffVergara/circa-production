@@ -39,6 +39,7 @@ async def handle_catalogo(flow_data: dict) -> dict:
     
     # ── Route by screen ──
     handlers = {
+        "CATALOG": _handle_categoria_selected,
         "CATEGORIAS": _handle_categoria_selected,
         "PRODUCTOS": _handle_producto_selected,
         "DETALLE": _handle_agregar_al_carrito,
