@@ -93,7 +93,6 @@ async def _screen_categorias(data: dict) -> dict:
     
     return {
         "version": "3.0",
-        "screen": "CATEGORIAS",
         "data": {
             "categorias": items,
             "bodega_id": bodega_id,
