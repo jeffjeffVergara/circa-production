@@ -801,3 +801,13 @@ async def reset_demo(bodega_id: str):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000, reload=True)
+
+@app.get("/api/debug/catalogo-response")
+async def debug_catalogo_response():
+    """Debug: show what the catalog flow would return."""
+    from app.flows.catalogo import _screen_categorias
+    try:
+        result = await _screen_categorias({"bodega_id": "b1b2c3d4-0001-4000-8000-000000000001"})
+        return result
+    except Exception as e:
+        return {"error": str(e), "type": type(e).__name__}
