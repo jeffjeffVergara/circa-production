@@ -82,11 +82,13 @@ async def _screen_categorias(data: dict) -> dict:
     items = []
     for cat in categorias_raw:
         cat_lower = cat.lower()
+        emoji = emoji_map.get(cat_lower, "📦")
         items.append({
             "id": cat,
-            "title": cat,
-            "description": f"Ver productos de {cat}",
-            "image": emoji_map.get(cat_lower, "📦"),
+            "main-content": {
+                "title": f"{emoji} {cat}",
+                "description": f"Ver productos de {cat}",
+            },
         })
     
     return {
@@ -95,6 +97,7 @@ async def _screen_categorias(data: dict) -> dict:
             "categorias": items,
             "bodega_id": bodega_id,
             "distribuidor_id": bodega["distribuidor_id"],
+            "cart_summary": "",
         }
     }
 
