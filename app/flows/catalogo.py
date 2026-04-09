@@ -52,8 +52,22 @@ async def handle_catalogo(flow_data: dict) -> dict:
         return _build_categories(bodega_id, session)
 
     if selected == "VIEW_CART":
-        logger.info("VIEW_CART: returning categories as test")
-        return _build_categories(bodega_id, session)
+        cart = session.get("cart", [])
+        total = sum(i.get("sub", 0) for i in cart)
+        items = []
+        for i, item in enumerate(cart):
+            items.append({
+                "id": f"RM{i}",
+                "main-content": {
+                    "title": f"{item.get('qty',0)}x {item.get('name','')}",
+                    "description": f"S/{item.get('sub',0):.2f}",
+                },
+            })
+        if not items:
+            items.append({"id": "BACK_CATS", "main-content": {"title": "Carrito vacio", "description": "Agregar productos"}})
+        items.append({"id": "BACK_CATS", "main-content": {"title": "Seguir comprando", "description": ""}})
+        items.append({"id": "CHECKOUT", "main-content": {"title": "Pedir todo", "description": f"Total: S/{total:.2f}"}})
+        return _make_response(items, bodega_id)
 
     if selected == "CHECKOUT":
         return await _do_checkout(bodega_id, session)
