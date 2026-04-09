@@ -264,6 +264,7 @@ async def flow_catalogo(request: Request):
         
         # Handle the flow logic
         response_data = await handle_catalogo(flow_data)
+        logger.info(f"RESPONSE TO ENCRYPT: {json.dumps(response_data, default=str)}")
         
         # Encrypt and return
         encrypted = encrypt_response(response_data, aes_key, iv)
