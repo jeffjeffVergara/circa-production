@@ -84,11 +84,11 @@ async def handle_catalogo(flow_data: dict) -> dict:
 
 def _load_session(bodega_id: str) -> dict:
     try:
-        r = db.sb.table("flow_sessions").select("session_data").eq("bodega_id", bodega_id).single().execute()
-        if r.data and r.data.get("session_data"):
-            return json.loads(r.data["session_data"])
-    except Exception:
-        pass
+        r = db.sb.table("flow_sessions").select("session_data").eq("bodega_id", bodega_id).limit(1).execute()
+        if r.data and len(r.data) > 0 and r.data[0].get("session_data"):
+            return json.loads(r.data[0]["session_data"])
+    except Exception as e:
+        logger.error(f"Load session error: {e}")
     return {"cart": [], "cat": "", "dist": ""}
 
 
