@@ -1,58 +1,41 @@
 {
-  "version": "3.0",
+  "version": "7.0",
   "data_api_version": "3.0",
   "routing_model": {
-    "CATALOG": [
-      "CATALOG"
-    ]
+    "CATALOG": ["SUCCESS"],
+    "SUCCESS": []
   },
   "screens": [
     {
       "id": "CATALOG",
-      "title": "Catálogo Circa",
+      "title": "Catalogo Circa",
       "data": {
-        "categorias": {
+        "items": {
           "type": "array",
           "items": {
             "type": "object",
             "properties": {
-              "id": {
-                "type": "string"
-              },
+              "id": { "type": "string" },
               "main-content": {
                 "type": "object",
                 "properties": {
-                  "title": {
-                    "type": "string"
-                  },
-                  "description": {
-                    "type": "string"
-                  }
+                  "title": { "type": "string" },
+                  "description": { "type": "string" }
                 }
               }
             }
           },
           "__example__": [
-            {
-              "id": "bebidas",
-              "main-content": {
-                "title": "Bebidas",
-                "description": "Gaseosas, agua, jugos"
-              }
-            }
+            { "id": "1", "main-content": { "title": "T", "description": "D" } }
           ]
         },
         "bodega_id": {
           "type": "string",
-          "__example__": "test"
+          "__example__": "b1"
         },
-        "distribuidor_id": {
+        "cart_state": {
           "type": "string",
-          "__example__": "test"
-        },
-        "cart_summary": {
-          "type": "string",
-          "__example__": ""
+          "__example__": "{}"
         }
       },
       "layout": {
@@ -60,18 +43,36 @@
         "children": [
           {
             "type": "NavigationList",
-            "name": "cat_selection",
-            "label": "Elige una categoria",
-            "list-items": "${data.categorias}",
+            "name": "selection",
+            "label": "Que buscas hoy?",
+            "list-items": "${data.items}",
             "on-click-action": {
               "name": "data_exchange",
               "payload": {
-                "categoria": "${form.cat_selection}",
+                "selected": "${form.selection}",
                 "bodega_id": "${data.bodega_id}",
-                "distribuidor_id": "${data.distribuidor_id}"
+                "cart_state": "${data.cart_state}"
               }
             }
           }
+        ]
+      }
+    },
+    {
+      "id": "SUCCESS",
+      "title": "Listo",
+      "terminal": true,
+      "data": {
+        "message": {
+          "type": "string",
+          "__example__": "OK"
+        }
+      },
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          { "type": "TextHeading", "text": "${data.message}" },
+          { "type": "TextBody", "text": "Gracias por tu pedido." }
         ]
       }
     }
