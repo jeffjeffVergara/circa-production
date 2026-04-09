@@ -13,10 +13,10 @@ FEE_RATE = 0.03
 MIN_FEE = 5.0
 
 CATEGORIES = [
-    {"id": "Abarrotes",  "emoji": "🛒"},
-    {"id": "Bebidas",    "emoji": "🥤"},
-    {"id": "Golosinas",  "emoji": "🍬"},
-    {"id": "Lacteos",    "emoji": "🥛"},
+    {"id": "Abarrotes",         "emoji": "🛒"},
+    {"id": "Bebidas Calientes", "emoji": "🥤"},
+    {"id": "Golosinas",         "emoji": "🍬"},
+    {"id": "Lácteos",           "emoji": "🥛"},
 ]
 
 
