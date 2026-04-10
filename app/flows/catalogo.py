@@ -457,12 +457,20 @@ async def _send_payment_options(phone, pedido_id, total, items_text):
         f"Circa 15d: S/{total+fee15:.2f} (fee S/{fee15:.2f})\n"
         f"Circa 30d: S/{total+fee30:.2f} (fee S/{fee30:.2f})"
     )
-    buttons = [
-        {"id": f"PAY7_{pedido_id[:8]}", "title": "7 dias"},
-        {"id": f"PAY15_{pedido_id[:8]}", "title": "15 dias"},
-        {"id": f"PAY30_{pedido_id[:8]}", "title": "30 dias"},
-    ]
-    await meta_client.send_buttons(phone, body, buttons)
+    await meta_client.send_list(
+        phone,
+        body=body,
+        button_text="Elegir forma de pago",
+        sections=[{
+            "title": "Opciones de pago",
+            "rows": [
+                {"id": f"CONTADO_{pedido_id[:8]}", "title": "Pagar al contado", "description": f"S/{total:.2f} sin fee"},
+                {"id": f"PAY7_{pedido_id[:8]}", "title": "Circa 7 dias", "description": f"Fee 3%: S/{fee7:.2f} = S/{total+fee7:.2f}"},
+                {"id": f"PAY15_{pedido_id[:8]}", "title": "Circa 15 dias", "description": f"Fee 5%: S/{fee15:.2f} = S/{total+fee15:.2f}"},
+                {"id": f"PAY30_{pedido_id[:8]}", "title": "Circa 30 dias", "description": f"Fee 7%: S/{fee30:.2f} = S/{total+fee30:.2f}"},
+            ],
+        }],
+    )
     logger.info(f"Payment options sent to {phone}")
 
 # ── Payment & Confirmation ──

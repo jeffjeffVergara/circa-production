@@ -72,6 +72,46 @@ async def handle_catalogo(flow_data: dict) -> dict:
     if selected == "CHECKOUT":
         return await _do_checkout(bodega_id, session)
 
+    if selected == "IGNORADO_PAY_CASH":
+        session["pay"] = "contado"
+        session["fee_rate"] = 0
+        session["plazo"] = 0
+        _save_session(bodega_id, session)
+        return _build_confirm(bodega_id, session)
+
+    if selected == "PAY_CIRCA":
+        return _build_plazos(bodega_id, session)
+
+    if selected.startswith("PLAZO_"):
+        dias = int(selected.split("_")[1])
+        rates = {7: 0.03, 15: 0.05, 30: 0.07}
+        session["pay"] = "circa"
+        session["plazo"] = dias
+        session["fee_rate"] = rates.get(dias, 0.05)
+        _save_session(bodega_id, session)
+        return _build_confirm(bodega_id, session)
+
+    if selected == "BACK_PAY":
+        return _build_payment(bodega_id, session)
+
+    if selected == "BACK_CART":
+        cart = session.get("cart", [])
+        total = sum(i.get("sub", 0) for i in cart)
+        items = []
+        for i, item in enumerate(cart):
+            q = item.get("qty", 0)
+            n = item.get("name", "")
+            s = item.get("sub", 0)
+            items.append({"id": f"RM{i}", "main-content": {"title": f"{q}x {n}", "description": f"S/{s:.2f}"}})
+        if not items:
+            items.append({"id": "BACK_CATS", "main-content": {"title": "Carrito vacio", "description": "Agregar productos"}})
+        items.append({"id": "BACK_CATS", "main-content": {"title": "Seguir comprando", "description": ""}})
+        items.append({"id": "CHECKOUT", "main-content": {"title": "Pedir todo", "description": f"Total: S/{total:.2f}"}})
+        return _make_response(items, bodega_id)
+
+    if selected == "CONFIRM":
+        return await _do_checkout(bodega_id, session)
+
     if selected.startswith("REMOVE_"):
         try:
             idx = int(selected.split("_", 1)[1])
@@ -359,31 +399,106 @@ async def _do_checkout(bodega_id, session):
         return _build_categories(bodega_id, session)
 
     total = sum(i.get("sub", 0) for i in cart)
-    fee   = max(total * FEE_RATE, MIN_FEE)
     dist  = session.get("dist", "a1b2c3d4-0001-4000-8000-000000000001")
 
-    pedido_num = "CRC-000"
+    # Build cart summary
+    items_text = "\n".join(f"{i['qty']}x {i['name']} — S/{i['sub']:.2f}" for i in cart)
+
+    pedido_id = "000"
     try:
         result = db.sb.table("pedidos").insert({
             "bodega_id": bodega_id, "distribuidor_id": dist,
-            "monto_productos": round(total, 2), "fee_monto": round(fee, 2),
-            "total": round(total + fee, 2), "estado": "borrador",
+            "monto_productos": round(total, 2),
+            "total": round(total, 2), "estado": "borrador",
             "items_json": json.dumps(cart, ensure_ascii=False),
         }).execute()
         if result.data:
-            pedido_num = f"CRC-{result.data[0]['id']}"
-        logger.info(f"Order {pedido_num}: bodega={bodega_id}, total=S/{total + fee:.2f}")
+            pedido_id = result.data[0]["id"]
+        logger.info(f"Order {pedido_id}: bodega={bodega_id}, total=S/{total:.2f}")
     except Exception as e:
         logger.error(f"Order creation failed: {e}", exc_info=True)
 
-    # Clear session after order
+    # Send payment options via WhatsApp message (outside Flow)
+    try:
+        from app.services import meta_client
+        bodega = db.sb.table("bodegas").select("telefono_whatsapp").eq("id", bodega_id).limit(1).execute()
+        if bodega.data:
+            phone = bodega.data[0].get("telefono_whatsapp", "").replace("+", "")
+            if phone:
+                import asyncio
+                asyncio.create_task(_send_payment_options(phone, pedido_id, total, items_text))
+    except Exception as e:
+        logger.error(f"Payment msg error: {e}")
+
     session["cart"] = []
+    session["pedido_id"] = str(pedido_id)
     _save_session(bodega_id, session)
 
     return {
         "version": "3.0",
-        "screen":  "SUCCESS",
+        "screen": "SUCCESS",
         "data": {
-            "message": f"Pedido {pedido_num} confirmado\nTotal: S/{total + fee:.2f}",
+            "message": f"Pedido registrado\nTotal: S/{total:.2f}\nRevisa las opciones de pago",
         },
     }
+
+
+async def _send_payment_options(phone, pedido_id, total, items_text):
+    """Send payment options as WhatsApp interactive buttons after Flow closes."""
+    import asyncio
+    await asyncio.sleep(2)  # Wait for Flow to close
+    from app.services import meta_client
+    fee7 = max(total * 0.03, 5); fee15 = max(total * 0.05, 5); fee30 = max(total * 0.07, 5)
+    body = (
+        f"Tu pedido:\n{items_text}\n\n"
+        f"TOTAL: S/{total:.2f}\n\n"
+        f"Elige como pagar:\n"
+        f"Circa 7d: S/{total+fee7:.2f} (fee S/{fee7:.2f})\n"
+        f"Circa 15d: S/{total+fee15:.2f} (fee S/{fee15:.2f})\n"
+        f"Circa 30d: S/{total+fee30:.2f} (fee S/{fee30:.2f})"
+    )
+    buttons = [
+        {"id": f"PAY7_{pedido_id[:8]}", "title": "7 dias"},
+        {"id": f"PAY15_{pedido_id[:8]}", "title": "15 dias"},
+        {"id": f"PAY30_{pedido_id[:8]}", "title": "30 dias"},
+    ]
+    await meta_client.send_buttons(phone, body, buttons)
+    logger.info(f"Payment options sent to {phone}")
+
+# ── Payment & Confirmation ──
+
+def _build_payment(bodega_id, session):
+    total = sum(i.get("sub", 0) for i in session.get("cart", []))
+    items = [
+        {"id": "PAY_CIRCA", "main-content": {"title": "Pagar con Circa", "description": "Credito 7-30 dias"}},
+        {"id": "PAY_CASH", "main-content": {"title": "Pagar al contado", "description": "Sin fee adicional"}},
+        {"id": "BACK_CART", "main-content": {"title": "Volver al carrito", "description": f"Total: S/{total:.2f}"}},
+    ]
+    return _make_response(items, bodega_id)
+
+def _build_plazos(bodega_id, session):
+    total = sum(i.get("sub", 0) for i in session.get("cart", []))
+    f7 = max(total * 0.03, 5); f15 = max(total * 0.05, 5); f30 = max(total * 0.07, 5)
+    items = [
+        {"id": "PLAZO_7", "main-content": {"title": "7 dias", "description": f"Fee S/{f7:.2f} - Total S/{total+f7:.2f}"}},
+        {"id": "PLAZO_15", "main-content": {"title": "15 dias", "description": f"Fee S/{f15:.2f} - Total S/{total+f15:.2f}"}},
+        {"id": "PLAZO_30", "main-content": {"title": "30 dias", "description": f"Fee S/{f30:.2f} - Total S/{total+f30:.2f}"}},
+        {"id": "BACK_PAY", "main-content": {"title": "Opciones de pago", "description": ""}},
+    ]
+    return _make_response(items, bodega_id)
+
+def _build_confirm(bodega_id, session):
+    cart = session.get("cart", [])
+    total = sum(i.get("sub", 0) for i in cart)
+    fee_rate = session.get("fee_rate", 0)
+    fee = max(total * fee_rate, 5) if fee_rate > 0 else 0
+    pay = session.get("pay", "contado")
+    plazo = session.get("plazo", 0)
+    items = []
+    for item in cart:
+        items.append({"id": "INFO", "main-content": {"title": f"{item['qty']}x {item['name']}", "description": f"S/{item['sub']:.2f}"}})
+    if pay == "circa":
+        items.append({"id": "INFO2", "main-content": {"title": f"Credito Circa {plazo} dias", "description": f"Fee: S/{fee:.2f}"}})
+    items.append({"id": "CONFIRM", "main-content": {"title": "Confirmar pedido", "description": f"Total: S/{total+fee:.2f}"}})
+    items.append({"id": "BACK_PAY", "main-content": {"title": "Cambiar pago", "description": ""}})
+    return _make_response(items, bodega_id)
