@@ -421,9 +421,9 @@ async def _do_checkout(bodega_id, session):
     # Send payment options via WhatsApp message (outside Flow)
     try:
         from app.services import meta_client
-        bodega = db.sb.table("bodegas").select("telefono").eq("id", bodega_id).limit(1).execute()
+        bodega = db.sb.table("bodegas").select("telefono_whatsapp").eq("id", bodega_id).limit(1).execute()
         if bodega.data:
-            phone = bodega.data[0].get("telefono", "").replace("+", "")
+            phone = bodega.data[0].get("telefono_whatsapp", "").replace("+", "")
             if phone:
                 import asyncio
                 asyncio.create_task(_send_payment_options(phone, pedido_id, total, items_text))
