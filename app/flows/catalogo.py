@@ -460,7 +460,7 @@ async def _send_payment_options(phone, pedido_id, total, items_text):
     pid = str(pedido_id)[:8]
     await meta_client.send_list(
         to=phone,
-        body=f"Pedido por S/{total:.2f}. Elige como pagar:",
+        body=f"Tu pedido:\n{items_text}\n\nTOTAL: S/{total:.2f}\n\nElige como pagar:",
         button_text="Ver opciones",
         sections=[{
             "title": "Forma de pago",

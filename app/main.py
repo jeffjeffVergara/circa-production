@@ -402,8 +402,8 @@ async def meta_webhook_incoming(request: Request):
             logger.info(f"Catalog order from {telefono}: {msg['order']}")
             continue
         
-        # ── Handle payment button replies (PAY7_, PAY15_, PAY30_) ──
-        btn = msg.get("button_id", "") or ""
+        # ── Handle payment replies (buttons or list) ──
+        btn = msg.get("button_id", "") or msg.get("list_id", "") or ""
         if btn.startswith("CONTADO_"):
             try:
                 bod = db.sb.table("bodegas").select("id").eq("telefono_whatsapp", telefono).limit(1).execute()
