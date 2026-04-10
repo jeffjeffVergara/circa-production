@@ -635,12 +635,24 @@ async def meta_webhook_incoming(request: Request):
                     elif signal == "CATALOGO_FLOW":
                         bodega_cat = db.get_bodega_by_phone(telefono)
                         if bodega_cat:
-                            await meta_client.send_catalogo_flow(telefono, bodega_cat["id"])
+                            url = f"{os.getenv('APP_BASE_URL', '')}/catalogo?b={bodega_cat['id']}"
+                            await meta_client.send_text(
+                                telefono,
+                                f"📦 *Catálogo de productos*\n\n"
+                                f"Abre el catálogo y arma tu pedido:\n👉 {url}\n\n"
+                                f"Filtra por categoría o marca.\n"
+                                f"Precios por pack (6, 12 o 24u)."
+                            )
                     elif signal in ("CATEGORIAS", "PRODUCTOS", "PACK", "CANTIDAD",
                                      "AGREGADO", "CARRITO", "MONTO", "PLAZO"):
+                        # Legacy catalog signals — send catalog URL for now
                         bodega_leg = db.get_bodega_by_phone(telefono)
                         if bodega_leg:
-                            await meta_client.send_catalogo_flow(telefono, bodega_leg["id"])
+                            url = f"{os.getenv('APP_BASE_URL', '')}/catalogo?b={bodega_leg['id']}"
+                            await meta_client.send_text(
+                                telefono,
+                                f"📦 Abre el catálogo para armar tu pedido:\n👉 {url}"
+                            )
                     else:
                         logger.warning(f"Unknown signal: {signal}")
                 

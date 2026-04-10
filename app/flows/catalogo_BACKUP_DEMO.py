@@ -13,13 +13,10 @@ FEE_RATE = 0.03
 MIN_FEE = 5.0
 
 CATEGORIES = [
-    {"id": "Abarrotes",           "emoji": "🛒"},
-    {"id": "Bebidas Calientes",   "emoji": "☕"},
-    {"id": "Bebidas",             "emoji": "🥤"},
-    {"id": "Cereales",            "emoji": "🥣"},
-    {"id": "Confitería",          "emoji": "🍫"},
-    {"id": "Lácteos",             "emoji": "🥛"},
-    {"id": "Nutrición Infantil",  "emoji": "👶"},
+    {"id": "Abarrotes",         "emoji": "🛒"},
+    {"id": "Bebidas Calientes", "emoji": "🥤"},
+    {"id": "Golosinas",         "emoji": "🍬"},
+    {"id": "Lácteos",           "emoji": "🥛"},
 ]
 
 
@@ -227,18 +224,13 @@ async def _build_products(bodega_id, session, category):
 
     items = []
     for p in productos:
-        unidades = p.get("unidades") or {}
-        if isinstance(unidades, str):
-            import json as _json
-            unidades = _json.loads(unidades)
-        precios = list(unidades.values()) if unidades else []
+        precios = [p[k] for k in ("precio_pack_6", "precio_pack_12", "precio_pack_24") if p.get(k)]
         min_p = min(precios) if precios else 0
-        marca = p.get("marca", "")
         items.append({
             "id": f"PROD_{p['id']}",
             "main-content": {
                 "title":       p.get("nombre", "Sin nombre"),
-                "description": f"{marca} · S/{min_p:.2f}" if min_p else "Ver detalle",
+                "description": f"Desde S/{min_p:.2f}" if min_p else "Ver detalle",
             },
         })
 
@@ -273,32 +265,26 @@ async def _build_product_detail(bodega_id, session, product_id):
         return _build_categories(bodega_id, session)
 
     nombre = p.get("nombre", "Producto")
-    marca = p.get("marca", "")
-    unidades = p.get("unidades") or {}
-    if isinstance(unidades, str):
-        import json as _json
-        unidades = _json.loads(unidades)
     items  = []
 
-    for unit_key, precio in unidades.items():
-        if not precio or precio <= 0:
+    for pack_size in (6, 12, 24):
+        precio = p.get(f"precio_pack_{pack_size}")
+        if not precio:
             continue
-        label = unit_key.strip()
         for qty in (1, 2, 5):
-            sub = round(precio * qty, 2)
-            unit_safe = unit_key.replace(" ", "").upper()
+            sub = precio * qty
             items.append({
-                "id": f"ADD_{qty}_{product_id}_U{unit_safe}",
+                "id": f"ADD_{qty}_{product_id}_PK{pack_size}",
                 "main-content": {
-                    "title":       f"{qty}x {label} — S/{sub:.2f}",
-                    "description": f"S/{precio:.2f} c/u · {marca}",
+                    "title":       f"{qty}x Pack {pack_size} — S/{sub:.2f}",
+                    "description": f"S/{precio:.2f} c/u",
                 },
             })
 
     if not items:
         for qty in (1, 2, 5):
             items.append({
-                "id": f"ADD_{qty}_{product_id}_U1",
+                "id": f"ADD_{qty}_{product_id}_PK1",
                 "main-content": {
                     "title":       f"Agregar {qty} unidad(es)",
                     "description": nombre,
@@ -320,60 +306,37 @@ async def _build_product_detail(bodega_id, session, product_id):
 # ── Add to cart ──
 
 async def _do_add_to_cart(bodega_id, session, selected):
-    # Format: ADD_qty_productid_UunitKey  (e.g. ADD_2_abc123_UUNDx1)
-    remainder = selected[4:]  # strip "ADD_"
+    remainder = selected[4:]
     first_us  = remainder.index("_")
     qty       = int(remainder[:first_us])
     rest      = remainder[first_us + 1:]
 
-    # Find unit marker "_U"
-    u_pos = rest.rfind("_U")
-    if u_pos > 0:
-        product_id = rest[:u_pos]
-        unit_key_safe = rest[u_pos + 2:]  # e.g. "UNDx1", "CJAx12"
-    else:
-        # Legacy PK format fallback
-        pk_pos = rest.rfind("_PK")
-        product_id = rest[:pk_pos] if pk_pos > 0 else rest
-        unit_key_safe = f"PK{rest[pk_pos+3:]}" if pk_pos > 0 else "UNDx1"
+    pk_pos     = rest.rfind("_PK")
+    product_id = rest[:pk_pos] if pk_pos > 0 else rest
+    pack_size  = int(rest[pk_pos + 3:]) if pk_pos > 0 else 12
 
     try:
-        p = db.sb.table("catalogo").select("nombre, marca, unidades").eq("id", product_id).single().execute().data
+        p = db.sb.table("catalogo").select("nombre, precio_pack_6, precio_pack_12, precio_pack_24").eq("id", product_id).single().execute().data
     except Exception:
         p = None
 
-    # Find matching unit and price
-    precio = 0
-    unit_label = unit_key_safe
-    if p:
-        unidades = p.get("unidades") or {}
-        if isinstance(unidades, str):
-            unidades = json.loads(unidades)
-        # Match by removing spaces: "UND x 1" -> "UNDx1" == unit_key_safe
-        for uk, up in unidades.items():
-            if uk.replace(" ", "").upper() == unit_key_safe.upper():
-                precio = up
-                unit_label = uk
-                break
-        if not precio and unidades:
-            unit_label, precio = next(iter(unidades.items()))
-
+    precio = p.get(f"precio_pack_{pack_size}", 0) if p else 0
     nombre = p.get("nombre", "Producto") if p else "Producto"
-    sub    = round(precio * qty, 2)
+    sub    = precio * qty
 
     cart  = session.get("cart", [])
     found = False
     for item in cart:
-        if item.get("pid") == product_id and item.get("pk") == unit_label:
+        if item.get("pid") == product_id and item.get("pk") == pack_size:
             item["qty"] += qty
-            item["sub"]  = round(item["qty"] * precio, 2)
+            item["sub"]  = item["qty"] * precio
             found = True
             break
 
     if not found:
         cart.append({
             "pid": product_id, "name": nombre,
-            "pk": unit_label, "qty": qty, "ppu": precio, "sub": sub,
+            "pk": pack_size, "qty": qty, "ppu": precio, "sub": sub,
         })
 
     session["cart"] = cart

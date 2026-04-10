@@ -487,29 +487,15 @@ async def send_linea_info(to: str, aprobada: float, disponible: float, scoring: 
 
 async def send_catalogo_flow(to: str, bodega_id: str):
     """Send the catalog Flow to start shopping."""
-    flow_id = os.getenv("FLOW_CATALOGO_ID", "1892378058074435")
-
-    CATS = [
-        {"id": "Abarrotes",           "emoji": "🛒"},
-        {"id": "Bebidas Calientes",   "emoji": "☕"},
-        {"id": "Bebidas",             "emoji": "🥤"},
-        {"id": "Cereales",            "emoji": "🥣"},
-        {"id": "Confitería",          "emoji": "🍫"},
-        {"id": "Lácteos",             "emoji": "🥛"},
-        {"id": "Nutrición Infantil",  "emoji": "👶"},
-    ]
-    cat_items = [
-        {"id": c["id"], "main-content": {"title": c["emoji"] + " " + c["id"], "description": "Ver"}}
-        for c in CATS
-    ]
-
+    flow_id = os.getenv("FLOW_CATALOGO_ID", "")
     return await send_flow(
         to=to,
         flow_id=flow_id,
         flow_cta="Ver catálogo 🛒",
         body="Elige productos de tu distribuidor y arma tu pedido. Financia con tu línea Circa.",
-        screen="CATALOG",
-        data={"bodega_id": bodega_id, "items": cat_items, "cart_state": "{}"},
+        header="Catálogo Circa",
+        screen="CATEGORIAS",
+        data={"bodega_id": bodega_id},
     )
 
 
