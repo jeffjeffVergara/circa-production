@@ -70,47 +70,7 @@ async def handle_catalogo(flow_data: dict) -> dict:
         return _make_response(items, bodega_id)
 
     if selected == "CHECKOUT":
-        return _build_payment_options(bodega_id, session)
-
-    if selected == "PAY_CASH":
-        session["payment"] = "contado"
-        session["fee_rate"] = 0
-        session["plazo"] = 0
-        _save_session(bodega_id, session)
-        return _build_confirm(bodega_id, session)
-
-    if selected == "PAY_CIRCA":
-        return _build_plazo_options(bodega_id, session)
-
-    if selected.startswith("PLAZO_"):
-        dias = int(selected.split("_")[1])
-        rates = {7: 0.03, 15: 0.05, 30: 0.07}
-        session["payment"] = "circa"
-        session["plazo"] = dias
-        session["fee_rate"] = rates.get(dias, 0.05)
-        _save_session(bodega_id, session)
-        return _build_confirm(bodega_id, session)
-
-    if selected == "BACK_PAY":
-        return _build_payment_options(bodega_id, session)
-
-    if selected == "BACK_CART":
-        cart = session.get("cart", [])
-        total = sum(i.get("sub", 0) for i in cart)
-        items = []
-        for i, item in enumerate(cart):
-            items.append({"id": f"RM{i}", "main-content": {"title": f"{item.get(chr(39)+'qty'+chr(39),0)}x {item.get(chr(39)+'name'+chr(39),'')}", "description": f"S/{item.get(chr(39)+'sub'+chr(39),0):.2f}"}})
-        if not items:
-            items.append({"id": "BACK_CATS", "main-content": {"title": "Carrito vacio", "description": "Agregar productos"}})
-        items.append({"id": "BACK_CATS", "main-content": {"title": "Seguir comprando", "description": ""}})
-        items.append({"id": "CHECKOUT", "main-content": {"title": "Pedir todo", "description": f"Total: S/{total:.2f}"}})
-        return _make_response(items, bodega_id)
-
-    if selected == "CONFIRM":
         return await _do_checkout(bodega_id, session)
-
-    if selected in ("INFO", "INFO2", "SUMMARY"):
-        return _build_confirm(bodega_id, session)
 
     if selected.startswith("REMOVE_"):
         try:
@@ -399,10 +359,7 @@ async def _do_checkout(bodega_id, session):
         return _build_categories(bodega_id, session)
 
     total = sum(i.get("sub", 0) for i in cart)
-    fee_rate = session.get("fee_rate", 0)
-    fee = max(total * fee_rate, MIN_FEE) if fee_rate > 0 else 0
-    plazo = session.get("plazo", 0)
-    payment = session.get("payment", "contado")
+    fee   = max(total * FEE_RATE, MIN_FEE)
     dist  = session.get("dist", "a1b2c3d4-0001-4000-8000-000000000001")
 
     pedido_num = "CRC-000"
@@ -410,10 +367,6 @@ async def _do_checkout(bodega_id, session):
         result = db.sb.table("pedidos").insert({
             "bodega_id": bodega_id, "distribuidor_id": dist,
             "monto_productos": round(total, 2), "fee_monto": round(fee, 2),
-            "fee_tasa": fee_rate,
-            "monto_financiado": round(total, 2) if payment == "circa" else 0,
-            "monto_contado": round(total, 2) if payment == "contado" else 0,
-            "plazo_dias": plazo if plazo > 0 else None,
             "total": round(total + fee, 2), "estado": "borrador",
             "items_json": json.dumps(cart, ensure_ascii=False),
         }).execute()
@@ -431,54 +384,6 @@ async def _do_checkout(bodega_id, session):
         "version": "3.0",
         "screen":  "SUCCESS",
         "data": {
-            "message": f"Pedido {pedido_num} confirmado\nTotal: S/{total + fee:.2f}" + (f"\nPlazo: {plazo} dias" if plazo > 0 else ""),
+            "message": f"Pedido {pedido_num} confirmado\nTotal: S/{total + fee:.2f}",
         },
     }
-
-# ── Payment options ──
-
-def _build_payment_options(bodega_id, session):
-    cart = session.get("cart", [])
-    total = sum(i.get("sub", 0) for i in cart)
-    if not cart:
-        return _build_categories(bodega_id, session)
-    items = [
-        {"id": "PAY_CIRCA", "main-content": {"title": "💳 Pagar con Circa", "description": f"Crédito 7-30 días · S/{total:.2f}"}},
-        {"id": "PAY_CASH", "main-content": {"title": "💵 Pagar al contado", "description": "Sin fee adicional"}},
-        {"id": "BACK_CART", "main-content": {"title": "← Volver al carrito", "description": ""}},
-    ]
-    return _make_response(items, bodega_id)
-
-
-def _build_plazo_options(bodega_id, session):
-    cart = session.get("cart", [])
-    total = sum(i.get("sub", 0) for i in cart)
-    fee7 = max(total * 0.03, MIN_FEE)
-    fee15 = max(total * 0.05, MIN_FEE)
-    fee30 = max(total * 0.07, MIN_FEE)
-    items = [
-        {"id": "PLAZO_7", "main-content": {"title": "📅 7 días — fee 3%", "description": f"Fee: S/{fee7:.2f} · Total: S/{total + fee7:.2f}"}},
-        {"id": "PLAZO_15", "main-content": {"title": "📅 15 días — fee 5%", "description": f"Fee: S/{fee15:.2f} · Total: S/{total + fee15:.2f}"}},
-        {"id": "PLAZO_30", "main-content": {"title": "📅 30 días — fee 7%", "description": f"Fee: S/{fee30:.2f} · Total: S/{total + fee30:.2f}"}},
-        {"id": "BACK_PAY", "main-content": {"title": "← Opciones de pago", "description": ""}},
-    ]
-    return _make_response(items, bodega_id)
-
-
-def _build_confirm(bodega_id, session):
-    cart = session.get("cart", [])
-    total = sum(i.get("sub", 0) for i in cart)
-    fee_rate = session.get("fee_rate", 0)
-    fee = max(total * fee_rate, MIN_FEE) if fee_rate > 0 else 0
-    payment = session.get("payment", "contado")
-    plazo = session.get("plazo", 0)
-    items = []
-    for item in cart:
-        items.append({"id": "INFO", "main-content": {"title": f"{item.get('qty',0)}x {item.get('name','')}", "description": f"S/{item.get('sub',0):.2f}"}})
-    if payment == "circa":
-        items.append({"id": "INFO2", "main-content": {"title": f"💳 Crédito Circa {plazo} días", "description": f"Fee {int(fee_rate*100)}%: S/{fee:.2f}"}})
-    else:
-        items.append({"id": "INFO2", "main-content": {"title": "💵 Pago al contado", "description": "Sin fee"}})
-    items.append({"id": "CONFIRM", "main-content": {"title": f"✅ CONFIRMAR — S/{total + fee:.2f}", "description": "Toca para enviar tu pedido"}})
-    items.append({"id": "BACK_PAY", "main-content": {"title": "← Cambiar forma de pago", "description": ""}})
-    return _make_response(items, bodega_id)
