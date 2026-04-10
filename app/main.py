@@ -893,23 +893,53 @@ async def cobranza_pendiente():
 @app.post("/api/demo/simulate-flow/{pedido_id}")
 async def simulate_full_flow(pedido_id: str):
     import asyncio
+    from app.services import meta_client as mc
     pedido = db.sb.table("pedidos").select("*, bodegas(telefono_whatsapp, nombre_comercial)").eq("id", pedido_id).single().execute().data
     if not pedido:
         raise HTTPException(404, "Pedido no encontrado")
-    tel = pedido["bodegas"]["telefono_whatsapp"]
-    from services import messages as msg
-    for estado, detalle in [("despachado","📦 Despachado"),("en_camino","🚚 En camino"),("entregado","🎉 ¡Entregado!")]:
-        db.update_pedido_estado(pedido_id, estado, "demo")
+    tel = pedido["bodegas"]["telefono_whatsapp"].replace("+", "")
+    monto = pedido.get("total", 0)
+    plazo = pedido.get("plazo_dias", 0)
+    items_json = pedido.get("items_json", "[]")
+    try:
+        items = json.loads(items_json) if isinstance(items_json, str) else items_json
+    except:
+        items = []
+    items_text = "\n".join(f"{it.get('qty',0)}x {it.get('name','')}" for it in items)
+
+    steps = [
+        ("confirmado", "📋 *Pedido recibido*\nTu pedido ha sido recibido por el distribuidor."),
+        ("despachado", "📦 *Armando pedido*\nTu pedido fue armado y esta listo para despacho."),
+        ("en_camino", "🚚 *En camino*\nTu pedido esta en camino. Llegada estimada: hoy 2-4 p.m."),
+        ("entregado", "✅ *Entregado*\n¡Tu pedido ha sido entregado!"),
+    ]
+    for estado, msg_text in steps:
         try:
-            send_whatsapp(tel, msg.msg_status(pedido["numero"], estado, detalle))
+            db.sb.table("pedidos").update({"estado": estado}).eq("id", pedido_id).execute()
         except:
             pass
+        await mc.send_text(tel, msg_text)
         await asyncio.sleep(3)
-    try:
-        send_whatsapp(tel, msg.msg_recordatorio(pedido["bodegas"]["nombre_comercial"], pedido["monto_total_credito"], pedido["fecha_vencimiento"], 5))
-    except:
-        pass
-    return {"ok": True, "message": "Flow simulated"}
+
+    # Send payment request
+    from datetime import datetime, timedelta
+    venc_date = datetime.now() + timedelta(days=plazo if plazo else 7)
+    venc = venc_date.strftime("%d/%m/%Y")
+    if monto and monto > 0:
+        await mc.send_buttons(
+            tel,
+            f"⏰ *Recordatorio de pago*\n\n"
+            f"Pedido: {items_text}\n"
+            f"Monto: *S/{monto:.2f}*\n"
+            f"Vence: *{venc}*\n\n"
+            f"Paga por Yape o Plin al:\n"
+            f"📱 *987 654 321*\n"
+            f"👤 Circa Pagos S.A.C.\n\n"
+            f"Cuando hayas pagado, toca el boton:",
+            [{"id": "YA_PAGUE", "title": "Ya pague ✅"}]
+        )
+
+    return {"ok": True, "message": "Demo flow completed"}
 
 # ── RESET DEMO ──
 
