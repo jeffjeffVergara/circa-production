@@ -402,6 +402,82 @@ async def meta_webhook_incoming(request: Request):
             logger.info(f"Catalog order from {telefono}: {msg['order']}")
             continue
         
+        # ── Handle payment replies (buttons or list) ──
+        btn = msg.get("button_id", "") or msg.get("list_id", "") or ""
+        if btn.startswith("CONTADO_"):
+            try:
+                bod = db.sb.table("bodegas").select("id").eq("telefono_whatsapp", telefono).limit(1).execute()
+                bod_id = bod.data[0]["id"] if bod.data else None
+                r = db.sb.table("pedidos").select("id, monto_productos").eq("bodega_id", bod_id).eq("estado", "borrador").order("created_at", desc=True).limit(1).execute() if bod_id else type("X",(),{"data":[]})()
+                if r.data:
+                    pedido = r.data[0]
+                    monto = pedido["monto_productos"]
+                    db.sb.table("pedidos").update({
+                        "fee_tasa": 0, "fee_monto": 0,
+                        "monto_financiado": 0, "monto_contado": round(monto, 2),
+                        "plazo_dias": None, "total": round(monto, 2),
+                        "estado": "confirmado",
+                    }).eq("id", pedido["id"]).execute()
+                    await meta_client.send_text(telefono,
+                        f"\u2705 *Pedido confirmado — Contado*\n\n"
+                        f"Total: S/{monto:.2f}\n"
+                        f"Pago al recibir, sin fee.\n\n"
+                        f"Tu distribuidor preparara tu pedido.")
+                else:
+                    await meta_client.send_text(telefono, "No encontre el pedido.")
+            except Exception as e:
+                logger.error(f"Contado handler error: {e}", exc_info=True)
+                await meta_client.send_text(telefono, "Error al confirmar.")
+            if msg["message_id"]:
+                await meta_client.mark_as_read(msg["message_id"])
+            continue
+        if btn.startswith("PAY7_") or btn.startswith("PAY15_") or btn.startswith("PAY30_"):
+            pedido_short = btn.split("_", 1)[1]
+            if btn.startswith("PAY7"):
+                dias, rate = 7, 0.03
+            elif btn.startswith("PAY15"):
+                dias, rate = 15, 0.05
+            else:
+                dias, rate = 30, 0.07
+            try:
+                # Find pedido by bodega phone (most recent borrador)
+                bod = db.sb.table("bodegas").select("id").eq("telefono_whatsapp", telefono).limit(1).execute()
+                bod_id = bod.data[0]["id"] if bod.data else None
+                r = db.sb.table("pedidos").select("id, monto_productos, total, items_json").eq("bodega_id", bod_id).eq("estado", "borrador").order("created_at", desc=True).limit(1).execute() if bod_id else type("X",(),{"data":[]})()
+                if r.data:
+                    pedido = r.data[0]
+                    monto = pedido["monto_productos"]
+                    fee = max(monto * rate, 5.0)
+                    from datetime import datetime, timedelta
+                    venc = (datetime.now() + timedelta(days=dias)).strftime("%d/%m/%Y")
+                    db.sb.table("pedidos").update({
+                        "fee_tasa": rate,
+                        "fee_monto": round(fee, 2),
+                        "monto_financiado": round(monto, 2),
+                        "plazo_dias": dias,
+                        "total": round(monto + fee, 2),
+                        "estado": "confirmado",
+                    }).eq("id", pedido["id"]).execute()
+                    await meta_client.send_text(
+                        telefono,
+                        f"✅ *Pedido confirmado*\n\n"
+                        f"Plazo: {dias} dias\n"
+                        f"Productos: S/{monto:.2f}\n"
+                        f"Fee ({int(rate*100)}%): S/{fee:.2f}\n"
+                        f"*TOTAL: S/{monto+fee:.2f}*\n"
+                        f"Vence: {venc}\n\n"
+                        f"Tu distribuidor preparara tu pedido."
+                    )
+                    logger.info(f"Order {pedido['id']} confirmed: {dias}d, fee={fee}")
+                else:
+                    await meta_client.send_text(telefono, "No encontre el pedido. Intenta de nuevo.")
+            except Exception as e:
+                logger.error(f"Payment handler error: {e}", exc_info=True)
+                await meta_client.send_text(telefono, "Error al confirmar. Intenta de nuevo.")
+            if msg["message_id"]:
+                await meta_client.mark_as_read(msg["message_id"])
+            continue
+        
         # Regular message processing via state machine
         try:
             responses = handle_message(telefono, body_text, media_url)
