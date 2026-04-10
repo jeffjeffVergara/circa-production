@@ -458,9 +458,9 @@ async def _send_payment_options(phone, pedido_id, total, items_text):
         f"Circa 30d: S/{total+fee30:.2f} (fee S/{fee30:.2f})"
     )
     buttons = [
-        {"type": "reply", "reply": {"id": f"PAY7_{pedido_id}", "title": f"7 dias S/{total+fee7:.2f}"}},
-        {"type": "reply", "reply": {"id": f"PAY15_{pedido_id}", "title": f"15 dias S/{total+fee15:.2f}"}},
-        {"type": "reply", "reply": {"id": f"PAY30_{pedido_id}", "title": f"30 dias S/{total+fee30:.2f}"}},
+        {"id": f"PAY7_{pedido_id[:8]}", "title": "7 dias"},
+        {"id": f"PAY15_{pedido_id[:8]}", "title": "15 dias"},
+        {"id": f"PAY30_{pedido_id[:8]}", "title": "30 dias"},
     ]
     await meta_client.send_buttons(phone, body, buttons)
     logger.info(f"Payment options sent to {phone}")
