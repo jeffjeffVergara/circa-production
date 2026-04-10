@@ -226,7 +226,7 @@ async def _build_products(bodega_id, session, category):
         productos = []
 
     items = []
-    for p in productos:
+    for p in productos[:18]:
         unidades = p.get("unidades") or {}
         if isinstance(unidades, str):
             import json as _json
@@ -234,11 +234,13 @@ async def _build_products(bodega_id, session, category):
         precios = list(unidades.values()) if unidades else []
         min_p = min(precios) if precios else 0
         marca = p.get("marca", "")
+        title = p.get("nombre", "Sin nombre")[:30]
+        desc = f"{marca} · S/{min_p:.2f}" if min_p else "Ver detalle"
         items.append({
             "id": f"PROD_{p['id']}",
             "main-content": {
-                "title":       p.get("nombre", "Sin nombre"),
-                "description": f"{marca} · S/{min_p:.2f}" if min_p else "Ver detalle",
+                "title":       title,
+                "description": desc[:40],
             },
         })
 
