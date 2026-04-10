@@ -413,7 +413,7 @@ async def meta_webhook_incoming(request: Request):
             else:
                 dias, rate = 30, 0.07
             try:
-                r = db.sb.table("pedidos").select("id, monto_productos, total, items_json").like("id", f"{pedido_short}%").limit(1).execute()
+                r = db.sb.table("pedidos").select("id, monto_productos, total, items_json").filter("id::text", "like", f"{pedido_short}%").limit(1).execute()
                 if r.data:
                     pedido = r.data[0]
                     monto = pedido["monto_productos"]
