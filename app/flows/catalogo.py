@@ -70,9 +70,9 @@ async def handle_catalogo(flow_data: dict) -> dict:
         return _make_response(items, bodega_id)
 
     if selected == "CHECKOUT":
-        return _build_payment(bodega_id, session)
+        return await _do_checkout(bodega_id, session)
 
-    if selected == "PAY_CASH":
+    if selected == "IGNORADO_PAY_CASH":
         session["pay"] = "contado"
         session["fee_rate"] = 0
         session["plazo"] = 0
