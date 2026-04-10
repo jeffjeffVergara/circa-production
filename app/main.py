@@ -151,6 +151,20 @@ async def twilio_webhook(
 # API ENDPOINTS
 # ══════════════════════════════════════════
 
+async def _gen_order_number(bodega_id):
+    """Generate next CRC-NNN order number."""
+    try:
+        r = db.sb.table("pedidos").select("numero").eq("bodega_id", bodega_id).not_.is_("numero", "null").order("created_at", desc=True).limit(1).execute()
+        if r.data and r.data[0]["numero"]:
+            last = r.data[0]["numero"]  # e.g. CRC-003
+            n = int(last.split("-")[1]) + 1
+        else:
+            n = 1
+        return f"CRC-{n:03d}"
+    except:
+        return f"CRC-{__import__('random').randint(100,999)}"
+
+
 @app.get("/api/health")
 async def health():
     return {"status": "ok", "service": "circa-mvp", "version": "2.3.0"}
@@ -431,6 +445,18 @@ async def meta_webhook_incoming(request: Request):
             if msg["message_id"]:
                 await meta_client.mark_as_read(msg["message_id"])
             continue
+        if btn == "YA_PAGUE":
+            try:
+                await meta_client.send_text(telefono,
+                    "🎉 *¡Pago registrado!*\n\n"
+                    "Verificacion en las proximas horas.\n"
+                    "Tu linea sera renovada una vez confirmado el pago.\n\n"
+                    "Escribe *MENU* para volver al menu principal.")
+            except Exception as e:
+                logger.error(f"YA_PAGUE error: {e}")
+            if msg["message_id"]:
+                await meta_client.mark_as_read(msg["message_id"])
+            continue
         if btn.startswith("PAY7_") or btn.startswith("PAY15_") or btn.startswith("PAY30_"):
             pedido_short = btn.split("_", 1)[1]
             if btn.startswith("PAY7"):
@@ -497,25 +523,29 @@ async def meta_webhook_incoming(request: Request):
                             fee = datos.get("fee", 0)
                             venc = datos.get("venc", "")
                             if dias > 0:
+                                num = await _gen_order_number(bod_id)
                                 db.sb.table("pedidos").update({
+                                    "numero": num,
                                     "fee_tasa": rate, "fee_monto": fee,
                                     "monto_financiado": round(monto, 2), "plazo_dias": dias,
                                     "total": round(monto + fee, 2), "estado": "confirmado",
                                 }).eq("id", pedido_id).execute()
                                 await meta_client.send_text(telefono,
-                                    f"✅ *Pedido confirmado*\n\n"
+                                    f"✅ *Pedido {num} confirmado*\n\n"
                                     f"Plazo: {dias} dias\nProductos: S/{monto:.2f}\n"
                                     f"Fee ({int(rate*100)}%): S/{fee:.2f}\n"
                                     f"*TOTAL: S/{monto+fee:.2f}*\nVence: {venc}\n\n"
                                     f"Tu distribuidor preparara tu pedido.")
                             else:
+                                num = await _gen_order_number(bod_id)
                                 db.sb.table("pedidos").update({
+                                    "numero": num,
                                     "fee_tasa": 0, "fee_monto": 0,
                                     "monto_financiado": 0, "monto_contado": round(monto, 2),
                                     "total": round(monto, 2), "estado": "confirmado",
                                 }).eq("id", pedido_id).execute()
                                 await meta_client.send_text(telefono,
-                                    f"✅ *Pedido confirmado — Contado*\n\n"
+                                    f"✅ *Pedido {num} confirmado — Contado*\n\n"
                                     f"Total: S/{monto:.2f}\nPago al recibir, sin fee.\n\n"
                                     f"Tu distribuidor preparara tu pedido.")
                             # Clear session
