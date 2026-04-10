@@ -413,12 +413,13 @@ async def meta_webhook_incoming(request: Request):
                     pedido = r.data[0]
                     monto = pedido["monto_productos"]
                     # Store intent in session, ask PIN
-                    db.sb.table("sesiones").upsert({
+                    db.sb.table("sesiones").delete().eq("telefono", telefono).execute()
+                    db.sb.table("sesiones").insert({
                         "telefono": telefono,
                         "fase": "pin_pago",
                         "datos": json.dumps({"pedido_id": pedido["id"], "dias": 0, "rate": 0, "monto": monto}),
                         "bodega_id": bod_id,
-                    }, on_conflict="telefono").execute()
+                    }).execute()
                     await meta_client.send_text(telefono,
                         f"💵 *Pago al contado — S/{monto:.2f}*\n\n"
                         f"🔐 Ingresa tu clave Circa de 4 dígitos para confirmar:")
@@ -450,12 +451,13 @@ async def meta_webhook_incoming(request: Request):
                     from datetime import datetime, timedelta
                     venc = (datetime.now() + timedelta(days=dias)).strftime("%d/%m/%Y")
                     # Store intent in session, ask PIN
-                    db.sb.table("sesiones").upsert({
+                    db.sb.table("sesiones").delete().eq("telefono", telefono).execute()
+                    db.sb.table("sesiones").insert({
                         "telefono": telefono,
                         "fase": "pin_pago",
                         "datos": json.dumps({"pedido_id": pedido["id"], "dias": dias, "rate": rate, "monto": monto, "fee": round(fee, 2), "venc": venc}),
                         "bodega_id": bod_id,
-                    }, on_conflict="telefono").execute()
+                    }).execute()
                     await meta_client.send_text(
                         telefono,
                         f"💳 *Circa {dias} dias*\n"
