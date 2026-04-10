@@ -531,11 +531,16 @@ async def meta_webhook_incoming(request: Request):
                                     "total": round(monto + fee, 2), "estado": "confirmado",
                                 }).eq("id", pedido_id).execute()
                                 await meta_client.send_text(telefono,
-                                    f"✅ *Pedido {num} confirmado*\n\n"
-                                    f"Plazo: {dias} dias\nProductos: S/{monto:.2f}\n"
+                                    f"✅ *Pedido {num} confirmado*\n"
+                                    f"Financiado con Circa\n\n"
+                                    f"Nro: *#{num}*\n"
+                                    f"Financiado: *S/{monto:.2f}*\n"
                                     f"Fee ({int(rate*100)}%): S/{fee:.2f}\n"
-                                    f"*TOTAL: S/{monto+fee:.2f}*\nVence: {venc}\n\n"
-                                    f"Tu distribuidor preparara tu pedido.")
+                                    f"Total credito: *S/{monto+fee:.2f}*\n"
+                                    f"Contado: S/0.00\n"
+                                    f"Plazo: {dias} dias\n"
+                                    f"Vence: {venc}\n\n"
+                                    f"Recibiras actualizaciones por WhatsApp.")
                             else:
                                 num = await _gen_order_number(bod_id)
                                 db.sb.table("pedidos").update({
