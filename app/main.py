@@ -413,7 +413,10 @@ async def meta_webhook_incoming(request: Request):
             else:
                 dias, rate = 30, 0.07
             try:
-                r = db.sb.table("pedidos").select("id, monto_productos, total, items_json").filter("id::text", "like", f"{pedido_short}%").limit(1).execute()
+                # Find pedido by bodega phone (most recent borrador)
+                bod = db.sb.table("bodegas").select("id").eq("telefono_whatsapp", telefono).limit(1).execute()
+                bod_id = bod.data[0]["id"] if bod.data else None
+                r = db.sb.table("pedidos").select("id, monto_productos, total, items_json").eq("bodega_id", bod_id).eq("estado", "borrador").order("created_at", desc=True).limit(1).execute() if bod_id else type("X",(),{"data":[]})()
                 if r.data:
                     pedido = r.data[0]
                     monto = pedido["monto_productos"]
