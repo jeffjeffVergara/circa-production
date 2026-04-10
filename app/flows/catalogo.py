@@ -399,34 +399,71 @@ async def _do_checkout(bodega_id, session):
         return _build_categories(bodega_id, session)
 
     total = sum(i.get("sub", 0) for i in cart)
-    fee   = max(total * FEE_RATE, MIN_FEE)
     dist  = session.get("dist", "a1b2c3d4-0001-4000-8000-000000000001")
 
-    pedido_num = "CRC-000"
+    # Build cart summary
+    items_text = "\n".join(f"{i['qty']}x {i['name']} — S/{i['sub']:.2f}" for i in cart)
+
+    pedido_id = "000"
     try:
         result = db.sb.table("pedidos").insert({
             "bodega_id": bodega_id, "distribuidor_id": dist,
-            "monto_productos": round(total, 2), "fee_monto": round(fee, 2),
-            "total": round(total + fee, 2), "estado": "borrador",
+            "monto_productos": round(total, 2),
+            "total": round(total, 2), "estado": "borrador",
             "items_json": json.dumps(cart, ensure_ascii=False),
         }).execute()
         if result.data:
-            pedido_num = f"CRC-{result.data[0]['id']}"
-        logger.info(f"Order {pedido_num}: bodega={bodega_id}, total=S/{total + fee:.2f}")
+            pedido_id = result.data[0]["id"]
+        logger.info(f"Order {pedido_id}: bodega={bodega_id}, total=S/{total:.2f}")
     except Exception as e:
         logger.error(f"Order creation failed: {e}", exc_info=True)
 
-    # Clear session after order
+    # Send payment options via WhatsApp message (outside Flow)
+    try:
+        from app.services import meta_client
+        bodega = db.sb.table("bodegas").select("telefono").eq("id", bodega_id).limit(1).execute()
+        if bodega.data:
+            phone = bodega.data[0].get("telefono", "").replace("+", "")
+            if phone:
+                import asyncio
+                asyncio.create_task(_send_payment_options(phone, pedido_id, total, items_text))
+    except Exception as e:
+        logger.error(f"Payment msg error: {e}")
+
     session["cart"] = []
+    session["pedido_id"] = str(pedido_id)
     _save_session(bodega_id, session)
 
     return {
         "version": "3.0",
-        "screen":  "SUCCESS",
+        "screen": "SUCCESS",
         "data": {
-            "message": f"Pedido {pedido_num} confirmado\nTotal: S/{total + fee:.2f}",
+            "message": f"Pedido registrado\nTotal: S/{total:.2f}\nRevisa las opciones de pago",
         },
     }
+
+
+async def _send_payment_options(phone, pedido_id, total, items_text):
+    """Send payment options as WhatsApp interactive buttons after Flow closes."""
+    import asyncio
+    await asyncio.sleep(2)  # Wait for Flow to close
+    from app.services import meta_client
+    fee7 = max(total * 0.03, 5); fee15 = max(total * 0.05, 5); fee30 = max(total * 0.07, 5)
+    body = (
+        f"Tu pedido:\n{items_text}\n\n"
+        f"TOTAL: S/{total:.2f}\n\n"
+        f"Elige como pagar:\n"
+        f"Circa 7d: S/{total+fee7:.2f} (fee S/{fee7:.2f})\n"
+        f"Circa 15d: S/{total+fee15:.2f} (fee S/{fee15:.2f})\n"
+        f"Circa 30d: S/{total+fee30:.2f} (fee S/{fee30:.2f})"
+    )
+    buttons = [
+        {"type": "reply", "reply": {"id": f"PAY7_{pedido_id}", "title": f"7 dias S/{total+fee7:.2f}"}},
+        {"type": "reply", "reply": {"id": f"PAY15_{pedido_id}", "title": f"15 dias S/{total+fee15:.2f}"}},
+        {"type": "reply", "reply": {"id": f"PAY30_{pedido_id}", "title": f"30 dias S/{total+fee30:.2f}"}},
+    ]
+    await meta_client.send_buttons(phone, body, buttons)
+    logger.info(f"Payment options sent to {phone}")
 
 # ── Payment & Confirmation ──
 
