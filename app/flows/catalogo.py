@@ -57,7 +57,7 @@ async def handle_catalogo(flow_data: dict) -> dict:
         items = []
         for i, item in enumerate(cart):
             items.append({
-                "id": f"RM{i}",
+                "id": f"REMOVE_{i}",
                 "main-content": {
                     "title": f"{item.get('qty',0)}x {item.get('name','')}",
                     "description": f"S/{item.get('sub',0):.2f}",
