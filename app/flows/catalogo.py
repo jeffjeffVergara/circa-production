@@ -367,7 +367,7 @@ async def _do_checkout(bodega_id, session):
         result = db.sb.table("pedidos").insert({
             "bodega_id": bodega_id, "distribuidor_id": dist,
             "monto_productos": round(total, 2), "fee_monto": round(fee, 2),
-            "total": round(total + fee, 2), "estado": "pendiente",
+            "total": round(total + fee, 2), "estado": "borrador",
             "items_json": json.dumps(cart, ensure_ascii=False),
         }).execute()
         if result.data:
