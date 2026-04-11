@@ -13,6 +13,7 @@ logger = logging.getLogger("circa.flows.catalogo")
 def _sanitize(text, max_len=30):
     """Remove chars that break WhatsApp Flows and truncate."""
     t = text.replace("&", "y").replace("'", "").replace('"', "").replace("\n", " ")
+    t = t.replace("·", "-").replace("—", "-").replace("—", "-").replace("·", "-")
     return t[:max_len]
 
 FEE_RATE = 0.03
