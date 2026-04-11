@@ -234,7 +234,7 @@ async def _build_products(bodega_id, session, category):
         productos = []
 
     items = []
-    for p in productos[:10]:
+    for p in productos[:8]:
         unidades = p.get("unidades") or {}
         if isinstance(unidades, str):
             import json as _json
