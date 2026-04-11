@@ -380,7 +380,7 @@ async def _do_add_to_cart(bodega_id, session, selected):
 
     session["cart"] = cart
     _save_session(bodega_id, session)
-    logger.info(f"Cart +{qty}x PK{pack_size} {nombre} = S/{sub:.2f}")
+    logger.info(f"Cart +{qty}x {unit_label} {nombre} = S/{sub:.2f}")
 
     cat = session.get("cat", "")
     if cat:
