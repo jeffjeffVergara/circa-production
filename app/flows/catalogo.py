@@ -59,10 +59,11 @@ async def handle_catalogo(flow_data: dict) -> dict:
         total = sum(i.get("sub", 0) for i in cart)
         items = []
         for i, item in enumerate(cart):
+            name = item.get('name','')[:24]
             items.append({
                 "id": f"RM{i}",
                 "main-content": {
-                    "title": f"{item.get('qty',0)}x {item.get('name','')}",
+                    "title": f"{item.get('qty',0)}x {name}"[:30],
                     "description": f"S/{item.get('sub',0):.2f}",
                 },
             })
@@ -105,7 +106,7 @@ async def handle_catalogo(flow_data: dict) -> dict:
             q = item.get("qty", 0)
             n = item.get("name", "")
             s = item.get("sub", 0)
-            items.append({"id": f"RM{i}", "main-content": {"title": f"{q}x {n}", "description": f"S/{s:.2f}"}})
+            items.append({"id": f"RM{i}", "main-content": {"title": f"{q}x {n}"[:30], "description": f"S/{s:.2f}"}})
         if not items:
             items.append({"id": "BACK_CATS", "main-content": {"title": "Carrito vacio", "description": "Agregar productos"}})
         items.append({"id": "BACK_CATS", "main-content": {"title": "Seguir comprando", "description": ""}})
@@ -408,7 +409,7 @@ def _build_cart(bodega_id, session):
         items.append({
             "id": f"REMOVE_{idx}",
             "main-content": {
-                "title":       f"{item['qty']}x Pk{item['pk']} {item['name']}",
+                "title":       f"{item['qty']}x {item['name']}"[:30],
                 "description": f"S/{sub:.2f} — Toca para quitar",
             },
         })
