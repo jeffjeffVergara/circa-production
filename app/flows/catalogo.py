@@ -9,6 +9,12 @@ from app.services import db
 
 logger = logging.getLogger("circa.flows.catalogo")
 
+
+def _sanitize(text, max_len=30):
+    """Remove chars that break WhatsApp Flows and truncate."""
+    t = text.replace("&", "y").replace("'", "").replace('"', "").replace("\n", " ")
+    return t[:max_len]
+
 FEE_RATE = 0.03
 MIN_FEE = 5.0
 
@@ -235,13 +241,13 @@ async def _build_products(bodega_id, session, category):
         precios = list(unidades.values()) if unidades else []
         min_p = min(precios) if precios else 0
         marca = p.get("marca", "")
-        title = p.get("nombre", "Sin nombre")[:30]
-        desc = f"{marca} · S/{min_p:.2f}" if min_p else "Ver detalle"
+        title = _sanitize(p.get("nombre", "Sin nombre"), 30)
+        desc = _sanitize(f"{marca} · S/{min_p:.2f}" if min_p else "Ver detalle", 40)
         items.append({
             "id": f"PROD_{p['id']}",
             "main-content": {
                 "title":       title,
-                "description": desc[:40],
+                "description": desc,
             },
         })
 
@@ -293,8 +299,8 @@ async def _build_product_detail(bodega_id, session, product_id):
             items.append({
                 "id": f"ADD_{qty}_{product_id}_U{unit_safe}",
                 "main-content": {
-                    "title":       f"{qty}x {label} — S/{sub:.2f}",
-                    "description": f"S/{precio:.2f} c/u · {marca}",
+                    "title":       _sanitize(f"{qty}x {label} — S/{sub:.2f}", 30),
+                    "description": _sanitize(f"S/{precio:.2f} c/u · {marca}", 40),
                 },
             })
 
