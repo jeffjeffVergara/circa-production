@@ -243,7 +243,7 @@ async def _build_products(bodega_id, session, category):
         min_p = min(precios) if precios else 0
         marca = p.get("marca", "")
         title = _sanitize(p.get("nombre", "Sin nombre"), 30)
-        desc = _sanitize(f"{marca} · S/{min_p:.2f}" if min_p else "Ver detalle", 40)
+        desc = _sanitize(f"S/{min_p:.2f}" if min_p else "Ver detalle", 20)
         items.append({
             "id": f"PROD_{p['id']}",
             "main-content": {
@@ -301,7 +301,7 @@ async def _build_product_detail(bodega_id, session, product_id):
                 "id": f"ADD_{qty}_{product_id}_U{unit_safe}",
                 "main-content": {
                     "title":       _sanitize(f"{qty}x {label} — S/{sub:.2f}", 30),
-                    "description": _sanitize(f"S/{precio:.2f} c/u · {marca}", 40),
+                    "description": _sanitize(f"S/{precio:.2f} c/u", 20),
                 },
             })
 
