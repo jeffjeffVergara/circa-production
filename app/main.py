@@ -483,10 +483,7 @@ async def meta_webhook_incoming(request: Request):
                     }).execute()
                     await meta_client.send_list(
                         to=telefono,
-                        body=f"Financiar: *S/{fin_amt:.2f}*
-Contado: S/{contado:.2f}
-
-Elige plazo:",
+                        body=f"Financiar: *S/{fin_amt:.2f}*\nContado: S/{contado:.2f}\n\nElige plazo:",
                         button_text="Ver plazos",
                         sections=[{"title": "Plazo de pago", "rows": [
                             {"id": f"PAY7_{pid}", "title": "7 dias (3%)", "description": f"Fee S/{fee7:.2f} Total S/{fin_amt+fee7:.2f}"},
