@@ -490,36 +490,68 @@ async def _do_checkout(bodega_id, session):
     }
 
 
-async def _send_payment_options(phone, pedido_id, total, items_text):
-    """Send payment options as WhatsApp interactive buttons after Flow closes."""
+async def _send_payment_options(phone, pedido_id, total, items_text, bodega_id=None):
+    """Send financing options after Flow closes."""
     import asyncio
-    await asyncio.sleep(2)  # Wait for Flow to close
+    await asyncio.sleep(2)
     from app.services import meta_client
-    fee7 = max(total * 0.03, 5); fee15 = max(total * 0.05, 5); fee30 = max(total * 0.07, 5)
-    body = (
-        f"Tu pedido:\n{items_text}\n\n"
-        f"TOTAL: S/{total:.2f}\n\n"
-        f"Elige como pagar:\n"
-        f"Circa 7d: S/{total+fee7:.2f} (fee S/{fee7:.2f})\n"
-        f"Circa 15d: S/{total+fee15:.2f} (fee S/{fee15:.2f})\n"
-        f"Circa 30d: S/{total+fee30:.2f} (fee S/{fee30:.2f})"
-    )
+
+    linea = 0
+    if bodega_id:
+        try:
+            b = db.sb.table("bodegas").select("linea_disponible").eq("id", bodega_id).limit(1).execute()
+            if b.data:
+                linea = b.data[0].get("linea_disponible", 0)
+        except Exception:
+            pass
+
     pid = str(pedido_id)[:8]
-    await meta_client.send_list(
-        to=phone,
-        body=f"Tu pedido:\n{items_text}\n\nTOTAL: S/{total:.2f}\n\nElige como pagar:",
-        button_text="Ver opciones",
-        sections=[{
-            "title": "Forma de pago",
-            "rows": [
-                {"id": f"CONTADO_{pid}", "title": "Pagar al contado", "description": f"Total S/{total:.2f}"},
-                {"id": f"PAY7_{pid}", "title": "Circa 7 dias", "description": f"Fee S/{fee7:.2f} Total S/{total+fee7:.2f}"},
-                {"id": f"PAY15_{pid}", "title": "Circa 15 dias", "description": f"Fee S/{fee15:.2f} Total S/{total+fee15:.2f}"},
-                {"id": f"PAY30_{pid}", "title": "Circa 30 dias", "description": f"Fee S/{fee30:.2f} Total S/{total+fee30:.2f}"},
-            ],
-        }],
-    )
-    logger.info(f"Payment options sent to {phone}")
+    fin100 = min(total, linea)
+    fin50 = min(round(total * 0.5, 2), linea)
+    fin25 = min(round(total * 0.25, 2), linea)
+
+    if linea >= total:
+        await meta_client.send_text(phone,
+            f"Tu pedido:\n{items_text}\n\n"
+            f"TOTAL: S/{total:.2f}\n"
+            f"Linea disponible: *S/{linea:.2f}* \n\n"
+            f"Cuanto deseas financiar?")
+        await meta_client.send_buttons(phone,
+            f"Elige monto a financiar:",
+            [
+                {"id": f"FIN100_{pid}", "title": f"Total S/{total:.2f}"[:20]},
+                {"id": f"FIN50_{pid}", "title": f"50% S/{fin50:.2f}"[:20]},
+                {"id": f"FIN25_{pid}", "title": f"25% S/{fin25:.2f}"[:20]},
+            ])
+    elif linea > 0:
+        contado_min = total - linea
+        await meta_client.send_text(phone,
+            f"Tu pedido:\n{items_text}\n\n"
+            f"TOTAL: S/{total:.2f}\n"
+            f"Linea disponible: *S/{linea:.2f}*\n\n"
+            f"Cuanto deseas financiar?")
+        await meta_client.send_buttons(phone,
+            f"Contado minimo: S/{contado_min:.2f}",
+            [
+                {"id": f"FIN100_{pid}", "title": f"Max S/{linea:.2f}"[:20]},
+                {"id": f"FIN50_{pid}", "title": f"50% S/{fin50:.2f}"[:20]},
+                {"id": f"CONTADO_{pid}", "title": "Solo contado"},
+            ])
+    else:
+        tel_fmt = f"+{phone}" if not phone.startswith("+") else phone
+        db.sb.table("sesiones").delete().eq("telefono", tel_fmt).execute()
+        db.sb.table("sesiones").insert({
+            "telefono": tel_fmt, "fase": "pin_pago",
+            "datos": json.dumps({"pedido_id": str(pedido_id), "dias": 0, "rate": 0, "monto": total}),
+            "bodega_id": bodega_id,
+        }).execute()
+        await meta_client.send_text(phone,
+            f"Tu pedido:\n{items_text}\n\n"
+            f"TOTAL: S/{total:.2f}\n"
+            f"Sin linea disponible. Solo contado.\n\n"
+            f"Ingresa tu clave Circa para confirmar:")
+
+    logger.info(f"Payment options sent to {phone}, linea={linea}")
 
 # ── Payment & Confirmation ──
 

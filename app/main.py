@@ -457,6 +457,51 @@ async def meta_webhook_incoming(request: Request):
             if msg["message_id"]:
                 await meta_client.mark_as_read(msg["message_id"])
             continue
+        if btn.startswith("FIN100_") or btn.startswith("FIN50_") or btn.startswith("FIN25_"):
+            try:
+                bod = db.sb.table("bodegas").select("id, linea_disponible").eq("telefono_whatsapp", telefono).limit(1).execute()
+                bod_id = bod.data[0]["id"] if bod.data else None
+                linea = bod.data[0].get("linea_disponible", 0) if bod.data else 0
+                r = db.sb.table("pedidos").select("id, monto_productos").eq("bodega_id", bod_id).eq("estado", "borrador").order("created_at", desc=True).limit(1).execute() if bod_id else type("X",(),{"data":[]})()
+                if r.data:
+                    pedido = r.data[0]
+                    total = pedido["monto_productos"]
+                    if btn.startswith("FIN100_"):
+                        fin_amt = min(total, linea)
+                    elif btn.startswith("FIN50_"):
+                        fin_amt = min(round(total * 0.5, 2), linea)
+                    else:
+                        fin_amt = min(round(total * 0.25, 2), linea)
+                    contado = round(total - fin_amt, 2)
+                    fee7 = max(fin_amt * 0.03, 5); fee15 = max(fin_amt * 0.05, 5); fee30 = max(fin_amt * 0.07, 5)
+                    pid = str(pedido["id"])[:8]
+                    db.sb.table("sesiones").delete().eq("telefono", telefono).execute()
+                    db.sb.table("sesiones").insert({
+                        "telefono": telefono, "fase": "fin_plazo",
+                        "datos": json.dumps({"pedido_id": pedido["id"], "fin_amt": fin_amt, "contado": contado, "total": total}),
+                        "bodega_id": bod_id,
+                    }).execute()
+                    await meta_client.send_list(
+                        to=telefono,
+                        body=f"Financiar: *S/{fin_amt:.2f}*
+Contado: S/{contado:.2f}
+
+Elige plazo:",
+                        button_text="Ver plazos",
+                        sections=[{"title": "Plazo de pago", "rows": [
+                            {"id": f"PAY7_{pid}", "title": "7 dias (3%)", "description": f"Fee S/{fee7:.2f} Total S/{fin_amt+fee7:.2f}"},
+                            {"id": f"PAY15_{pid}", "title": "15 dias (5%)", "description": f"Fee S/{fee15:.2f} Total S/{fin_amt+fee15:.2f}"},
+                            {"id": f"PAY30_{pid}", "title": "30 dias (7%)", "description": f"Fee S/{fee30:.2f} Total S/{fin_amt+fee30:.2f}"},
+                        ]}],
+                    )
+                else:
+                    await meta_client.send_text(telefono, "No encontre el pedido.")
+            except Exception as e:
+                logger.error(f"FIN handler error: {e}", exc_info=True)
+                await meta_client.send_text(telefono, "Error. Intenta de nuevo.")
+            if msg["message_id"]:
+                await meta_client.mark_as_read(msg["message_id"])
+            continue
         if btn == "PEDIDO":
             try:
                 bodega_ped = db.get_bodega_by_phone(telefono)
@@ -500,7 +545,16 @@ async def meta_webhook_incoming(request: Request):
                 r = db.sb.table("pedidos").select("id, monto_productos, total, items_json").eq("bodega_id", bod_id).eq("estado", "borrador").order("created_at", desc=True).limit(1).execute() if bod_id else type("X",(),{"data":[]})()
                 if r.data:
                     pedido = r.data[0]
-                    monto = pedido["monto_productos"]
+                    # Check session for fin_amt
+                    ses_fin = db.sb.table("sesiones").select("datos").eq("telefono", telefono).limit(1).execute()
+                    fin_amt = pedido["monto_productos"]
+                    contado = 0
+                    if ses_fin.data and ses_fin.data[0].get("datos"):
+                        sd = json.loads(ses_fin.data[0]["datos"]) if isinstance(ses_fin.data[0]["datos"], str) else ses_fin.data[0]["datos"]
+                        if sd.get("fin_amt"):
+                            fin_amt = sd["fin_amt"]
+                            contado = sd.get("contado", 0)
+                    monto = fin_amt
                     fee = max(monto * rate, 5.0)
                     from datetime import datetime, timedelta
                     venc = (datetime.now() + timedelta(days=dias)).strftime("%d/%m/%Y")
@@ -515,7 +569,7 @@ async def meta_webhook_incoming(request: Request):
                     await meta_client.send_text(
                         telefono,
                         f"💳 *Circa {dias} dias*\n"
-                        f"Productos: S/{monto:.2f}\n"
+                        f"Financiar: S/{monto:.2f}\n"
                         f"Fee ({int(rate*100)}%): S/{fee:.2f}\n"
                         f"*TOTAL: S/{monto+fee:.2f}*\n"
                         f"Vence: {venc}\n\n"
