@@ -473,7 +473,7 @@ async def _do_checkout(bodega_id, session):
             phone = bodega.data[0].get("telefono_whatsapp", "").replace("+", "")
             if phone:
                 import asyncio
-                asyncio.create_task(_send_payment_options(phone, pedido_id, total, items_text))
+                asyncio.create_task(_send_payment_options(phone, pedido_id, total, items_text, bodega_id))
     except Exception as e:
         logger.error(f"Payment msg error: {e}")
 
