@@ -457,6 +457,34 @@ async def meta_webhook_incoming(request: Request):
             if msg["message_id"]:
                 await meta_client.mark_as_read(msg["message_id"])
             continue
+        if btn == "PEDIDO":
+            try:
+                bodega_ped = db.get_bodega_by_phone(telefono)
+                if bodega_ped:
+                    await meta_client.send_catalogo_flow(telefono, bodega_ped["id"])
+                else:
+                    await meta_client.send_text(telefono, "Escribe MENU para empezar.")
+            except Exception as e:
+                logger.error(f"PEDIDO handler error: {e}", exc_info=True)
+            if msg["message_id"]:
+                await meta_client.mark_as_read(msg["message_id"])
+            continue
+        if btn == "REPETIR":
+            try:
+                bodega_rep = db.get_bodega_by_phone(telefono)
+                if bodega_rep:
+                    # Check if there's a last order
+                    last = db.sb.table("pedidos").select("items_json").eq("bodega_id", bodega_rep["id"]).not_.is_("items_json", "null").order("created_at", desc=True).limit(1).execute()
+                    if last.data and last.data[0].get("items_json"):
+                        await meta_client.send_text(telefono, "📋 Tu ultimo pedido. Abre el catalogo para repetirlo:")
+                    await meta_client.send_catalogo_flow(telefono, bodega_rep["id"])
+                else:
+                    await meta_client.send_text(telefono, "No tienes pedidos anteriores. Escribe MENU.")
+            except Exception as e:
+                logger.error(f"REPETIR handler error: {e}", exc_info=True)
+            if msg["message_id"]:
+                await meta_client.mark_as_read(msg["message_id"])
+            continue
         if btn.startswith("PAY7_") or btn.startswith("PAY15_") or btn.startswith("PAY30_"):
             pedido_short = btn.split("_", 1)[1]
             if btn.startswith("PAY7"):
