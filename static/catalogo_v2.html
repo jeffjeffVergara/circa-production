@@ -88,7 +88,7 @@ html,body{height:100%;font-family:'Plus Jakarta Sans',sans-serif;background:var(
 <div class="toast" id="tt"></div>
 <script>
 var API=location.origin,BID=new URLSearchParams(location.search).get('b')||'b1b2c3d4-0001-4000-8000-000000000001';
-var P=[],cart=[],linea=0,fm='cat',sel='Todos',step='cart';
+var P=[],cart=[],linea=0,fm='cat',sel='Todos',step='cart',selUnits={};
 var CATS=['Todos','Abarrotes','Bebidas Calientes','Bebidas','Cereales','Confiteria','Lacteos','Nutricion Infantil'];
 function $(id){return document.getElementById(id)}
 function esc(s){return(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')}
@@ -133,7 +133,7 @@ function rend(){
   var ci=cart.find(function(c){return c.id===p.id});
   var defU=us[0][0];
   us.forEach(function(u){if(u[0].toUpperCase().indexOf('UND')===0)defU=u[0]});
-  var su=ci?ci.unit:defU,sp=un[su]||us[0][1],q=ci?ci.qty:0;
+  var su=ci?ci.unit:(selUnits[p.id]||defU),sp=un[su]||us[0][1],q=ci?ci.qty:0;
   return'<div class="pc"><div class="pc-brand">'+esc(p.marca||'')+'</div><div class="pc-name">'+esc(p.nombre||'')+'</div>'+
    '<div class="pc-row"><div class="pc-units">'+us.map(function(u){return'<button class="ub '+(u[0]===su?'sel':'')+'" onclick="sU(\''+p.id+'\',\''+esc(u[0])+'\','+u[1]+')"><span class="ub-lbl">'+esc(u[0])+'</span><span class="ub-pr">'+fmt(u[1])+'</span></button>'}).join('')+'</div>'+
    '<div class="pc-qty">'+(q>0?
@@ -146,7 +146,7 @@ function rend(){
 $('sI').addEventListener('input',function(){rend()});
 
 function aTC(id,u,pr,n,m){var x=cart.find(function(c){return c.id===id});if(x){x.qty++;x.precio=pr;x.unit=u}else cart.push({id:id,unit:u,precio:pr,nombre:n,marca:m,qty:1});toast(n.slice(0,20)+' agregado');uC();rend()}
-function sU(id,u,pr){var i=cart.find(function(c){return c.id===id});if(i){i.unit=u;i.precio=pr}rend()}
+function sU(id,u,pr){selUnits[id]=u;var i=cart.find(function(c){return c.id===id});if(i){i.unit=u;i.precio=pr}rend()}
 function cQ(id,d){var i=cart.find(function(c){return c.id===id});if(!i)return;i.qty+=d;if(i.qty<=0)cart=cart.filter(function(c){return c.id!==id});uC();rend()}
 
 function uC(){
