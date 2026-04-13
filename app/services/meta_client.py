@@ -434,6 +434,18 @@ async def send_pin_request(to: str, mode: str = "create", bodega_id: str = ""):
             mode="published",
         )
     
+    # Verify mode — send Flow with pedido data
+    if flow_id and mode == "verify":
+        return await send_flow(
+            to=to,
+            flow_id=flow_id,
+            flow_cta="Confirmar con clave",
+            body="Ingresa tu clave Circa de 4 digitos para confirmar tu pedido.",
+            screen="PIN_CREATE",
+            data={"bodega_id": bodega_id, "mode": "verify"},
+            mode="published",
+        )
+    
     # Fallback to text if flow not configured
     if mode == "create":
         return await send_text(

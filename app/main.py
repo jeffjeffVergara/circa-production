@@ -563,15 +563,16 @@ async def meta_webhook_incoming(request: Request):
                         "datos": json.dumps({"pedido_id": pedido["id"], "dias": dias, "rate": rate, "monto": monto, "fee": round(fee, 2), "venc": venc}),
                         "bodega_id": bod_id,
                     }).execute()
+                    # Send summary then PIN Flow
                     await meta_client.send_text(
                         telefono,
                         f"💳 *Circa {dias} dias*\n"
                         f"Financiar: S/{monto:.2f}\n"
                         f"Fee ({int(rate*100)}%): S/{fee:.2f}\n"
                         f"*TOTAL: S/{monto+fee:.2f}*\n"
-                        f"Vence: {venc}\n\n"
-                        f"🔐 Ingresa tu clave Circa de 4 dígitos para confirmar:"
+                        f"Vence: {venc}"
                     )
+                    await meta_client.send_pin_request(telefono, mode="verify", bodega_id=bod_id)
                     logger.info(f"Order {pedido['id']} confirmed: {dias}d, fee={fee}")
                 else:
                     await meta_client.send_text(telefono, "No encontre el pedido. Intenta de nuevo.")

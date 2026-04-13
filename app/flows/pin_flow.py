@@ -53,18 +53,24 @@ async def handle_pin_flow(flow_data: dict) -> dict:
 
 
 def _handle_pin_create(data: dict) -> dict:
-    """Validate PIN and proceed to confirmation."""
+    """Validate PIN — either create new or verify for payment."""
     pin = (data.get("pin") or "").strip()
     bodega_id = data.get("bodega_id", "")
+    mode = data.get("mode", "create")
     
     if len(pin) != 4 or not pin.isdigit():
         return {
             "screen": "PIN_CREATE",
             "data": {
                 "bodega_id": bodega_id,
-                "error_msg": "La clave debe ser exactamente 4 dígitos.",
+                "mode": mode,
+                "error_msg": "La clave debe ser exactamente 4 digitos.",
             }
         }
+    
+    # ── VERIFY MODE: check PIN against stored hash ──
+    if mode == "verify":
+        return _verify_pin_for_payment(pin, bodega_id)
     
     # Reject obvious sequences
     weak = {"0000", "1111", "2222", "3333", "4444", "5555",
@@ -87,6 +93,108 @@ def _handle_pin_create(data: dict) -> dict:
             "pin_hash_temp": hashlib.sha256(pin.encode()).hexdigest(),
         }
     }
+
+
+def _verify_pin_for_payment(pin: str, bodega_id: str) -> dict:
+    """Verify PIN and confirm the pending order."""
+    import bcrypt, json
+    try:
+        bodega = db.sb.table("bodegas").select("pin_hash, telefono_whatsapp").eq("id", bodega_id).limit(1).execute()
+        if not bodega.data:
+            return {"screen": "PIN_CREATE", "data": {"bodega_id": bodega_id, "mode": "verify", "error_msg": "Bodega no encontrada."}}
+        
+        pin_hash = bodega.data[0].get("pin_hash", "")
+        if not pin_hash or not bcrypt.checkpw(pin.encode(), pin_hash.encode()):
+            return {"screen": "PIN_CREATE", "data": {"bodega_id": bodega_id, "mode": "verify", "error_msg": "Clave incorrecta. Intenta de nuevo."}}
+        
+        # PIN correct — find pending session and confirm order
+        telefono = bodega.data[0].get("telefono_whatsapp", "")
+        ses = db.sb.table("sesiones").select("datos").eq("telefono", telefono).eq("fase", "pin_pago").limit(1).execute()
+        if not ses.data:
+            return {"screen": "SUCCESS", "data": {"message": "No hay pedido pendiente."}}
+        
+        datos = json.loads(ses.data[0]["datos"]) if isinstance(ses.data[0]["datos"], str) else ses.data[0]["datos"]
+        pedido_id = datos["pedido_id"]
+        dias = datos.get("dias", 0)
+        rate = datos.get("rate", 0)
+        monto = datos["monto"]
+        fee = datos.get("fee", 0)
+        venc = datos.get("venc", "")
+        
+        # Generate order number
+        import random, string
+        existing = db.sb.table("pedidos").select("numero").eq("bodega_id", bodega_id).not_.is_("numero", "null").order("created_at", desc=True).limit(1).execute()
+        if existing.data and existing.data[0].get("numero"):
+            last = existing.data[0]["numero"]
+            try:
+                n = int(last.split("-")[1]) + 1
+            except:
+                n = 1
+        else:
+            n = 1
+        num = f"CRC-{n:03d}"
+        
+        if dias > 0:
+            db.sb.table("pedidos").update({
+                "numero": num, "fee_tasa": rate, "fee_monto": fee,
+                "monto_financiado": round(monto, 2), "plazo_dias": dias,
+                "total": round(monto + fee, 2), "estado": "confirmado",
+            }).eq("id", pedido_id).execute()
+            # Deduct line
+            db.sb.table("bodegas").update({
+                "linea_disponible": db.sb.rpc("decrement_linea", {"bod_id": bodega_id, "amount": monto}).execute().data
+            }).eq("id", bodega_id).execute() if False else None
+            try:
+                bod = db.sb.table("bodegas").select("linea_disponible").eq("id", bodega_id).limit(1).execute()
+                new_linea = max((bod.data[0]["linea_disponible"] or 0) - monto, 0) if bod.data else 0
+                db.sb.table("bodegas").update({"linea_disponible": new_linea}).eq("id", bodega_id).execute()
+            except Exception as e:
+                logger.error(f"Linea deduct error: {e}")
+            
+            msg = f"Pedido {num} confirmado.\nFinanciado: S/{monto:.2f}\nFee: S/{fee:.2f}\nTotal: S/{monto+fee:.2f}\nPlazo: {dias} dias"
+        else:
+            db.sb.table("pedidos").update({
+                "numero": num, "fee_tasa": 0, "fee_monto": 0,
+                "monto_contado": round(monto, 2), "total": round(monto, 2), "estado": "confirmado",
+            }).eq("id", pedido_id).execute()
+            msg = f"Pedido {num} confirmado.\nContado: S/{monto:.2f}"
+        
+        # Clear session
+        db.sb.table("sesiones").update({"fase": "menu", "datos": "{}"}).eq("telefono", telefono).execute()
+        
+        # Send WhatsApp confirmation (async, fire and forget)
+        import asyncio
+        from app.services import meta_client
+        phone = telefono.replace("+", "")
+        if dias > 0:
+            asyncio.get_event_loop().call_soon(
+                asyncio.ensure_future,
+                meta_client.send_text(phone,
+                    f"\u2705 *Pedido {num} confirmado*\n"
+                    f"Financiado con Circa\n\n"
+                    f"Nro: *#{num}*\n"
+                    f"Financiado: *S/{monto:.2f}*\n"
+                    f"Fee ({int(rate*100)}%): S/{fee:.2f}\n"
+                    f"Total credito: *S/{monto+fee:.2f}*\n"
+                    f"Plazo: {dias} dias\n"
+                    f"Vence: {venc}\n\n"
+                    f"Recibiras actualizaciones por WhatsApp.")
+            )
+        else:
+            asyncio.get_event_loop().call_soon(
+                asyncio.ensure_future,
+                meta_client.send_text(phone,
+                    f"\u2705 *Pedido {num} confirmado — Contado*\n\n"
+                    f"Total: S/{monto:.2f}\nPago al recibir.\n\n"
+                    f"Tu distribuidor preparara tu pedido.")
+            )
+        
+        logger.info(f"Order {pedido_id} confirmed via PIN Flow: {num}")
+        return {"screen": "SUCCESS", "data": {"message": msg}}
+    
+    except Exception as e:
+        logger.error(f"PIN verify error: {e}", exc_info=True)
+        return {"screen": "PIN_CREATE", "data": {"bodega_id": bodega_id, "mode": "verify", "error_msg": "Error. Intenta de nuevo."}}
 
 
 async def _handle_pin_confirm(data: dict, flow_token: str) -> dict:
