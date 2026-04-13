@@ -73,7 +73,7 @@ def _handle_pin_create(data: dict) -> dict:
     # Always check if there is a pending payment session
     if not bodega_id or bodega_id == "test" or mode != "verify":
         try:
-            ses = db.sb.table("sesiones").select("bodega_id, fase").eq("fase", "pin_pago").order("created_at", desc=True).limit(1).execute()
+            ses = db.sb.table("sesiones").select("bodega_id, fase").eq("fase", "pin_pago").limit(1).execute()
             if ses.data:
                 bodega_id = ses.data[0].get("bodega_id", bodega_id)
                 mode = "verify"
