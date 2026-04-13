@@ -964,18 +964,26 @@ class CartSubmission(BaseModel):
 @app.post("/api/catalogo/submit-cart")
 async def submit_cart(data: CartSubmission):
     items_list = [dict(i) if not isinstance(i, dict) else i for i in data.items]
-    db.save_carrito(data.bodega_id, items_list)
-    bodega = db.sb.table("bodegas").select("telefono_whatsapp, linea_disponible").eq("id", data.bodega_id).single().execute().data
-    if bodega:
-        tel = bodega["telefono_whatsapp"]
-        db.upsert_session(tel, "cart_review", {"cart": items_list}, data.bodega_id)
-        total = sum(i.get("subtotal", 0) for i in items_list)
-        from services import messages as msg
-        try:
-            send_whatsapp(tel, msg.msg_carrito(items_list, total, bodega["linea_disponible"]))
-        except Exception as e:
-            logger.error(f"Cart notify failed: {e}")
-    return {"ok": True}
+    total = sum(i.get("subtotal", 0) for i in items_list)
+    # Create order in pedidos
+    pedido = db.sb.table("pedidos").insert({
+        "bodega_id": data.bodega_id,
+        "distribuidor_id": "a1b2c3d4-0001-4000-8000-000000000001",
+        "items_json": json.dumps(items_list),
+        "monto_productos": total,
+        "estado": "borrador",
+    }).execute()
+    pedido_id = pedido.data[0]["id"] if pedido.data else None
+    # Get bodega phone
+    bodega = db.sb.table("bodegas").select("telefono_whatsapp").eq("id", data.bodega_id).limit(1).execute()
+    if bodega.data and pedido_id:
+        phone = bodega.data[0]["telefono_whatsapp"].replace("+", "")
+        items_text = "\n".join(f"{i.get('cantidad',1)}x {i.get('nombre','')} — S/{i.get('subtotal',0):.2f}" for i in items_list)
+        # Send payment options via Meta API (async)
+        from app.flows.catalogo import _send_payment_options
+        import asyncio
+        asyncio.create_task(_send_payment_options(phone, pedido_id, total, items_text, data.bodega_id))
+    return {"ok": True, "pedido_id": str(pedido_id) if pedido_id else None}
 
 @app.get("/api/carrito/{bodega_id}")
 async def get_carrito(bodega_id: str):
