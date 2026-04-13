@@ -7,91 +7,93 @@
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-:root{--bg:#0b1a2e;--card:#132640;--card2:#1a3050;--accent:#00d4aa;--accent2:#00b4d8;--adim:rgba(0,212,170,.12);--danger:#ff4757;--t1:#e8edf3;--t2:#8899aa;--t3:#556677;--brd:#1e3a5f;--r:14px;--rs:10px}
+:root{--bg:#0f1f2e;--card:#19303f;--card2:#213d4f;--accent:#25d366;--accent2:#00a884;--adim:rgba(37,211,102,.1);--danger:#ff4757;--t1:#ecf0f1;--t2:#8fa4b0;--t3:#5a7080;--brd:#264050;--r:12px;--rs:8px}
 html,body{height:100%;font-family:'Plus Jakarta Sans',sans-serif;background:var(--bg);color:var(--t1);overflow:hidden}
 #app{display:flex;flex-direction:column;height:100%;max-width:480px;margin:0 auto}
-.hdr{padding:12px 16px;display:flex;align-items:center;gap:10px;background:linear-gradient(180deg,#0d1f35,var(--bg));border-bottom:1px solid var(--brd);z-index:20}
-.hdr-logo{width:30px;height:30px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;color:var(--bg)}
-.hdr-info{flex:1}.hdr-t{font-size:14px;font-weight:700}.hdr-s{font-size:10px;color:var(--accent);font-weight:600}
-.hdr-line{background:var(--adim);border:1px solid rgba(0,212,170,.25);border-radius:8px;padding:3px 8px;font-size:10px;font-weight:700;color:var(--accent)}
-.filt{padding:6px 16px;display:flex;gap:6px;border-bottom:1px solid var(--brd)}
-.fbtn{flex:1;padding:8px;border-radius:var(--rs);font-size:12px;font-weight:700;border:1px solid var(--brd);background:var(--card);color:var(--t2);cursor:pointer;text-align:center}
-.fbtn.on{background:var(--accent);color:var(--bg);border-color:var(--accent)}
+.hdr{padding:14px 16px;display:flex;align-items:center;gap:10px;background:var(--accent2);z-index:20}
+.hdr-logo{width:28px;height:28px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:12px;color:var(--accent2)}
+.hdr-info{flex:1}.hdr-t{font-size:15px;font-weight:700;color:#fff}.hdr-s{font-size:10px;color:rgba(255,255,255,.7);font-weight:500}
+.hdr-line{background:rgba(255,255,255,.2);border-radius:8px;padding:4px 10px;font-size:11px;font-weight:700;color:#fff}
+.filt{padding:8px 16px;display:flex;gap:6px;background:var(--bg);border-bottom:1px solid var(--brd)}
+.fbtn{flex:1;padding:9px;border-radius:var(--rs);font-size:12px;font-weight:700;border:none;background:var(--card);color:var(--t2);cursor:pointer;text-align:center}
+.fbtn.on{background:var(--accent);color:#fff}
 .chips{padding:6px 16px;display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}
 .chips::-webkit-scrollbar{display:none}
-.chip{flex-shrink:0;padding:5px 12px;border-radius:18px;font-size:11px;font-weight:600;border:1px solid var(--brd);background:var(--card);color:var(--t2);cursor:pointer;white-space:nowrap}
-.chip.on{background:var(--accent);color:var(--bg);border-color:var(--accent)}
-.sumbar{padding:8px 16px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--brd)}
-.sumbar-l{font-size:12px;color:var(--t2)}.sumbar-l b{color:var(--t1)}
-.sumbar-r{padding:6px 14px;border-radius:var(--rs);background:var(--accent);color:var(--bg);font-size:11px;font-weight:700;border:none;cursor:pointer}
+.chip{flex-shrink:0;padding:6px 14px;border-radius:20px;font-size:11px;font-weight:600;border:1.5px solid var(--brd);background:transparent;color:var(--t2);cursor:pointer;white-space:nowrap}
+.chip.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+.sumbar{padding:8px 16px;display:flex;align-items:center;justify-content:space-between;background:var(--card);border-bottom:1px solid var(--brd)}
+.sumbar-l{font-size:12px;color:var(--t2)}.sumbar-l b{color:var(--accent)}
+.sumbar-r{padding:7px 16px;border-radius:var(--rs);background:var(--accent);color:#fff;font-size:12px;font-weight:700;border:none;cursor:pointer}
 .sumbar.hide{display:none}
-.search-w{padding:8px 16px 4px;position:relative}
-.search-i{width:100%;padding:9px 12px 9px 36px;border-radius:var(--rs);border:1px solid var(--brd);background:var(--card);color:var(--t1);font-size:13px;font-family:inherit;outline:none}
+.search-w{padding:8px 16px 6px;position:relative}
+.search-i{width:100%;padding:10px 12px 10px 38px;border-radius:var(--rs);border:1.5px solid var(--brd);background:var(--card);color:var(--t1);font-size:13px;font-family:inherit;outline:none}
 .search-i:focus{border-color:var(--accent)}.search-i::placeholder{color:var(--t3)}
-.s-icon{position:absolute;left:28px;top:50%;transform:translateY(-50%);color:var(--t3);font-size:14px;pointer-events:none}
-.main{flex:1;overflow-y:auto;padding:0 16px 20px;-webkit-overflow-scrolling:touch}
-.pc{background:var(--card);border-radius:var(--r);padding:12px;margin-bottom:8px;border:1px solid var(--brd)}
-.pc-brand{font-size:9px;color:var(--accent);font-weight:700;text-transform:uppercase;letter-spacing:.4px;margin-bottom:2px}
-.pc-name{font-size:13px;font-weight:600;line-height:1.3;margin-bottom:8px}
-.pc-row{display:flex;align-items:center;justify-content:space-between}
-.pc-units{display:flex;gap:4px;flex-wrap:wrap;flex:1}
-.ub{padding:5px 8px;border-radius:6px;font-size:10px;font-weight:600;border:1px solid var(--brd);background:transparent;color:var(--t2);cursor:pointer;text-align:center;min-width:55px}
+.s-icon{position:absolute;left:28px;top:50%;transform:translateY(-50%);color:var(--t3);font-size:15px;pointer-events:none}
+.main{flex:1;overflow-y:auto;padding:4px 16px 20px;-webkit-overflow-scrolling:touch}
+.pc{background:var(--card);border-radius:var(--r);padding:14px;margin-bottom:8px;border:1px solid var(--brd)}
+.pc-brand{font-size:9px;color:var(--accent);font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px}
+.pc-name{font-size:13px;font-weight:600;line-height:1.35;margin-bottom:10px}
+.pc-row{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.pc-units{display:flex;gap:5px;flex-wrap:wrap;flex:1}
+.ub{padding:6px 10px;border-radius:var(--rs);font-size:10px;font-weight:600;border:1.5px solid var(--brd);background:transparent;color:var(--t2);cursor:pointer;text-align:center;min-width:58px;transition:all .12s}
 .ub.sel{background:var(--adim);border-color:var(--accent);color:var(--accent)}
-.ub-lbl{font-size:9px;display:block}.ub-pr{font-size:11px;font-weight:700;display:block}
-.pc-qty{display:flex;align-items:center;gap:0;margin-left:8px}
-.qb{width:32px;height:32px;border-radius:50%;border:2px solid var(--accent);background:transparent;color:var(--accent);font-size:18px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center}
-.qb.add{background:var(--accent);color:var(--bg)}
-.qb.rm{border-color:var(--danger);color:var(--danger)}
-.qv{width:30px;text-align:center;font-size:15px;font-weight:700}
+.ub-lbl{font-size:9px;display:block;opacity:.7}.ub-pr{font-size:11px;font-weight:700;display:block}
+.pc-qty{display:flex;align-items:center;gap:2px}
+.qb{width:34px;height:34px;border-radius:50%;border:2px solid var(--accent);background:transparent;color:var(--accent);font-size:18px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .1s}
+.qb:active{transform:scale(.9)}
+.qb.add{background:var(--accent);color:#fff;border-color:var(--accent)}
+.qb.rm{border-color:var(--danger);color:var(--danger);font-size:14px}
+.qv{width:30px;text-align:center;font-size:16px;font-weight:800}
 .empty{text-align:center;padding:40px;color:var(--t3);font-size:13px}
-.dov{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:40;opacity:0;pointer-events:none;transition:opacity .3s}
+.dov{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:40;opacity:0;pointer-events:none;transition:opacity .25s}
 .dov.open{opacity:1;pointer-events:auto}
-.drw{position:fixed;bottom:0;left:50%;transform:translateX(-50%) translateY(100%);width:100%;max-width:480px;max-height:85vh;background:var(--bg);border-radius:20px 20px 0 0;z-index:50;transition:transform .3s cubic-bezier(.32,.72,.24,1);display:flex;flex-direction:column}
+.drw{position:fixed;bottom:0;left:50%;transform:translateX(-50%) translateY(100%);width:100%;max-width:480px;max-height:88vh;background:var(--bg);border-radius:16px 16px 0 0;z-index:50;transition:transform .3s cubic-bezier(.32,.72,.24,1);display:flex;flex-direction:column}
 .drw.open{transform:translateX(-50%) translateY(0)}
-.dh{width:36px;height:4px;border-radius:2px;background:var(--t3);margin:10px auto}
+.dh{width:36px;height:4px;border-radius:2px;background:var(--t3);margin:10px auto 6px}
 .dtl{padding:0 20px 10px;font-size:16px;font-weight:700;border-bottom:1px solid var(--brd)}
-.dit{flex:1;overflow-y:auto;padding:10px 20px}
-.di{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--brd)}.di:last-child{border:none}
+.dit{flex:1;overflow-y:auto;padding:8px 20px}
+.di{display:flex;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid var(--brd)}.di:last-child{border:none}
 .din{flex:1}.dinn{font-size:12px;font-weight:600}.dinu{font-size:10px;color:var(--t2)}
-.dis{font-size:12px;font-weight:700;color:var(--accent);min-width:65px;text-align:right}
+.dis{font-size:13px;font-weight:700;color:var(--accent);min-width:65px;text-align:right}
 .df{padding:14px 20px;border-top:1px solid var(--brd)}
-.dfr{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
-.dfl{font-size:13px;color:var(--t2)}.dfv{font-size:18px;font-weight:800;color:var(--accent)}
-.dfli{font-size:10px;margin-bottom:8px;font-weight:600}
+.dfr{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+.dfl{font-size:13px;color:var(--t2)}.dfv{font-size:20px;font-weight:800;color:var(--accent)}
+.dfli{font-size:11px;margin-bottom:10px;font-weight:600}
 .dfli.ok{color:var(--accent)}.dfli.warn{color:#ffa502}.dfli.bad{color:var(--danger)}
-.cfm{width:100%;padding:13px;border-radius:var(--r);background:var(--accent);color:var(--bg);font-size:14px;font-weight:700;border:none;cursor:pointer;font-family:inherit}
-.cfm:disabled{opacity:.5}
-.toast{position:fixed;top:60px;left:50%;transform:translateX(-50%);background:var(--accent);color:var(--bg);padding:7px 18px;border-radius:18px;font-size:12px;font-weight:600;z-index:60;opacity:0;transition:opacity .3s;pointer-events:none}
+.btn-row{display:flex;gap:8px}
+.btn-sec{flex:1;padding:12px;border-radius:var(--rs);background:var(--card);color:var(--t2);font-size:13px;font-weight:600;border:1px solid var(--brd);cursor:pointer;font-family:inherit;text-align:center}
+.btn-pri{flex:2;padding:12px;border-radius:var(--rs);background:var(--accent);color:#fff;font-size:14px;font-weight:700;border:none;cursor:pointer;font-family:inherit}
+.btn-pri:disabled{opacity:.5}
+.fin-section{background:var(--card);border-radius:var(--r);padding:14px;margin:10px 0}
+.fin-title{font-size:13px;font-weight:700;margin-bottom:8px;color:var(--t1)}
+.fin-row{display:flex;justify-content:space-between;padding:4px 0;font-size:12px}
+.fin-row .lbl{color:var(--t2)}.fin-row .val{font-weight:700}
+.fin-row .val.hl{color:var(--accent)}
+.toast{position:fixed;top:70px;left:50%;transform:translateX(-50%);background:var(--accent);color:#fff;padding:8px 20px;border-radius:20px;font-size:12px;font-weight:600;z-index:60;opacity:0;transition:opacity .25s;pointer-events:none}
 .toast.show{opacity:1}
-.sov{position:fixed;inset:0;background:rgba(11,26,46,.95);z-index:100;display:flex;align-items:center;justify-content:center;flex-direction:column;opacity:0;pointer-events:none;transition:opacity .4s}
-.sov.show{opacity:1;pointer-events:auto}
-.sovc{font-size:56px;margin-bottom:14px}.sovt{font-size:20px;font-weight:800;color:var(--accent);margin-bottom:6px}
-.sovs{font-size:13px;color:var(--t2);text-align:center;padding:0 30px}
 </style>
 </head>
 <body>
 <div id="app">
 <div class="hdr"><div class="hdr-logo">C</div><div class="hdr-info"><div class="hdr-t">Catálogo Circa</div><div class="hdr-s" id="bN">Cargando...</div></div><div class="hdr-line" id="hL">S/---</div></div>
-<div class="filt"><div class="fbtn on" id="fCat" onclick="setFilter('cat')">📁 Categoría</div><div class="fbtn" id="fMar" onclick="setFilter('marca')">🏷 Marca</div></div>
-<div class="chips" id="chips"></div>
-<div class="sumbar hide" id="sumbar"><div class="sumbar-l" id="sumL">0 items · <b>S/0.00</b></div><button class="sumbar-r" onclick="openD()">Revisar →</button></div>
+<div class="filt"><div class="fbtn on" id="fC" onclick="setF('cat')">📁 Categoría</div><div class="fbtn" id="fM" onclick="setF('marca')">🏷 Marca</div></div>
+<div class="chips" id="cW"></div>
+<div class="sumbar hide" id="sB"><div class="sumbar-l" id="sL">0 items · <b>S/0.00</b></div><button class="sumbar-r" onclick="openD()">Revisar →</button></div>
 <div class="search-w"><span class="s-icon">🔍</span><input class="search-i" id="sI" type="text" placeholder="Buscar producto o marca..."></div>
 <div class="main" id="mA"><div class="empty">Cargando productos...</div></div>
 </div>
 <div class="dov" id="dO" onclick="closeD()"></div>
-<div class="drw" id="dW"><div class="dh"></div><div class="dtl">🛒 Tu pedido</div><div class="dit" id="dI"></div>
-<div class="df"><div class="dfr"><span class="dfl">Total (<span id="tU">0</span> uds)</span><span class="dfv" id="dT">S/0.00</span></div><div class="dfli ok" id="dL"></div>
-<button class="cfm" id="cfB" onclick="cfmOrder()">Confirmar pedido ✅</button></div></div>
+<div class="drw" id="dW"><div class="dh"></div><div class="dtl" id="dTl">🛒 Tu pedido</div><div class="dit" id="dI"></div>
+<div class="df" id="dF"></div></div>
 <div class="toast" id="tt"></div>
-<div class="sov" id="sv"><div class="sovc">✅</div><div class="sovt">Pedido enviado</div><div class="sovs">Revisa tu WhatsApp para elegir forma de pago y confirmar con tu clave Circa.</div></div>
 <script>
 const API=location.origin,BID=new URLSearchParams(location.search).get('b')||'b1b2c3d4-0001-4000-8000-000000000001';
-let P=[],cart=[],linea=0,filterMode='cat',selChip='Todos';
+let P=[],cart=[],linea=0,fm='cat',sel='Todos',step='cart';
 const CATS=['Todos','Abarrotes','Bebidas Calientes','Bebidas','Cereales','Confitería','Lácteos','Nutrición Infantil'];
-
 function $(id){return document.getElementById(id)}
 function esc(s){return(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')}
 function toast(m){const t=$('tt');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),1500)}
+function fmt(n){return'S/'+n.toFixed(2)}
 
 async function init(){
  try{
@@ -100,46 +102,41 @@ async function init(){
    fetch(API+'/api/bodegas/'+BID).then(r=>r.json()).catch(()=>null)]);
   P=c.filter(p=>p.activo);
   if(b){linea=b.linea_disponible||0;$('bN').textContent=b.nombre_comercial||'';$('hL').textContent='S/'+linea.toFixed(2)}
-  buildChips();rend();
- }catch(e){$('mA').innerHTML='<div class="empty">Error cargando catalogo</div>'}
+  bldC();rend();
+ }catch(e){$('mA').innerHTML='<div class="empty">Error cargando</div>'}
 }
 
-function setFilter(mode){filterMode=mode;selChip='Todos';
- $('fCat').classList.toggle('on',mode==='cat');$('fMar').classList.toggle('on',mode==='marca');
- buildChips();rend();
+function setF(m){fm=m;sel='Todos';$('fC').classList.toggle('on',m==='cat');$('fM').classList.toggle('on',m==='marca');bldC();rend()}
+
+function bldC(){
+ if(fm==='cat'){$('cW').innerHTML=CATS.map(c=>`<div class="chip ${c===sel?'on':''}" onclick="pick('${c}')">${c}</div>`).join('')}
+ else{const br={};P.forEach(p=>{const m=p.marca||'?';br[m]=(br[m]||0)+1});
+  const s=['Todos',...Object.entries(br).sort((a,b)=>b[1]-a[1]).map(([b])=>b)];
+  $('cW').innerHTML=s.map(b=>`<div class="chip ${b===sel?'on':''}" onclick="pick('${esc(b)}')">${b}</div>`).join('')}
 }
+function pick(v){sel=v;bldC();rend()}
 
-function buildChips(){
- if(filterMode==='cat'){
-  $('chips').innerHTML=CATS.map(c=>`<div class="chip ${c===selChip?'on':''}" onclick="pickChip('${c}')">${c}</div>`).join('');
- }else{
-  const br={};P.forEach(p=>{const m=p.marca||'?';br[m]=(br[m]||0)+1});
-  const sorted=['Todos',...Object.entries(br).sort((a,b)=>b[1]-a[1]).map(([b])=>b)];
-  $('chips').innerHTML=sorted.map(b=>`<div class="chip ${b===selChip?'on':''}" onclick="pickChip('${esc(b)}')">${b}</div>`).join('');
- }
-}
-
-function pickChip(v){selChip=v;buildChips();rend()}
-
-function getFiltered(){
+function filt(){
  const q=$('sI').value.toLowerCase().trim();
  return P.filter(p=>{
-  const matchChip=selChip==='Todos'||(filterMode==='cat'?p.categoria===selChip:p.marca===selChip);
-  const matchQ=!q||(p.nombre||'').toLowerCase().includes(q)||(p.marca||'').toLowerCase().includes(q);
-  return matchChip&&matchQ;
- });
+  const mc=sel==='Todos'||(fm==='cat'?p.categoria===sel:p.marca===sel);
+  const mq=!q||(p.nombre||'').toLowerCase().includes(q)||(p.marca||'').toLowerCase().includes(q);
+  return mc&&mq});
 }
 
 function rend(){
- const list=getFiltered();
- if(!list.length){$('mA').innerHTML='<div class="empty">Sin productos</div>';return}
- $('mA').innerHTML=list.map(p=>{
+ const l=filt();
+ if(!l.length){$('mA').innerHTML='<div class="empty">No hay productos</div>';return}
+ $('mA').innerHTML=l.map(p=>{
   let un=p.unidades||{};if(typeof un==='string')try{un=JSON.parse(un)}catch(e){un={}}
   const us=Object.entries(un);if(!us.length)return'';
+  // Default to UND if available
   const ci=cart.find(c=>c.id===p.id);
-  const su=ci?ci.unit:us[0][0],sp=un[su]||us[0][1],q=ci?ci.qty:0;
+  let defU=us[0][0];
+  for(const[u]of us){if(u.toUpperCase().startsWith('UND')){defU=u;break}}
+  const su=ci?ci.unit:defU,sp=un[su]||us[0][1],q=ci?ci.qty:0;
   return`<div class="pc"><div class="pc-brand">${esc(p.marca||'')}</div><div class="pc-name">${esc(p.nombre||'')}</div>`+
-   `<div class="pc-row"><div class="pc-units">${us.map(([u,pr])=>`<button class="ub ${u===su?'sel':''}" onclick="sU('${p.id}','${esc(u)}',${pr})"><span class="ub-lbl">${esc(u)}</span><span class="ub-pr">S/${pr.toFixed(2)}</span></button>`).join('')}</div>`+
+   `<div class="pc-row"><div class="pc-units">${us.map(([u,pr])=>`<button class="ub ${u===su?'sel':''}" onclick="sU('${p.id}','${esc(u)}',${pr})"><span class="ub-lbl">${esc(u)}</span><span class="ub-pr">${fmt(pr)}</span></button>`).join('')}</div>`+
    `<div class="pc-qty">${q>0?
     `<button class="qb rm" onclick="cQ('${p.id}',-1)">${q===1?'✕':'−'}</button><span class="qv">${q}</span><button class="qb" onclick="cQ('${p.id}',1)">+</button>`:
     `<button class="qb add" onclick="aTC('${p.id}','${esc(su)}',${sp},'${esc(p.nombre)}','${esc(p.marca)}')">+</button>`
@@ -149,42 +146,63 @@ function rend(){
 
 $('sI').addEventListener('input',()=>rend());
 
-function aTC(id,u,pr,n,m){const x=cart.find(c=>c.id===id&&c.unit===u);if(x){x.qty++;x.precio=pr}else cart.push({id,unit:u,precio:pr,nombre:n,marca:m,qty:1});toast('✅ Agregado');uC();rend()}
+function aTC(id,u,pr,n,m){const x=cart.find(c=>c.id===id);if(x){x.qty++;x.precio=pr;x.unit=u}else cart.push({id,unit:u,precio:pr,nombre:n,marca:m,qty:1});toast('✅ '+n.slice(0,20));uC();rend()}
 function sU(id,u,pr){const i=cart.find(c=>c.id===id);if(i){i.unit=u;i.precio=pr}rend()}
 function cQ(id,d){const i=cart.find(c=>c.id===id);if(!i)return;i.qty+=d;if(i.qty<=0)cart=cart.filter(c=>c.id!==id);uC();rend()}
 
 function uC(){
  const t=cart.reduce((s,c)=>s+c.precio*c.qty,0),n=cart.reduce((s,c)=>s+c.qty,0);
- const sb=$('sumbar');
- if(n>0){sb.classList.remove('hide');$('sumL').innerHTML=n+' items · <b>S/'+t.toFixed(2)+'</b>'}
- else sb.classList.add('hide');
+ if(n>0){$('sB').classList.remove('hide');$('sL').innerHTML=n+' items · <b>'+fmt(t)+'</b>'}
+ else $('sB').classList.add('hide');
 }
 
-function openD(){rD();$('dO').classList.add('open');$('dW').classList.add('open')}
+function openD(){step='cart';rD();$('dO').classList.add('open');$('dW').classList.add('open')}
 function closeD(){$('dO').classList.remove('open');$('dW').classList.remove('open')}
 
 function rD(){
- $('dI').innerHTML=cart.map(c=>
-  `<div class="di"><div class="din"><div class="dinn">${esc(c.nombre)}</div><div class="dinu">${esc(c.unit)} · S/${c.precio.toFixed(2)}</div></div>`+
-  `<div class="pc-qty"><button class="qb rm" onclick="dQ('${c.id}',-1)" style="width:26px;height:26px;font-size:13px">${c.qty===1?'✕':'−'}</button><span class="qv" style="width:28px;font-size:13px">${c.qty}</span><button class="qb" onclick="dQ('${c.id}',1)" style="width:26px;height:26px;font-size:13px">+</button></div>`+
-  `<div class="dis">S/${(c.precio*c.qty).toFixed(2)}</div></div>`).join('');
  const t=cart.reduce((s,c)=>s+c.precio*c.qty,0),n=cart.reduce((s,c)=>s+c.qty,0);
- $('dT').textContent='S/'+t.toFixed(2);$('tU').textContent=n;
- const d=$('dL');
- if(t<=linea){d.className='dfli ok';d.textContent='Todo financiable · Línea: S/'+linea.toFixed(2)}
- else if(linea>0){d.className='dfli warn';d.textContent='Financiable hasta S/'+linea.toFixed(2)+' · Resto al contado'}
- else{d.className='dfli bad';d.textContent='Sin línea · Solo contado'}
+ if(step==='cart'){
+  $('dTl').textContent='🛒 Tu pedido';
+  $('dI').innerHTML=cart.map(c=>
+   `<div class="di"><div class="din"><div class="dinn">${esc(c.nombre)}</div><div class="dinu">${esc(c.unit)} · ${fmt(c.precio)}</div></div>`+
+   `<div class="pc-qty"><button class="qb rm" onclick="dQ('${c.id}',-1)" style="width:26px;height:26px;font-size:12px">${c.qty===1?'✕':'−'}</button><span class="qv" style="width:26px;font-size:13px">${c.qty}</span><button class="qb" onclick="dQ('${c.id}',1)" style="width:26px;height:26px;font-size:12px">+</button></div>`+
+   `<div class="dis">${fmt(c.precio*c.qty)}</div></div>`).join('');
+  const dl=t<=linea?`<div class="dfli ok">✅ Todo financiable · Línea: ${fmt(linea)}</div>`:
+   linea>0?`<div class="dfli warn">⚠️ Financiable hasta ${fmt(linea)}</div>`:`<div class="dfli bad">Sin línea disponible</div>`;
+  $('dF').innerHTML=`<div class="dfr"><span class="dfl">Total (${n} uds)</span><span class="dfv">${fmt(t)}</span></div>${dl}`+
+   `<div class="btn-row"><button class="btn-sec" onclick="closeD()">← Seguir comprando</button><button class="btn-pri" onclick="goFin()">Continuar →</button></div>`;
+ }else if(step==='finance'){
+  $('dTl').textContent='💰 Resumen';
+  const finAmt=Math.min(t,linea),contado=t-finAmt;
+  const f7=Math.max(finAmt*.03,5),f15=Math.max(finAmt*.05,5),f30=Math.max(finAmt*.07,5);
+  $('dI').innerHTML=`<div class="fin-section"><div class="fin-title">Detalle del pedido</div>`+
+   cart.map(c=>`<div class="fin-row"><span class="lbl">${c.qty}x ${esc(c.nombre).slice(0,30)}</span><span class="val">${fmt(c.precio*c.qty)}</span></div>`).join('')+
+   `<div class="fin-row" style="border-top:1px solid var(--brd);padding-top:6px;margin-top:4px"><span class="lbl"><b>Total productos</b></span><span class="val hl"><b>${fmt(t)}</b></span></div></div>`+
+   (finAmt>0?`<div class="fin-section"><div class="fin-title">Opciones de financiamiento</div>`+
+    `<div class="fin-row"><span class="lbl">Línea disponible</span><span class="val hl">${fmt(linea)}</span></div>`+
+    `<div class="fin-row"><span class="lbl">Financiable</span><span class="val hl">${fmt(finAmt)}</span></div>`+
+    (contado>0?`<div class="fin-row"><span class="lbl">Contado</span><span class="val">${fmt(contado)}</span></div>`:'')+
+    `<div style="margin-top:8px;font-size:11px;color:var(--t2)">Elige el plazo al confirmar en WhatsApp:</div>`+
+    `<div class="fin-row"><span class="lbl">7 días (3%)</span><span class="val">Fee ${fmt(f7)} → ${fmt(finAmt+f7)}</span></div>`+
+    `<div class="fin-row"><span class="lbl">15 días (5%)</span><span class="val">Fee ${fmt(f15)} → ${fmt(finAmt+f15)}</span></div>`+
+    `<div class="fin-row"><span class="lbl">30 días (7%)</span><span class="val">Fee ${fmt(f30)} → ${fmt(finAmt+f30)}</span></div></div>`:
+    `<div class="fin-section"><div class="fin-title">Pago al contado</div><div class="fin-row"><span class="lbl">Total a pagar</span><span class="val hl">${fmt(t)}</span></div></div>`);
+  $('dF').innerHTML=`<div class="btn-row"><button class="btn-sec" onclick="step='cart';rD()">← Editar pedido</button><button class="btn-pri" id="cfB" onclick="cfmOrder()">Enviar a WhatsApp →</button></div>`;
+ }
 }
 function dQ(id,d){cQ(id,d);if(!cart.length)closeD();else rD()}
+function goFin(){step='finance';rD()}
 
 async function cfmOrder(){
  const b=$('cfB');b.disabled=true;b.textContent='Enviando...';
  try{
   const items=cart.map(c=>({catalogo_id:c.id,nombre:c.nombre,marca:c.marca,pack_size:c.unit,cantidad:c.qty,precio:c.precio,subtotal:c.precio*c.qty}));
   await fetch(API+'/api/catalogo/submit-cart',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({bodega_id:BID,items})});
-  closeD();$('sv').classList.add('show');cart=[];uC();
-  setTimeout(()=>{try{window.close()}catch(e){}},4000);
- }catch(e){b.disabled=false;b.textContent='Confirmar pedido';toast('Error')}
+  $('dTl').textContent='✅ Pedido enviado';
+  $('dI').innerHTML='<div style="text-align:center;padding:30px 0"><div style="font-size:48px;margin-bottom:12px">✅</div><div style="font-size:16px;font-weight:700;margin-bottom:6px">Pedido enviado a WhatsApp</div><div style="font-size:13px;color:var(--t2)">Revisa tu chat de Circa para elegir plazo y confirmar con tu clave.</div></div>';
+  $('dF').innerHTML='<button class="btn-pri" onclick="window.close()" style="width:100%">Volver a WhatsApp →</button>';
+  cart=[];uC();rend();
+ }catch(e){b.disabled=false;b.textContent='Enviar a WhatsApp →';toast('Error')}
 }
 
 init();
