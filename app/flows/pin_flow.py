@@ -58,6 +58,8 @@ def _handle_pin_create(data: dict) -> dict:
     bodega_id = data.get("bodega_id", "")
     mode = data.get("mode", "create")
     
+    logger.info(f"PIN create: mode={mode}, bodega_id={bodega_id}, pin_len={len(pin)}")
+    
     if len(pin) != 4 or not pin.isdigit():
         return {
             "screen": "PIN_CREATE",
@@ -67,6 +69,17 @@ def _handle_pin_create(data: dict) -> dict:
                 "error_msg": "La clave debe ser exactamente 4 digitos.",
             }
         }
+    
+    # Always check if there is a pending payment session
+    if not bodega_id or bodega_id == "test" or mode != "verify":
+        try:
+            ses = db.sb.table("sesiones").select("bodega_id, fase").eq("fase", "pin_pago").order("created_at", desc=True).limit(1).execute()
+            if ses.data:
+                bodega_id = ses.data[0].get("bodega_id", bodega_id)
+                mode = "verify"
+                logger.info(f"PIN: found pending session, bodega={bodega_id}")
+        except Exception as e:
+            logger.error(f"Session lookup: {e}")
     
     # ── VERIFY MODE: check PIN against stored hash ──
     if mode == "verify":
