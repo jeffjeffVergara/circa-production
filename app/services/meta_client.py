@@ -441,8 +441,6 @@ async def send_pin_request(to: str, mode: str = "create", bodega_id: str = ""):
             flow_id=flow_id,
             flow_cta="Confirmar con clave",
             body="Ingresa tu clave Circa de 4 digitos para confirmar tu pedido.",
-            screen="PIN_CREATE",
-            data={"bodega_id": bodega_id, "mode": "verify"},
             mode="published",
         )
     

@@ -507,8 +507,8 @@ async def _send_payment_options(phone, pedido_id, total, items_text, bodega_id=N
 
     pid = str(pedido_id)[:8]
     fin100 = min(total, linea)
-    fin50 = min(round(total * 0.5, 2), linea)
-    fin25 = min(round(total * 0.25, 2), linea)
+    fin50 = min(round(linea * 0.5, 2), total)
+    fin25 = min(round(linea * 0.25, 2), total)
 
     if linea >= total:
         await meta_client.send_text(phone,
