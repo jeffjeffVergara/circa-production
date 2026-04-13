@@ -1020,7 +1020,7 @@ async def simulate_full_flow(pedido_id: str):
         items = json.loads(items_json) if isinstance(items_json, str) else items_json
     except:
         items = []
-    items_text = "\n".join(f"{it.get('qty',0)}x {it.get('name','')}" for it in items)
+    items_text = "\n".join(f"{it.get('cantidad', it.get('qty',0))}x {it.get('nombre', it.get('name',''))}" for it in items)
 
     steps = [
         ("confirmado", "📋 *Pedido recibido*\nTu pedido ha sido recibido por el distribuidor."),
