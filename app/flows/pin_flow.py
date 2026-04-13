@@ -186,7 +186,7 @@ def _verify_pin_for_payment(pin: str, bodega_id: str) -> dict:
         try:
             import requests as req
             import os
-            token = os.getenv("META_TOKEN", "")
+            token = os.getenv("META_ACCESS_TOKEN", "")
             phone_id = os.getenv("PHONE_NUMBER_ID", "1076586305533033")
             phone = telefono.replace("+", "")
             if dias > 0:
