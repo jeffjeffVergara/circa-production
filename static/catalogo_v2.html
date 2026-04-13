@@ -189,7 +189,7 @@ async function cfmOrder(){
   await fetch(API+'/api/catalogo/submit-cart',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({bodega_id:BID,items:items})});
   $('dTl').textContent='Carrito listo';
   $('dI').innerHTML='<div style="text-align:center;padding:24px 0"><div style="font-size:44px;margin-bottom:10px">🛒</div><div style="font-size:15px;font-weight:700;margin-bottom:8px;color:var(--accent)">Carrito listo</div><div style="font-size:12px;color:var(--t2);line-height:1.5">Avancemos con el pago. Elige tu plazo y confirma<br>con tu clave Circa en el chat.</div></div>';
-  $('dF').innerHTML='<button class="btn-pri" onclick="closeD();try{window.close()}catch(e){}" style="width:100%">Avanzar con el pago</button>';
+  $('dF').innerHTML='<button class="btn-pri" onclick="location.href='https://wa.me/51986311567'" style="width:100%">Avanzar con el pago</button>';
   cart=[];uC();rend();
  }catch(e){b.disabled=false;b.textContent='Continuar pedido';toast('Error al enviar')}
 }
