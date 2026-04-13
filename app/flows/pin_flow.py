@@ -28,7 +28,7 @@ async def handle_pin_flow(flow_data: dict) -> dict:
     
     # Health check ping from Meta
     if action == "ping":
-        return {"data": {"status": "active"}}
+        return {"version": "3.0", "data": {"status": "active"}}
     
     # INIT: Show first screen
     if action == "INIT":
