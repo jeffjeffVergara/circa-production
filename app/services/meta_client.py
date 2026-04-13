@@ -486,32 +486,18 @@ async def send_linea_info(to: str, aprobada: float, disponible: float, scoring: 
 
 
 async def send_catalogo_flow(to: str, bodega_id: str):
-    """Send the catalog Flow to start shopping."""
-    flow_id = os.getenv("FLOW_CATALOGO_ID", "1892378058074435")
-
-    CATS = [
-        {"id": "Abarrotes",           "emoji": "🛒"},
-        {"id": "Bebidas Calientes",   "emoji": "☕"},
-        {"id": "Bebidas",             "emoji": "🥤"},
-        {"id": "Cereales",            "emoji": "🥣"},
-        {"id": "Confitería",          "emoji": "🍫"},
-        {"id": "Lácteos",             "emoji": "🥛"},
-        {"id": "Nutrición Infantil",  "emoji": "👶"},
-    ]
-    cat_items = [
-        {"id": c["id"], "main-content": {"title": c["emoji"] + " " + c["id"], "description": "Ver"}}
-        for c in CATS
-    ]
-
-    return await send_flow(
+    """Send catalog link that opens in WhatsApp in-app browser."""
+    base = os.getenv("APP_BASE_URL", "https://circa-production-c517.up.railway.app")
+    url = f"{base}/catalogo-v2?b={bodega_id}"
+    return await send_text(
         to=to,
-        flow_id=flow_id,
-        flow_cta="Ver catálogo 🛒",
-        body="Elige productos de tu distribuidor y arma tu pedido. Financia con tu línea Circa.",
-        screen="CATALOG",
-        data={"bodega_id": bodega_id, "items": cat_items, "cart_state": "{}"},
+        text=(
+            f"Arma tu pedido del catalogo.\n"
+            f"Busca por nombre, elige cantidades y confirma:\n\n"
+            f"{url}"
+        ),
+        preview_url=True,
     )
-
 
 async def send_order_confirmation(to: str, order_number: str, total_credito: float, pago_contado: float):
     """Send order confirmation message after Flow completes."""
