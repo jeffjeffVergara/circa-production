@@ -486,18 +486,25 @@ async def send_linea_info(to: str, aprobada: float, disponible: float, scoring: 
 
 
 async def send_catalogo_flow(to: str, bodega_id: str):
-    """Send catalog link that opens in WhatsApp in-app browser."""
+    """Send catalog as CTA URL button - opens in WhatsApp in-app browser."""
     base = os.getenv("APP_BASE_URL", "https://circa-production-c517.up.railway.app")
     url = f"{base}/catalogo-v2?b={bodega_id}"
-    return await send_text(
-        to=to,
-        text=(
-            f"Arma tu pedido del catalogo.\n"
-            f"Busca por nombre, elige cantidades y confirma:\n\n"
-            f"{url}"
-        ),
-        preview_url=True,
-    )
+    return await _send(to, {
+        "type": "interactive",
+        "interactive": {
+            "type": "cta_url",
+            "body": {
+                "text": "Arma tu pedido del catalogo.\nBusca por nombre o marca, elige cantidades y confirma."
+            },
+            "action": {
+                "name": "cta_url",
+                "parameters": {
+                    "display_text": "Abrir catalogo",
+                    "url": url
+                }
+            }
+        }
+    })
 
 async def send_order_confirmation(to: str, order_number: str, total_credito: float, pago_contado: float):
     """Send order confirmation message after Flow completes."""
