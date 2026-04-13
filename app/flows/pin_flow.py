@@ -30,6 +30,20 @@ async def handle_pin_flow(flow_data: dict) -> dict:
     if action == "ping":
         return {"version": "3.0", "data": {"status": "active"}}
     
+    # Get result from handler, then add version
+    result = await _route_pin(flow_data)
+    if "version" not in result:
+        result["version"] = "3.0"
+    logger.info(f"PIN response: {result}")
+    return result
+
+async def _route_pin(flow_data: dict) -> dict:
+    """Internal routing."""
+    screen = flow_data.get("screen", "")
+    action = flow_data.get("action", "")
+    data = flow_data.get("data", {})
+    flow_token = flow_data.get("flow_token", "")
+    
     # INIT: Show first screen
     if action == "INIT":
         return {
