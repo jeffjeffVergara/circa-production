@@ -167,6 +167,40 @@ def _verify_pin_for_payment(pin: str, bodega_id: str) -> dict:
         db.sb.table("sesiones").update({"fase": "menu", "datos": json.dumps({"num": num, "pedido_id": pedido_id, "dias": dias, "monto": monto, "fee": fee, "rate": rate})}).eq("telefono", telefono).execute()
         
         logger.info(f"Order {pedido_id} confirmed via PIN Flow: {num}")
+        
+        # Send WhatsApp confirmation (sync, using requests directly)
+        try:
+            import requests as req
+            import os
+            token = os.getenv("META_TOKEN", "")
+            phone_id = os.getenv("PHONE_NUMBER_ID", "1076586305533033")
+            phone = telefono.replace("+", "")
+            if dias > 0:
+                conf_msg = (
+                    f"\u2705 *Pedido #{num} confirmado*\n"
+                    f"Financiado con Circa\n\n"
+                    f"Financiado: *S/{monto:.2f}*\n"
+                    f"Fee ({int(rate*100)}%): S/{fee:.2f}\n"
+                    f"Total credito: *S/{monto+fee:.2f}*\n"
+                    f"Plazo: {dias} dias\n\n"
+                    f"Recibiras actualizaciones por WhatsApp."
+                )
+            else:
+                conf_msg = (
+                    f"\u2705 *Pedido #{num} confirmado — Contado*\n\n"
+                    f"Total: S/{monto:.2f}\n"
+                    f"Tu distribuidor preparara tu pedido."
+                )
+            req.post(
+                f"https://graph.facebook.com/v23.0/{phone_id}/messages",
+                headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                json={"messaging_product": "whatsapp", "to": phone, "type": "text", "text": {"body": conf_msg}},
+                timeout=10,
+            )
+            logger.info(f"Confirmation sent to {phone}")
+        except Exception as e:
+            logger.error(f"Confirmation msg error: {e}")
+        
         return {"screen": "SUCCESS", "data": {"message": msg}}
     
     except Exception as e:
