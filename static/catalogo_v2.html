@@ -170,28 +170,17 @@ function rD(){
    linea>0?'<div class="dfli warn">Financiable hasta '+fmt(linea)+'</div>':'<div class="dfli bad">Sin linea disponible</div>';
   $('dF').innerHTML='<div class="dfr"><span class="dfl">Total ('+n+' uds)</span><span class="dfv">'+fmt(t)+'</span></div>'+dl+
    '<div class="btn-row"><button class="btn-sec" onclick="closeD()">Seguir comprando</button><button class="btn-pri" onclick="goFin()">Continuar</button></div>';
- }else if(step==='finance'){
-  $('dTl').textContent='Te ayudamos a financiar';
-  var finAmt=Math.min(t,linea),contado=t-finAmt;
-  var f7=Math.max(finAmt*.03,5),f15=Math.max(finAmt*.05,5),f30=Math.max(finAmt*.07,5);
-  $('dI').innerHTML='<div class="fin-section"><div class="fin-title">Resumen del pedido</div>'+
+ }else if(step==='summary'){
+  $('dTl').textContent='Resumen del pedido';
+  $('dI').innerHTML='<div class="fin-section"><div class="fin-title">Productos</div>'+
    cart.map(function(c){return'<div class="fin-row"><span class="lbl">'+c.qty+'x '+esc(c.nombre).slice(0,28)+'</span><span class="val">'+fmt(c.precio*c.qty)+'</span></div>'}).join('')+
-   '<div class="fin-row" style="border-top:1px solid var(--brd);padding-top:6px;margin-top:4px"><span class="lbl"><b>Total</b></span><span class="val hl"><b>'+fmt(t)+'</b></span></div></div>'+
-   (finAmt>0?'<div class="fin-section"><div class="fin-title">Financiamiento Circa</div>'+
-    '<div class="fin-row"><span class="lbl">Linea disponible</span><span class="val hl">'+fmt(linea)+'</span></div>'+
-    '<div class="fin-row"><span class="lbl">Monto a financiar</span><span class="val hl">'+fmt(finAmt)+'</span></div>'+
-    (contado>0?'<div class="fin-row"><span class="lbl">Pago al contado</span><span class="val">'+fmt(contado)+'</span></div>':'')+
-    '<div style="margin-top:10px;font-size:11px;color:var(--t2)">Plazos disponibles:</div>'+
-    '<div class="fin-row"><span class="lbl">7 dias (3%)</span><span class="val">Fee '+fmt(f7)+' = '+fmt(finAmt+f7)+'</span></div>'+
-    '<div class="fin-row"><span class="lbl">15 dias (5%)</span><span class="val">Fee '+fmt(f15)+' = '+fmt(finAmt+f15)+'</span></div>'+
-    '<div class="fin-row"><span class="lbl">30 dias (7%)</span><span class="val">Fee '+fmt(f30)+' = '+fmt(finAmt+f30)+'</span></div>'+
-    '<div style="margin-top:8px;font-size:10px;color:var(--t3)">Elige plazo y confirma con tu clave en el siguiente paso</div></div>':
-    '<div class="fin-section"><div class="fin-title">Pago al contado</div><div class="fin-row"><span class="lbl">Total a pagar</span><span class="val hl">'+fmt(t)+'</span></div></div>');
+   '<div class="fin-row" style="border-top:1px solid var(--brd);padding-top:6px;margin-top:4px"><span class="lbl"><b>Total del pedido</b></span><span class="val hl"><b>'+fmt(t)+'</b></span></div></div>'+
+   '<div style="text-align:center;padding:10px 0;font-size:12px;color:var(--t2)">En el siguiente paso te ayudamos<br>a financiar tu compra con Circa</div>';
   $('dF').innerHTML='<div class="btn-row"><button class="btn-sec" onclick="step=\'cart\';rD()">Editar pedido</button><button class="btn-pri" id="cfB" onclick="cfmOrder()">Continuar pedido</button></div>';
  }
 }
 function dQ(id,d){cQ(id,d);if(!cart.length)closeD();else rD()}
-function goFin(){step='finance';rD()}
+function goFin(){step='summary';rD()}
 
 async function cfmOrder(){
  var b=$('cfB');b.disabled=true;b.textContent='Procesando...';
