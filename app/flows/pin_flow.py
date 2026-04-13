@@ -105,9 +105,8 @@ def _verify_pin_for_payment(pin: str, bodega_id: str) -> dict:
         
         pin_hash = bodega.data[0].get("pin_hash", "")
         if not pin_hash or not bcrypt.checkpw(pin.encode(), pin_hash.encode()):
-            return {"screen": "PIN_CREATE", "data": {"bodega_id": bodega_id, "mode": "verify", "error_msg": "Clave incorrecta. Intenta de nuevo."}}
+            return {"screen": "PIN_CREATE", "data": {"bodega_id": bodega_id, "mode": "verify", "error_msg": "Clave incorrecta."}}
         
-        # PIN correct — find pending session and confirm order
         telefono = bodega.data[0].get("telefono_whatsapp", "")
         ses = db.sb.table("sesiones").select("datos").eq("telefono", telefono).eq("fase", "pin_pago").limit(1).execute()
         if not ses.data:
@@ -119,19 +118,15 @@ def _verify_pin_for_payment(pin: str, bodega_id: str) -> dict:
         rate = datos.get("rate", 0)
         monto = datos["monto"]
         fee = datos.get("fee", 0)
-        venc = datos.get("venc", "")
         
         # Generate order number
-        import random, string
         existing = db.sb.table("pedidos").select("numero").eq("bodega_id", bodega_id).not_.is_("numero", "null").order("created_at", desc=True).limit(1).execute()
+        n = 1
         if existing.data and existing.data[0].get("numero"):
-            last = existing.data[0]["numero"]
             try:
-                n = int(last.split("-")[1]) + 1
+                n = int(existing.data[0]["numero"].split("-")[1]) + 1
             except:
                 n = 1
-        else:
-            n = 1
         num = f"CRC-{n:03d}"
         
         if dias > 0:
@@ -141,53 +136,22 @@ def _verify_pin_for_payment(pin: str, bodega_id: str) -> dict:
                 "total": round(monto + fee, 2), "estado": "confirmado",
             }).eq("id", pedido_id).execute()
             # Deduct line
-            db.sb.table("bodegas").update({
-                "linea_disponible": db.sb.rpc("decrement_linea", {"bod_id": bodega_id, "amount": monto}).execute().data
-            }).eq("id", bodega_id).execute() if False else None
             try:
                 bod = db.sb.table("bodegas").select("linea_disponible").eq("id", bodega_id).limit(1).execute()
                 new_linea = max((bod.data[0]["linea_disponible"] or 0) - monto, 0) if bod.data else 0
                 db.sb.table("bodegas").update({"linea_disponible": new_linea}).eq("id", bodega_id).execute()
             except Exception as e:
-                logger.error(f"Linea deduct error: {e}")
-            
-            msg = f"Pedido {num} confirmado.\nFinanciado: S/{monto:.2f}\nFee: S/{fee:.2f}\nTotal: S/{monto+fee:.2f}\nPlazo: {dias} dias"
+                logger.error(f"Linea deduct: {e}")
+            msg = f"Pedido #{num} confirmado\nFinanciado: S/{monto:.2f}\nFee: S/{fee:.2f}\nTotal: S/{monto+fee:.2f}\nPlazo: {dias} dias"
         else:
             db.sb.table("pedidos").update({
                 "numero": num, "fee_tasa": 0, "fee_monto": 0,
                 "monto_contado": round(monto, 2), "total": round(monto, 2), "estado": "confirmado",
             }).eq("id", pedido_id).execute()
-            msg = f"Pedido {num} confirmado.\nContado: S/{monto:.2f}"
+            msg = f"Pedido #{num} confirmado\nContado: S/{monto:.2f}"
         
-        # Clear session
-        db.sb.table("sesiones").update({"fase": "menu", "datos": "{}"}).eq("telefono", telefono).execute()
-        
-        # Send WhatsApp confirmation (async, fire and forget)
-        import asyncio
-        from app.services import meta_client
-        phone = telefono.replace("+", "")
-        if dias > 0:
-            asyncio.get_event_loop().call_soon(
-                asyncio.ensure_future,
-                meta_client.send_text(phone,
-                    f"\u2705 *Pedido {num} confirmado*\n"
-                    f"Financiado con Circa\n\n"
-                    f"Nro: *#{num}*\n"
-                    f"Financiado: *S/{monto:.2f}*\n"
-                    f"Fee ({int(rate*100)}%): S/{fee:.2f}\n"
-                    f"Total credito: *S/{monto+fee:.2f}*\n"
-                    f"Plazo: {dias} dias\n"
-                    f"Vence: {venc}\n\n"
-                    f"Recibiras actualizaciones por WhatsApp.")
-            )
-        else:
-            asyncio.get_event_loop().call_soon(
-                asyncio.ensure_future,
-                meta_client.send_text(phone,
-                    f"\u2705 *Pedido {num} confirmado — Contado*\n\n"
-                    f"Total: S/{monto:.2f}\nPago al recibir.\n\n"
-                    f"Tu distribuidor preparara tu pedido.")
-            )
+        # Mark session as done - WA message will be sent by webhook handler
+        db.sb.table("sesiones").update({"fase": "pin_confirmed", "datos": json.dumps({"num": num, "pedido_id": pedido_id, "dias": dias, "monto": monto, "fee": fee, "rate": rate})}).eq("telefono", telefono).execute()
         
         logger.info(f"Order {pedido_id} confirmed via PIN Flow: {num}")
         return {"screen": "SUCCESS", "data": {"message": msg}}
