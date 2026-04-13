@@ -819,7 +819,7 @@ async def get_bodega(bodega_id: str):
 
 @app.get("/api/catalogo")
 async def list_catalogo(distribuidor_id: str = None, marca: str = None, categoria: str = None):
-    q = db.sb.table("catalogo").select("*, distribuidores(nombre_comercial)").eq("activo", True)
+    q = db.sb.table("catalogo").select("*").eq("activo", True)
     if distribuidor_id: q = q.eq("distribuidor_id", distribuidor_id)
     if marca: q = q.eq("marca", marca)
     if categoria: q = q.eq("categoria", categoria)
@@ -985,6 +985,10 @@ async def get_carrito(bodega_id: str):
 @app.get("/catalogo")
 async def catalogo_page():
     return FileResponse("static/catalogo.html")
+
+@app.get("/catalogo-v2")
+async def catalogo_v2_page():
+    return FileResponse("static/catalogo_v2.html")
 
 @app.get("/api/cobranza")
 async def cobranza_pendiente():

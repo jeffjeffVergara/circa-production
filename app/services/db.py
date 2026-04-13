@@ -53,7 +53,7 @@ def sign_contract(bodega_id: str, contract_hash: str):
 
 # ── CATÁLOGO ──────────────────────────────────
 def get_catalogo(distribuidor_id: str, marca: str = None, categoria: str = None):
-    q = sb.table("catalogo").select("*, distribuidores(nombre_comercial)").eq("distribuidor_id", distribuidor_id).eq("activo", True)
+    q = sb.table("catalogo").select("*").eq("distribuidor_id", distribuidor_id).eq("activo", True)
     if marca:
         q = q.eq("marca", marca)
     if categoria:
@@ -65,7 +65,7 @@ def get_catalogo_all_for_bodega(bodega_id: str):
     bodega = sb.table("bodegas").select("distribuidor_id").eq("id", bodega_id).single().execute().data
     if not bodega:
         return []
-    return sb.table("catalogo").select("*, distribuidores(nombre_comercial)").eq("distribuidor_id", bodega["distribuidor_id"]).eq("activo", True).execute().data
+    return sb.table("catalogo").select("*").eq("distribuidor_id", bodega["distribuidor_id"]).eq("activo", True).execute().data
 
 def get_marcas(distribuidor_id: str):
     items = sb.table("catalogo").select("marca").eq("distribuidor_id", distribuidor_id).eq("activo", True).execute().data
