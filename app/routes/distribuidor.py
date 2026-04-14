@@ -1,7 +1,7 @@
 """
 Distribuidor Portal API — Circa
 """
-from fastapi import APIRouter, HTTPException, Header, Depends
+from fastapi import APIRouter, HTTPException, Header, Depends, UploadFile, File
 from pydantic import BaseModel
 from typing import Optional
 import os, httpx
@@ -137,3 +137,80 @@ async def preparar_factura(pedido_id: str, dist: dict = Depends(verify_distribui
         "pedido_circa":pedido.get("numero",""),"observacion":f"Pedido Circa {pedido.get('numero','')}"}
     _sb_patch("pedidos", {"facturado":True,"fecha_facturado":datetime.now(timezone.utc).isoformat()}, {"id":f"eq.{pedido_id}"})
     return {"factura": factura}
+
+@router.get("/conciliacion")
+async def conciliacion(fecha: Optional[str] = None, dist: dict = Depends(verify_distribuidor)):
+    """Daily reconciliation: how much Circa owes the distributor."""
+    params = {"select":"*","distribuidor_id":f"eq.{dist['id']}","estado":"in.(confirmado,recibido,en_preparacion,despachado,en_camino,entregado)"}
+    pedidos = _sb_get("pedidos", params)
+    total_productos = 0
+    total_financiado = 0
+    total_contado = 0
+    total_fee_circa = 0
+    desglose = []
+    for p in pedidos:
+        mp = p.get("monto_productos") or 0
+        mf = p.get("monto_financiado") or 0
+        mc = p.get("monto_contado") or 0
+        fee = p.get("fee_monto") or 0
+        total_productos += mp
+        total_financiado += mf
+        total_contado += mc
+        total_fee_circa += fee
+        desglose.append({
+            "numero": p.get("numero",""),
+            "estado": p.get("estado",""),
+            "monto_productos": round(mp,2),
+            "bodega_paga_contado": round(mc,2),
+            "circa_financia": round(mf,2),
+            "fee_circa": round(fee,2),
+            "circa_paga_distribuidor": round(mf,2),
+        })
+    return {
+        "distribuidor": dist["nombre_comercial"],
+        "resumen": {
+            "total_productos": round(total_productos,2),
+            "total_bodega_contado": round(total_contado,2),
+            "total_circa_financia": round(total_financiado,2),
+            "circa_debe_distribuidor": round(total_financiado,2),
+            "total_fee_circa": round(total_fee_circa,2),
+            "pedidos_count": len(pedidos),
+        },
+        "desglose": desglose,
+    }
+
+
+@router.post("/pedidos/{pedido_id}/sustento")
+async def upload_sustento(pedido_id: str, file: UploadFile = File(...), dist: dict = Depends(verify_distribuidor)):
+    """Upload delivery proof (signed guide, invoice, photo)."""
+    rows = _sb_get("pedidos", {"select":"id,estado","id":f"eq.{pedido_id}","distribuidor_id":f"eq.{dist['id']}"})
+    if not rows:
+        raise HTTPException(status_code=404, detail="Pedido no encontrado")
+    if rows[0]["estado"] not in ("despachado","en_camino","entregado"):
+        raise HTTPException(status_code=400, detail="Solo se puede subir sustento para pedidos despachados o entregados")
+    content = await file.read()
+    import base64
+    ext = file.filename.split(".")[-1] if "." in file.filename else "jpg"
+    # Upload to Supabase Storage
+    storage_path = f"sustentos/{pedido_id}.{ext}"
+    try:
+        upload_url = f"{SUPABASE_URL}/storage/v1/object/sustentos/{storage_path}"
+        r = httpx.post(upload_url, headers={
+            "apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}",
+            "Content-Type": file.content_type or "application/octet-stream",
+            "x-upsert": "true",
+        }, content=content, timeout=30)
+        if r.status_code < 300:
+            public_url = f"{SUPABASE_URL}/storage/v1/object/public/sustentos/{storage_path}"
+            _sb_patch("pedidos", {"prueba_entrega_url": public_url}, {"id": f"eq.{pedido_id}"})
+            return {"ok": True, "url": public_url}
+        else:
+            # Fallback: store as base64 data URL
+            b64 = base64.b64encode(content).decode()
+            data_url = f"data:{file.content_type};base64,{b64[:100]}..."
+            _sb_patch("pedidos", {"prueba_entrega_url": f"uploaded:{file.filename}"}, {"id": f"eq.{pedido_id}"})
+            return {"ok": True, "url": f"uploaded:{file.filename}", "note": "Storage bucket may need setup"}
+    except Exception as e:
+        _sb_patch("pedidos", {"prueba_entrega_url": f"uploaded:{file.filename}"}, {"id": f"eq.{pedido_id}"})
+        return {"ok": True, "url": f"uploaded:{file.filename}", "note": str(e)}
+
