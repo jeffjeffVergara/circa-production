@@ -1,5 +1,5 @@
 """
-Circa branded confirmation cards — Plin/Yape style.
+Circa branded cards — large canvas for WhatsApp readability.
 """
 import os, io
 from datetime import datetime
@@ -12,136 +12,134 @@ GREEN = (22, 163, 74)
 GREEN_LIGHT = (220, 252, 231)
 BLUE_LIGHT = (219, 234, 254)
 GRAY_100 = (241, 245, 249)
-GRAY_300 = (203, 213, 225)
 GRAY_500 = (100, 116, 139)
 GRAY_700 = (51, 65, 85)
 BORDER = (226, 232, 240)
 
-def _get_font(size, bold=False):
-    paths = [
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
-    ]
-    for fp in paths:
-        if os.path.exists(fp):
-            return ImageFont.truetype(fp, size)
+def _f(size, bold=False):
+    for fp in ["/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+               "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"]:
+        if os.path.exists(fp): return ImageFont.truetype(fp, size)
     return ImageFont.load_default()
 
-def _rounded_rect(draw, xy, radius, fill, outline=None):
+def _rr(draw, xy, r, fill, outline=None):
     x1, y1, x2, y2 = xy
-    draw.rectangle([x1+radius, y1, x2-radius, y2], fill=fill)
-    draw.rectangle([x1, y1+radius, x2, y2-radius], fill=fill)
-    for corner, angles in [((x1,y1),(180,270)),((x2-2*radius,y1),(270,360)),((x1,y2-2*radius),(90,180)),((x2-2*radius,y2-2*radius),(0,90))]:
-        draw.pieslice([corner[0], corner[1], corner[0]+2*radius, corner[1]+2*radius], angles[0], angles[1], fill=fill)
+    draw.rectangle([x1+r, y1, x2-r, y2], fill=fill)
+    draw.rectangle([x1, y1+r, x2, y2-r], fill=fill)
+    for c, a in [((x1,y1),(180,270)),((x2-2*r,y1),(270,360)),((x1,y2-2*r),(90,180)),((x2-2*r,y2-2*r),(0,90))]:
+        draw.pieslice([c[0],c[1],c[0]+2*r,c[1]+2*r], a[0], a[1], fill=fill)
     if outline:
-        draw.rounded_rectangle(xy, radius, outline=outline, width=2)
+        try: draw.rounded_rectangle(xy, r, outline=outline, width=3)
+        except: pass
 
-def _draw_check(draw, cx, cy, r):
+def _chk(draw, cx, cy, r):
     draw.ellipse([cx-r, cy-r, cx+r, cy+r], fill=GREEN)
-    lw = max(5, r//5)
-    draw.line([(cx-r*0.35, cy+r*0.05), (cx-r*0.05, cy+r*0.35), (cx+r*0.4, cy-r*0.25)], fill=WHITE, width=lw)
+    draw.line([(cx-r*0.35, cy+r*0.05),(cx-r*0.05, cy+r*0.35),(cx+r*0.4, cy-r*0.25)], fill=WHITE, width=max(7,r//4))
 
-def _ct(draw, text, y, font, fill, W):
-    tw = draw.textlength(text, font=font)
-    draw.text(((W - tw) / 2, y), text, fill=fill, font=font)
+def _ct(d, t, y, f, c, W):
+    tw = d.textlength(t, font=f)
+    d.text(((W-tw)/2, y), t, fill=c, font=f)
 
-def _logo(img, draw, W, y=20, h=52):
-    iso_path = os.path.join(os.path.dirname(__file__), "..", "static", "circa_isotipo.png")
-    iso_w = 0
-    if os.path.exists(iso_path):
-        iso = Image.open(iso_path).convert("RGBA")
-        iso_w = int(iso.width * h / iso.height)
-        iso = iso.resize((iso_w, h), Image.LANCZOS)
-        total_w = iso_w + 14 + draw.textlength("CIRCA", font=_get_font(38, True))
-        start_x = int((W - total_w) / 2)
-        img.paste(iso, (start_x, y), iso)
-        draw.text((start_x + iso_w + 14, y + 6), "CIRCA", fill=CIRCA_DARK, font=_get_font(38, True))
+def _logo(img, draw, W, y=30, h=72):
+    p = os.path.join(os.path.dirname(__file__), "..", "static", "circa_isotipo.png")
+    fl = _f(54, True)
+    tw = draw.textlength("CIRCA", font=fl)
+    if os.path.exists(p):
+        iso = Image.open(p).convert("RGBA")
+        iw = int(iso.width * h / iso.height)
+        iso = iso.resize((iw, h), Image.LANCZOS)
+        total = iw + 20 + tw
+        sx = int((W - total) / 2)
+        img.paste(iso, (sx, y), iso)
+        draw.text((sx + iw + 20, y + 8), "CIRCA", fill=CIRCA_DARK, font=fl)
+    else:
+        draw.text(((W-tw)/2, y), "CIRCA", fill=CIRCA_BLUE, font=fl)
 
 
 def generate_account_activated_card(nombre, linea, distribuidor):
-    W, H = 700, 560
+    W, H = 1080, 880
     img = Image.new("RGB", (W, H), WHITE)
-    draw = ImageDraw.Draw(img)
-    draw.rectangle([0, 0, W, 7], fill=CIRCA_BLUE)
-    _logo(img, draw, W, 20, 52)
-    draw.line([50, 88, W-50, 88], fill=BORDER, width=1)
-    _draw_check(draw, W//2, 150, 52)
-    _ct(draw, "Cuenta activada", 218, _get_font(36, True), CIRCA_DARK, W)
-    _ct(draw, "Clave creada con exito", 262, _get_font(20, True), GREEN, W)
-    _rounded_rect(draw, (50, 302, W-50, 440), 18, BLUE_LIGHT, outline=CIRCA_BLUE)
-    _ct(draw, "CREDITO DISPONIBLE", 316, _get_font(16, True), CIRCA_BLUE, W)
-    _ct(draw, "S/ {:,.2f}".format(linea), 345, _get_font(58, True), CIRCA_DARK, W)
-    _ct(draw, nombre, 412, _get_font(18, True), GRAY_700, W)
-    _ct(draw, "Distribuidor: " + distribuidor, 438, _get_font(16), GRAY_500, W)
-    draw.line([50, 465, W-50, 465], fill=BORDER, width=1)
+    d = ImageDraw.Draw(img)
+    d.rectangle([0, 0, W, 10], fill=CIRCA_BLUE)
+    _logo(img, d, W, 30, 72)
+    d.line([70, 130, W-70, 130], fill=BORDER, width=2)
+    _chk(d, W//2, 220, 75)
+    _ct(d, "Cuenta activada", 320, _f(52, True), CIRCA_DARK, W)
+    _ct(d, "Clave creada con exito", 385, _f(30, True), GREEN, W)
+    _rr(d, (70, 445, W-70, 660), 24, BLUE_LIGHT, outline=CIRCA_BLUE)
+    _ct(d, "CREDITO DISPONIBLE", 470, _f(24, True), CIRCA_BLUE, W)
+    _ct(d, "S/ {:,.2f}".format(linea), 510, _f(84, True), CIRCA_DARK, W)
+    _ct(d, nombre, 620, _f(26, True), GRAY_700, W)
+    _ct(d, "Distribuidor: " + distribuidor, 660, _f(24), GRAY_500, W)
+    d.line([70, 710, W-70, 710], fill=BORDER, width=2)
     now = datetime.now()
-    _ct(draw, now.strftime("%d/%m/%Y %H:%M") + " | Circa", 480, _get_font(14), GRAY_500, W)
-    _ct(draw, "Compra hoy. Paga despues.", 502, _get_font(14), GRAY_500, W)
-    draw.rectangle([0, H-6, W, H], fill=CIRCA_BLUE)
+    _ct(d, now.strftime("%d/%m/%Y %H:%M") + " | Circa", 730, _f(22), GRAY_500, W)
+    _ct(d, "Compra hoy. Paga despues.", 762, _f(22), GRAY_500, W)
+    d.rectangle([0, H-8, W, H], fill=CIRCA_BLUE)
     buf = io.BytesIO()
     img.save(buf, format="PNG", quality=95)
     return buf.getvalue()
 
 
 def generate_contract_signed_card(nombre, ruc, linea, contract_hash):
-    W, H = 700, 540
+    W, H = 1080, 840
     img = Image.new("RGB", (W, H), WHITE)
-    draw = ImageDraw.Draw(img)
-    draw.rectangle([0, 0, W, 7], fill=CIRCA_BLUE)
-    _logo(img, draw, W, 20, 48)
-    draw.line([50, 85, W-50, 85], fill=BORDER, width=1)
-    _draw_check(draw, W//2, 140, 40)
-    _ct(draw, "Contrato firmado", 195, _get_font(30, True), CIRCA_DARK, W)
-    _rounded_rect(draw, (50, 240, W-50, 430), 16, GRAY_100, outline=BORDER)
-    fl = _get_font(15)
-    fv = _get_font(16, True)
-    y = 260
+    d = ImageDraw.Draw(img)
+    d.rectangle([0, 0, W, 10], fill=CIRCA_BLUE)
+    _logo(img, d, W, 28, 66)
+    d.line([70, 125, W-70, 125], fill=BORDER, width=2)
+    _chk(d, W//2, 210, 60)
+    _ct(d, "Contrato firmado", 290, _f(44, True), CIRCA_DARK, W)
+    _rr(d, (70, 360, W-70, 650), 20, GRAY_100, outline=BORDER)
+    fl = _f(22)
+    fv = _f(24, True)
+    y = 390
     for label, value in [("Bodega", nombre), ("RUC", ruc), ("Credito aprobado", "S/ {:,.2f}".format(linea)), ("Contrato", "Facilidad de Financiamiento v2.0"), ("Hash", (contract_hash[:16] if contract_hash else "---"))]:
-        draw.text((80, y), label, fill=GRAY_500, font=fl)
-        draw.text((260, y), value, fill=CIRCA_DARK, font=fv)
-        y += 34
-    draw.line([50, 450, W-50, 450], fill=BORDER, width=1)
+        d.text((110, y), label, fill=GRAY_500, font=fl)
+        d.text((370, y), value, fill=CIRCA_DARK, font=fv)
+        y += 50
+    d.line([70, 675, W-70, 675], fill=BORDER, width=2)
     now = datetime.now()
-    _ct(draw, "Firmado: " + now.strftime("%d/%m/%Y %H:%M"), 465, _get_font(14), GRAY_500, W)
-    _ct(draw, "Recibiras el contrato completo en PDF", 488, _get_font(14), CIRCA_BLUE, W)
-    draw.rectangle([0, H-6, W, H], fill=CIRCA_BLUE)
+    _ct(d, "Firmado: " + now.strftime("%d/%m/%Y %H:%M"), 700, _f(22), GRAY_500, W)
+    _ct(d, "Recibiras el contrato completo en PDF", 735, _f(22), CIRCA_BLUE, W)
+    d.rectangle([0, H-8, W, H], fill=CIRCA_BLUE)
     buf = io.BytesIO()
     img.save(buf, format="PNG", quality=95)
     return buf.getvalue()
 
 
 def generate_order_confirmed_card(numero, items_summary, monto, fee, total, dias, vencimiento):
-    W, H = 700, 560
+    W, H = 1080, 880
     img = Image.new("RGB", (W, H), WHITE)
-    draw = ImageDraw.Draw(img)
-    draw.rectangle([0, 0, W, 7], fill=GREEN)
-    _logo(img, draw, W, 18, 46)
-    draw.line([50, 80, W-50, 80], fill=BORDER, width=1)
-    _draw_check(draw, W//2, 135, 45)
-    _ct(draw, "Pedido " + numero, 195, _get_font(32, True), CIRCA_DARK, W)
-    _ct(draw, "CONFIRMADO", 235, _get_font(20, True), GREEN, W)
-    _rounded_rect(draw, (50, 275, W-50, 405), 18, GREEN_LIGHT, outline=GREEN)
+    d = ImageDraw.Draw(img)
+    d.rectangle([0, 0, W, 10], fill=GREEN)
+    _logo(img, d, W, 26, 64)
+    d.line([70, 120, W-70, 120], fill=BORDER, width=2)
+    _chk(d, W//2, 205, 65)
+    _ct(d, "Pedido " + numero, 290, _f(48, True), CIRCA_DARK, W)
+    _ct(d, "CONFIRMADO", 350, _f(28, True), GREEN, W)
+    _rr(d, (70, 405, W-70, 590), 24, GREEN_LIGHT, outline=GREEN)
     if dias > 0:
-        _ct(draw, "TOTAL FINANCIADO", 292, _get_font(15, True), GREEN, W)
+        _ct(d, "TOTAL FINANCIADO", 425, _f(22, True), GREEN, W)
     else:
-        _ct(draw, "TOTAL CONTADO", 292, _get_font(15, True), GREEN, W)
-    _ct(draw, "S/ {:,.2f}".format(total), 315, _get_font(52, True), CIRCA_DARK, W)
+        _ct(d, "TOTAL CONTADO", 425, _f(22, True), GREEN, W)
+    _ct(d, "S/ {:,.2f}".format(total), 460, _f(76, True), CIRCA_DARK, W)
     if dias > 0:
-        _ct(draw, "Monto: S/{:.2f}  |  Fee ({}d): S/{:.2f}".format(monto, dias, fee), 378, _get_font(14), GRAY_700, W)
-    y = 425
+        _ct(d, "Monto: S/{:.2f}  |  Fee ({}d): S/{:.2f}".format(monto, dias, fee), 560, _f(22), GRAY_700, W)
+    y = 620
     if dias > 0:
-        _ct(draw, "Plazo: {} dias  |  Vence: {}".format(dias, vencimiento), y, _get_font(16), GRAY_700, W)
-        y += 28
-        _ct(draw, "Pago a Circa por Yape o Plin al 986311567", y, _get_font(15), GRAY_500, W)
-        y += 28
+        _ct(d, "Plazo: {} dias  |  Vence: {}".format(dias, vencimiento), y, _f(24), GRAY_700, W)
+        y += 40
+        _ct(d, "Pago a Circa por Yape o Plin al 986311567", y, _f(22), GRAY_500, W)
+        y += 40
     else:
-        _ct(draw, "Tu distribuidor preparara tu pedido", y, _get_font(16), GRAY_700, W)
-        y += 28
-    _ct(draw, "Recibiras actualizaciones por WhatsApp", y, _get_font(15), CIRCA_BLUE, W)
-    draw.line([50, H-60, W-50, H-60], fill=BORDER, width=1)
+        _ct(d, "Tu distribuidor preparara tu pedido", y, _f(24), GRAY_700, W)
+        y += 40
+    _ct(d, "Recibiras actualizaciones por WhatsApp", y, _f(22), CIRCA_BLUE, W)
+    d.line([70, H-80, W-70, H-80], fill=BORDER, width=2)
     now = datetime.now()
-    _ct(draw, now.strftime("%d/%m/%Y %H:%M") + " | Circa", H-45, _get_font(13), GRAY_500, W)
-    draw.rectangle([0, H-6, W, H], fill=GREEN)
+    _ct(d, now.strftime("%d/%m/%Y %H:%M") + " | Circa", H-60, _f(20), GRAY_500, W)
+    d.rectangle([0, H-8, W, H], fill=GREEN)
     buf = io.BytesIO()
     img.save(buf, format="PNG", quality=95)
     return buf.getvalue()
