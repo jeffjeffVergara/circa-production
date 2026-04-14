@@ -513,30 +513,34 @@ async def _send_payment_options(phone, pedido_id, total, items_text, bodega_id=N
     if linea >= total:
         await meta_client.send_text(phone,
             f"Tu pedido:\n{items_text}\n\n"
-            f"TOTAL: S/{total:.2f}\n"
-            f"Linea disponible: *S/{linea:.2f}* \n\n"
-            f"Cuanto deseas financiar?")
-        await meta_client.send_buttons(phone,
-            f"Elige monto a financiar:",
-            [
-                {"id": f"FIN100_{pid}", "title": f"Total S/{total:.2f}"[:20]},
-                {"id": f"FIN50_{pid}", "title": f"50% S/{fin50:.2f}"[:20]},
-                {"id": f"FIN25_{pid}", "title": f"25% S/{fin25:.2f}"[:20]},
-            ])
+            f"*TOTAL: S/{total:.2f}*\n"
+            f"Credito disponible: *S/{linea:.2f}*")
+        await meta_client.send_list(
+            to=phone,
+            body="Cuanto deseas financiar con Circa?",
+            button_text="Elegir opcion",
+            sections=[{"title": "Financiamiento", "rows": [
+                {"id": f"CONTADO_{pid}", "title": "Pagar todo al contado", "description": f"Sin financiamiento"},
+                {"id": f"FIN25_{pid}", "title": f"25% — S/{fin25:.2f}", "description": f"Contado: S/{round(total-fin25,2):.2f}"},
+                {"id": f"FIN50_{pid}", "title": f"50% — S/{fin50:.2f}", "description": f"Contado: S/{round(total-fin50,2):.2f}"},
+                {"id": f"FIN100_{pid}", "title": f"Financiar todo", "description": f"S/{min(total,linea):.2f} con Circa"},
+            ]}])
     elif linea > 0:
         contado_min = total - linea
         await meta_client.send_text(phone,
             f"Tu pedido:\n{items_text}\n\n"
-            f"TOTAL: S/{total:.2f}\n"
-            f"Linea disponible: *S/{linea:.2f}*\n\n"
-            f"Cuanto deseas financiar?")
-        await meta_client.send_buttons(phone,
-            f"Contado minimo: S/{contado_min:.2f}",
-            [
-                {"id": f"FIN100_{pid}", "title": f"Max S/{linea:.2f}"[:20]},
-                {"id": f"FIN50_{pid}", "title": f"50% S/{fin50:.2f}"[:20]},
-                {"id": f"CONTADO_{pid}", "title": "Solo contado"},
-            ])
+            f"*TOTAL: S/{total:.2f}*\n"
+            f"Credito disponible: *S/{linea:.2f}*\n"
+            f"Minimo al contado: S/{contado_min:.2f}")
+        await meta_client.send_list(
+            to=phone,
+            body="Cuanto deseas financiar con Circa?",
+            button_text="Elegir opcion",
+            sections=[{"title": "Financiamiento", "rows": [
+                {"id": f"CONTADO_{pid}", "title": "Pagar todo al contado", "description": f"Sin financiamiento"},
+                {"id": f"FIN50_{pid}", "title": f"50% — S/{fin50:.2f}", "description": f"Contado: S/{round(total-fin50,2):.2f}"},
+                {"id": f"FIN100_{pid}", "title": f"Usar todo mi credito", "description": f"S/{linea:.2f} con Circa"},
+            ]}])
     else:
         tel_fmt = f"+{phone}" if not phone.startswith("+") else phone
         db.sb.table("sesiones").delete().eq("telefono", tel_fmt).execute()
