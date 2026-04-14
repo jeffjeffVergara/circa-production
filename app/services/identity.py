@@ -135,12 +135,13 @@ async def _ruc_apiinti(ruc: str) -> dict | None:
         if r.status_code != 200:
             logger.warning(f"ApiInti RUC {ruc}: HTTP {r.status_code}")
             return None
-        d = r.json()
+        resp = r.json()
+        d = resp.get("data", resp)
         return {
             "ruc": d.get("ruc") or ruc,
             "razon_social": d.get("razonSocial") or d.get("nombre_o_razon_social", ""),
             "estado": d.get("estado", ""),
-            "condicion": d.get("condicion", ""),
+            "condicion": d.get("condicionDomicilio") or d.get("condicion", ""),
             "direccion": d.get("direccion", ""),
             "distrito": d.get("distrito", ""),
             "provincia": d.get("provincia", ""),
@@ -184,7 +185,7 @@ async def _ruc_peruapi(ruc: str) -> dict | None:
             "ruc": d.get("ruc", ruc),
             "razon_social": d.get("razon_social", ""),
             "estado": d.get("estado", ""),
-            "condicion": d.get("condicion", ""),
+            "condicion": d.get("condicionDomicilio") or d.get("condicion", ""),
             "direccion": d.get("direccion", ""),
             "distrito": d.get("distrito", ""),
             "provincia": d.get("provincia", ""),
@@ -230,7 +231,7 @@ async def _ruc_apiperu(ruc: str) -> dict | None:
             "ruc": d.get("ruc", ruc),
             "razon_social": d.get("nombre_o_razon_social", ""),
             "estado": d.get("estado", ""),
-            "condicion": d.get("condicion", ""),
+            "condicion": d.get("condicionDomicilio") or d.get("condicion", ""),
             "direccion": d.get("direccion", ""),
             "distrito": d.get("distrito", ""),
             "provincia": d.get("provincia", ""),
@@ -304,12 +305,13 @@ def _ruc_apiinti_sync(ruc: str) -> dict | None:
     if r.status_code != 200:
         logger.warning(f"ApiInti RUC sync {ruc}: HTTP {r.status_code}")
         return None
-    d = r.json()
+    resp = r.json()
+    d = resp.get("data", resp)
     return {
         "ruc": d.get("ruc") or ruc,
         "razon_social": d.get("razonSocial") or d.get("nombre_o_razon_social", ""),
         "estado": d.get("estado", ""),
-        "condicion": d.get("condicion", ""),
+        "condicion": d.get("condicionDomicilio") or d.get("condicion", ""),
         "direccion": d.get("direccion", ""),
         "distrito": d.get("distrito", ""),
         "provincia": d.get("provincia", ""),
@@ -324,7 +326,8 @@ def _dni_apiinti_sync(dni: str) -> dict | None:
     if r.status_code != 200:
         logger.warning(f"ApiInti DNI sync {dni}: HTTP {r.status_code}")
         return None
-    d = r.json()
+    resp = r.json()
+    d = resp.get("data", resp)
     nombres = d.get("nombres", "")
     ap = d.get("apellidoPaterno") or d.get("apellido_paterno", "")
     am = d.get("apellidoMaterno") or d.get("apellido_materno", "")
@@ -333,7 +336,7 @@ def _dni_apiinti_sync(dni: str) -> dict | None:
         "nombres": nombres,
         "apellido_paterno": ap,
         "apellido_materno": am,
-        "nombre_completo": f"{ap} {am} {nombres}".strip(),
+        "nombre_completo": d.get("nombreCompleto") or f"{ap} {am} {nombres}".strip(),
     }
 
 
@@ -347,7 +350,7 @@ def _ruc_apiperu_sync(ruc: str) -> dict | None:
         "ruc": d.get("ruc", ruc),
         "razon_social": d.get("nombre_o_razon_social", ""),
         "estado": d.get("estado", ""),
-        "condicion": d.get("condicion", ""),
+        "condicion": d.get("condicionDomicilio") or d.get("condicion", ""),
         "direccion": d.get("direccion", ""),
         "distrito": d.get("distrito", ""),
         "provincia": d.get("provincia", ""),
