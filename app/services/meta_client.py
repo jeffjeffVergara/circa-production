@@ -659,7 +659,7 @@ async def send_contract_document(to: str, file_path: str, bodega_nombre: str) ->
     
     # 2) Send as document message
     safe_name = bodega_nombre.replace(" ", "_").replace(".", "")
-    result = await _send_message({
+    result = await _send(to, {
         "messaging_product": "whatsapp",
         "to": to,
         "type": "document",
