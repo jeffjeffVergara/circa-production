@@ -20,6 +20,7 @@ import json, hashlib, unicodedata, os
 from datetime import datetime, date, timedelta
 from app.services import db, messages as msg, fees
 from app.services.pin import check_pin
+from app.services.identity import consultar_ruc_sync, consultar_dni_sync, validate_ruc_format, validate_dni_format, is_ruc_eligible
 from app.config import TWILIO_FROM
 
 
@@ -134,54 +135,108 @@ def handle_message(telefono: str, body: str, media_url: str = None) -> list:
 
         bodega = db.get_bodega_by_ruc(ruc)
         if not bodega:
-            return ["❌ Este RUC no está pre-aprobado en Circa.\n\nVerifica el número e intenta de nuevo."]
+            return ["\u274c Este RUC no tiene una l\u00ednea pre-aprobada en Circa.\n\nVerifica el n\u00famero e intenta de nuevo."]
 
         if bodega["telefono_whatsapp"] != telefono and bodega["telefono_whatsapp"] != f"+{telefono.lstrip('+')}":
-            return ["❌ Este RUC no está asociado a tu número de WhatsApp."]
+            return ["\u274c Este RUC no est\u00e1 asociado a tu n\u00famero de WhatsApp."]
+
+        # Verify with SUNAT via ApiInti
+        sunat = consultar_ruc_sync(ruc)
+        if sunat:
+            eligible, reason = is_ruc_eligible(sunat)
+            if not eligible:
+                return [f"\u274c {reason}"]
+            razon_social = sunat.get("razon_social") or bodega["razon_social"]
+            direccion = sunat.get("direccion") or bodega["direccion_fiscal"] or "Sin direcci\u00f3n"
+            rep_legal = sunat.get("rep_legal") or bodega.get("representante_legal") or "No disponible"
+            # Update bodega with SUNAT data
+            db.update_bodega(bodega["id"], {
+                "razon_social": razon_social,
+                "direccion_fiscal": direccion,
+                "representante_legal": rep_legal if rep_legal != "No disponible" else bodega.get("representante_legal"),
+            })
+        else:
+            razon_social = bodega["razon_social"]
+            direccion = bodega["direccion_fiscal"] or "Sin direcci\u00f3n"
+            rep_legal = bodega.get("representante_legal") or "No disponible"
 
         datos["ruc"] = ruc
         datos["bodega_id"] = bodega["id"]
         db.upsert_session(telefono, "reg_ruc", datos, bodega["id"])
         return [{
             "signal": "RUC_VERIFIED",
-            "razon_social": bodega["razon_social"],
+            "razon_social": razon_social,
             "ruc": ruc,
-            "direccion": bodega["direccion_fiscal"] or "Sin dirección",
-            "representante": bodega["representante_legal"] or "Sin representante",
+            "direccion": direccion,
+            "representante": rep_legal,
         }]
 
-    # ═══ DNI ═══
+    # \u2550\u2550\u2550 DNI \u2550\u2550\u2550
     if fase == "reg_dni":
-        if media_url or body_n in ("DNI", "FOTO", "LISTO", "SI", "SIMULAR_DNI", "SIMULAR DNI"):
-            bodega_id = datos.get("bodega_id")
-            if not bodega_id:
-                db.upsert_session(telefono, "welcome", {}, None)
-                return [{"signal": "WELCOME", "nombre": "", "linea": 500, "distribuidor": ""}]
-            
-            result = db.sb.table("bodegas").select("*").eq("id", bodega_id).execute()
-            bodega = result.data[0] if result.data else None
-            if not bodega:
-                db.upsert_session(telefono, "welcome", {}, None)
-                return ["❌ Error al consultar tu bodega. Escribe *Hola* para reiniciar."]
-            
-            if media_url:
-                db.update_bodega(bodega_id, {"dni_foto_url": media_url})
-            datos["dni_verified"] = True
+        bodega_id = datos.get("bodega_id")
+        if not bodega_id:
+            db.upsert_session(telefono, "welcome", {}, None)
+            return [{"signal": "WELCOME", "nombre": "", "linea": 500, "distribuidor": ""}]
 
-            # If this is a PIN reset, skip to reg_pin
+        result = db.sb.table("bodegas").select("*").eq("id", bodega_id).execute()
+        bodega_data = result.data[0] if result.data else None
+        if not bodega_data:
+            db.upsert_session(telefono, "welcome", {}, None)
+            return ["\u274c Error al consultar tu bodega. Escribe *Hola* para reiniciar."]
+
+        # Check if DNI already verified (waiting for photo)
+        if datos.get("dni_verified"):
+            if media_url or body_n in ("SELFIE", "SIMULAR_SELFIE", "SIMULAR SELFIE", "SI", "LISTO", "FOTO"):
+                if media_url:
+                    db.update_bodega(bodega_id, {"dni_foto_url": media_url})
+                if datos.get("is_reset"):
+                    db.upsert_session(telefono, "reg_pin", datos, bodega_id)
+                    return [{"signal": "PIN_ASK", "mode": "create", "bodega_id": bodega_id}]
+                db.upsert_session(telefono, "reg_biometria", datos, bodega_id)
+                return [{"signal": "BIOMETRIA_ASK", "representante": bodega_data.get("representante_legal", "")}]
+            return [{"signal": "DNI_ASK"}]
+
+        # User types DNI number (8 digits)
+        dni = body_raw.replace(" ", "")
+        valid, error_msg = validate_dni_format(dni)
+        if not valid:
+            if datos.get("is_reset"):
+                return ["Escribe el DNI del representante legal (8 d\u00edgitos):"]
+            return [{"signal": "DNI_ASK"}]
+
+        # Verify with RENIEC via ApiInti
+        reniec = consultar_dni_sync(dni)
+        if reniec:
+            nombre_completo = reniec.get("nombre_completo", "")
+            db.update_bodega(bodega_id, {
+                "dni_representante": dni,
+                "representante_legal": nombre_completo or bodega_data.get("representante_legal", ""),
+            })
+            datos["dni_verified"] = True
+            datos["dni_nombre"] = nombre_completo
+            db.upsert_session(telefono, "reg_dni", datos, bodega_id)
+            
             if datos.get("is_reset"):
                 db.upsert_session(telefono, "reg_pin", datos, bodega_id)
-                return [{"signal": "PIN_ASK", "mode": "create", "bodega_id": datos.get("bodega_id", "")}]
-
+                return [
+                    f"\u2705 *DNI verificado en RENIEC*\n{nombre_completo}",
+                    {"signal": "PIN_ASK", "mode": "create", "bodega_id": bodega_id},
+                ]
+            
             db.upsert_session(telefono, "reg_biometria", datos, bodega_id)
-            return [{
-                "signal": "BIOMETRIA_ASK",
-                "representante": bodega.get("representante_legal", ""),
-            }]
-
-        if datos.get("is_reset"):
-            return ["📷 Envía una *foto de tu DNI* para verificar tu identidad."]
-        return [{"signal": "DNI_ASK"}]
+            return [
+                f"\u2705 *DNI verificado en RENIEC*\n{nombre_completo}",
+                {"signal": "BIOMETRIA_ASK", "representante": nombre_completo},
+            ]
+        else:
+            # RENIEC failed — continue with manual data
+            datos["dni_verified"] = True
+            db.update_bodega(bodega_id, {"dni_representante": dni})
+            db.upsert_session(telefono, "reg_biometria", datos, bodega_id)
+            return [
+                f"\u2705 DNI registrado: {dni}",
+                {"signal": "BIOMETRIA_ASK", "representante": bodega_data.get("representante_legal", "")},
+            ]
 
     # ═══ BIOMETRIA ═══
     if fase == "reg_biometria":

@@ -259,3 +259,116 @@ async def _dni_apiperu(dni: str) -> dict | None:
             "apellido_materno": am,
             "nombre_completo": f"{ap} {am} {nombres}".strip(),
         }
+
+
+
+# ══════════════════════════════════════════════
+# SYNC VERSIONS (for state_machine.py)
+# ══════════════════════════════════════════════
+
+def consultar_ruc_sync(ruc: str) -> dict | None:
+    """Sync version of consultar_ruc for state machine."""
+    if not ruc or len(ruc) != 11 or not ruc.isdigit():
+        return None
+    try:
+        if PERU_API_PROVIDER == "apiinti":
+            return _ruc_apiinti_sync(ruc)
+        elif PERU_API_PROVIDER == "apiperu":
+            return _ruc_apiperu_sync(ruc)
+        else:
+            return None
+    except Exception as e:
+        logger.error(f"Sync RUC error {ruc}: {e}")
+        return None
+
+
+def consultar_dni_sync(dni: str) -> dict | None:
+    """Sync version of consultar_dni for state machine."""
+    if not dni or len(dni) != 8 or not dni.isdigit():
+        return None
+    try:
+        if PERU_API_PROVIDER == "apiinti":
+            return _dni_apiinti_sync(dni)
+        elif PERU_API_PROVIDER == "apiperu":
+            return _dni_apiperu_sync(dni)
+        else:
+            return None
+    except Exception as e:
+        logger.error(f"Sync DNI error {dni}: {e}")
+        return None
+
+
+def _ruc_apiinti_sync(ruc: str) -> dict | None:
+    url = f"https://api.apiinti.dev/api/v1/ruc/{ruc}"
+    r = httpx.get(url, headers={"Authorization": f"Bearer {PERU_API_TOKEN}"}, timeout=TIMEOUT)
+    if r.status_code != 200:
+        logger.warning(f"ApiInti RUC sync {ruc}: HTTP {r.status_code}")
+        return None
+    d = r.json()
+    return {
+        "ruc": d.get("ruc") or ruc,
+        "razon_social": d.get("razonSocial") or d.get("nombre_o_razon_social", ""),
+        "estado": d.get("estado", ""),
+        "condicion": d.get("condicion", ""),
+        "direccion": d.get("direccion", ""),
+        "distrito": d.get("distrito", ""),
+        "provincia": d.get("provincia", ""),
+        "departamento": d.get("departamento", ""),
+        "rep_legal": d.get("representante_legal") or d.get("rep_legal"),
+    }
+
+
+def _dni_apiinti_sync(dni: str) -> dict | None:
+    url = f"https://api.apiinti.dev/api/v1/dni/{dni}"
+    r = httpx.get(url, headers={"Authorization": f"Bearer {PERU_API_TOKEN}"}, timeout=TIMEOUT)
+    if r.status_code != 200:
+        logger.warning(f"ApiInti DNI sync {dni}: HTTP {r.status_code}")
+        return None
+    d = r.json()
+    nombres = d.get("nombres", "")
+    ap = d.get("apellidoPaterno") or d.get("apellido_paterno", "")
+    am = d.get("apellidoMaterno") or d.get("apellido_materno", "")
+    return {
+        "dni": dni,
+        "nombres": nombres,
+        "apellido_paterno": ap,
+        "apellido_materno": am,
+        "nombre_completo": f"{ap} {am} {nombres}".strip(),
+    }
+
+
+def _ruc_apiperu_sync(ruc: str) -> dict | None:
+    url = f"https://apiperu.dev/api/ruc/{ruc}"
+    r = httpx.get(url, headers={"Authorization": f"Bearer {PERU_API_TOKEN}", "Content-Type": "application/json"}, timeout=TIMEOUT)
+    if r.status_code != 200:
+        return None
+    d = r.json().get("data", {})
+    return {
+        "ruc": d.get("ruc", ruc),
+        "razon_social": d.get("nombre_o_razon_social", ""),
+        "estado": d.get("estado", ""),
+        "condicion": d.get("condicion", ""),
+        "direccion": d.get("direccion", ""),
+        "distrito": d.get("distrito", ""),
+        "provincia": d.get("provincia", ""),
+        "departamento": d.get("departamento", ""),
+        "rep_legal": None,
+    }
+
+
+def _dni_apiperu_sync(dni: str) -> dict | None:
+    url = f"https://apiperu.dev/api/dni/{dni}"
+    r = httpx.get(url, headers={"Authorization": f"Bearer {PERU_API_TOKEN}", "Content-Type": "application/json"}, timeout=TIMEOUT)
+    if r.status_code != 200:
+        return None
+    d = r.json().get("data", {})
+    nombres = d.get("nombres", "")
+    ap = d.get("apellido_paterno", "")
+    am = d.get("apellido_materno", "")
+    return {
+        "dni": dni,
+        "nombres": nombres,
+        "apellido_paterno": ap,
+        "apellido_materno": am,
+        "nombre_completo": f"{ap} {am} {nombres}".strip(),
+    }
