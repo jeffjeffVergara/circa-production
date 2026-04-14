@@ -8,6 +8,7 @@ from fastapi import FastAPI, Request, Form, HTTPException
 from fastapi.responses import PlainTextResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
+from app.routes.distribuidor import router as distribuidor_router
 from twilio.twiml.messaging_response import MessagingResponse
 from app.state_machine import handle_message
 from app.services.twilio_client import (
@@ -38,6 +39,7 @@ logger = logging.getLogger("circa")
 app = FastAPI(title="Circa MVP", version="2.3.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 app.mount("/static", StaticFiles(directory="static"), name="static")
+app.include_router(distribuidor_router)
 
 
 def _bot_wa_number() -> str:
