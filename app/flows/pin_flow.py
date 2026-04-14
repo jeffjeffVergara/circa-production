@@ -149,7 +149,7 @@ def _handle_pin_create(data: dict) -> dict:
                     f"https://graph.facebook.com/v23.0/{phone_id}/messages",
                     headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
                     json={"messaging_product": "whatsapp", "to": phone, "type": "text",
-                          "text": {"body": f"\u2705 *Cuenta activada*\nL\u00ednea disponible: *S/{linea:.2f}*\n\nEscribe MENU para empezar a pedir."}},
+                          "text": {"body": f"\U0001f512 *Clave creada con \u00e9xito*\n\nTu clave Circa de 4 d\u00edgitos ha sido guardada.\n\n\u2705 *Cuenta activada*\nL\u00ednea disponible: *S/{linea:.2f}*\n\nEscribe MENU para empezar a pedir."}},
                     timeout=10,
                 )
             except Exception as e:
