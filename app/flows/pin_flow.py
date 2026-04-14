@@ -303,6 +303,47 @@ def _verify_pin_for_payment(pin: str, bodega_id: str) -> dict:
                 timeout=10,
             )
             logger.info(f"Confirmation sent to {phone}")
+            # Send branded order confirmation card
+            try:
+                from app.services.cards import generate_order_confirmed_card
+                from datetime import datetime, timedelta
+                venc = (datetime.now() + timedelta(days=dias)).strftime("%d/%m/%Y") if dias > 0 else "Contado"
+                items_raw = datos.get("items", [])
+                items_str = ", ".join([i.get("nombre", i.get("producto", "?"))[:20] for i in items_raw][:3])
+                if len(items_raw) > 3:
+                    items_str += f" (+{len(items_raw)-3} mas)"
+                if not items_str:
+                    items_str = "Ver detalle en WhatsApp"
+                card_bytes = generate_order_confirmed_card(
+                    numero=num, items_summary=items_str,
+                    monto=monto, fee=fee, total=monto+fee if dias > 0 else monto,
+                    dias=dias, vencimiento=venc,
+                )
+                import tempfile
+                tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+                tmp.write(card_bytes)
+                tmp.close()
+                upload_r = req.post(
+                    f"https://graph.facebook.com/v23.0/{phone_id}/media",
+                    headers={"Authorization": f"Bearer {token}"},
+                    data={"messaging_product": "whatsapp", "type": "image/png"},
+                    files={"file": ("order_card.png", open(tmp.name, "rb"), "image/png")},
+                    timeout=15,
+                )
+                if upload_r.status_code == 200:
+                    media_id = upload_r.json().get("id")
+                    req.post(
+                        f"https://graph.facebook.com/v23.0/{phone_id}/messages",
+                        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                        json={"messaging_product": "whatsapp", "to": phone, "type": "image",
+                              "image": {"id": media_id}},
+                        timeout=10,
+                    )
+                    logger.info(f"Order card sent for {num}")
+                import os as _os3
+                _os3.unlink(tmp.name)
+            except Exception as card_err:
+                logger.error(f"Order card error: {card_err}")
         except Exception as e:
             logger.error(f"Confirmation msg error: {e}")
         
