@@ -184,19 +184,43 @@ def handle_message(telefono: str, body: str, media_url: str = None) -> list:
             db.upsert_session(telefono, "welcome", {}, None)
             return ["\u274c Error al consultar tu bodega. Escribe *Hola* para reiniciar."]
 
-        # Check if DNI already verified (waiting for photo)
-        if datos.get("dni_verified"):
-            if media_url or body_n in ("SELFIE", "SIMULAR_SELFIE", "SIMULAR SELFIE", "SI", "LISTO", "FOTO"):
-                if media_url:
-                    db.update_bodega(bodega_id, {"dni_foto_url": media_url})
-                if datos.get("is_reset"):
-                    db.upsert_session(telefono, "reg_pin", datos, bodega_id)
-                    return [{"signal": "PIN_ASK", "mode": "create", "bodega_id": bodega_id}]
-                db.upsert_session(telefono, "reg_biometria", datos, bodega_id)
-                return [{"signal": "BIOMETRIA_ASK", "representante": bodega_data.get("representante_legal", "")}]
-            return [{"signal": "DNI_ASK"}]
+        # ── Step 2: DNI number verified, waiting for photo of physical DNI ──
+        if datos.get("dni_verified") and not datos.get("dni_photo_verified"):
+            if media_url:
+                try:
+                    from app.services.vision import download_whatsapp_media_sync, verify_dni_photo
+                    image_bytes = download_whatsapp_media_sync(media_url)
+                    if image_bytes:
+                        check = verify_dni_photo(
+                            image_bytes,
+                            datos.get("dni_number", ""),
+                            datos.get("dni_nombre", ""),
+                        )
+                        if not check.get("valid", False) or check.get("matches_expected") == False:
+                            reason = check.get("reason", "No se pudo verificar el DNI.")
+                            return [f"\u274c {reason}\n\nEnv\u00eda una foto clara del *anverso de tu DNI f\u00edsico*."]
+                        datos["dni_photo_verified"] = True
+                        db.upsert_session(telefono, "reg_biometria", datos, bodega_id)
+                        nombre = datos.get("dni_nombre", "")
+                        return [
+                            f"\u2705 *Documento verificado*\nDNI {datos.get('dni_number', '')} \u2014 {nombre}\n\n"
+                            f"\U0001f512 Por tu seguridad, ya puedes eliminar la foto de este chat.",
+                            {"signal": "BIOMETRIA_ASK", "representante": nombre},
+                        ]
+                    else:
+                        return ["\u274c No pude descargar la imagen. Intenta enviarla de nuevo."]
+                except Exception as e:
+                    import logging
+                    logging.getLogger("circa").error(f"DNI photo check error: {e}", exc_info=True)
+                    datos["dni_photo_verified"] = True
+                    db.upsert_session(telefono, "reg_biometria", datos, bodega_id)
+                    return [{"signal": "BIOMETRIA_ASK", "representante": datos.get("dni_nombre", "")}]
+            return [
+                "\U0001f4f8 Env\u00eda una *foto del anverso de tu DNI f\u00edsico* para verificar que lo tienes en tu poder.\n\n"
+                "\U0001f512 Tip: env\u00edala como *Vista \u00fanica* (\u2460) para mayor seguridad."
+            ]
 
-        # User types DNI number (8 digits)
+        # ── Step 1: User types DNI number (8 digits) ──
         dni = body_raw.replace(" ", "")
         valid, error_msg = validate_dni_format(dni)
         if not valid:
@@ -212,20 +236,15 @@ def handle_message(telefono: str, body: str, media_url: str = None) -> list:
             # Cross-check: DNI name must match representante legal from SUNAT/bodega
             rep_legal = bodega_data.get("representante_legal", "")
             if rep_legal and nombre_reniec:
-                # Normalize both names for comparison
                 import unicodedata
                 def _norm(s):
                     s = unicodedata.normalize("NFKD", s.upper())
                     return "".join(c for c in s if not unicodedata.combining(c)).strip()
-                
                 norm_reniec = _norm(nombre_reniec)
                 norm_rep = _norm(rep_legal)
-                
-                # Check if names match (allow partial — last names must match)
                 reniec_parts = set(norm_reniec.replace(",", "").split())
                 rep_parts = set(norm_rep.replace(",", "").split())
                 common = reniec_parts & rep_parts
-                
                 if len(common) < 2:
                     return [
                         f"\u274c El DNI {dni} pertenece a *{nombre_reniec}*, "
@@ -238,8 +257,8 @@ def handle_message(telefono: str, body: str, media_url: str = None) -> list:
                 "representante_legal": nombre_reniec or bodega_data.get("representante_legal", ""),
             })
             datos["dni_verified"] = True
+            datos["dni_number"] = dni
             datos["dni_nombre"] = nombre_reniec
-            db.upsert_session(telefono, "reg_dni", datos, bodega_id)
             
             if datos.get("is_reset"):
                 db.upsert_session(telefono, "reg_pin", datos, bodega_id)
@@ -248,16 +267,18 @@ def handle_message(telefono: str, body: str, media_url: str = None) -> list:
                     {"signal": "PIN_ASK", "mode": "create", "bodega_id": bodega_id},
                 ]
             
-            db.upsert_session(telefono, "reg_biometria", datos, bodega_id)
+            db.upsert_session(telefono, "reg_dni", datos, bodega_id)
             return [
-                f"\u2705 *DNI verificado en RENIEC*\nIdentidad confirmada: {nombre_reniec}",
-                {"signal": "BIOMETRIA_ASK", "representante": nombre_reniec},
+                f"\u2705 *DNI verificado en RENIEC*\n{nombre_reniec}\n\n"
+                f"\U0001f4f8 Ahora env\u00eda una *foto del anverso de tu DNI f\u00edsico* para confirmar que lo tienes en tu poder.\n\n"
+                f"\U0001f512 Tip: env\u00edala como *Vista \u00fanica* (\u2460) para mayor seguridad."
             ]
         else:
             return [
                 "\u26a0\ufe0f No pudimos verificar el DNI en RENIEC. Intenta de nuevo.\n\n"
                 "Escribe el *DNI del representante legal* (8 d\u00edgitos):"
             ]
+
 
     # \u2550\u2550\u2550 BIOMETRIA \u2550\u2550\u2550
     if fase == "reg_biometria":
