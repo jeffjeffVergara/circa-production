@@ -508,9 +508,9 @@ async def meta_webhook_incoming(request: Request):
                     bod_id = bodega_ac["id"]
                     dist_nombre = "Red de distribuidores Circa"
                     if bodega_ac.get("distribuidor_id"):
-                        dist_r = db.sb.table("distribuidores").select("nombre").eq("id", bodega_ac["distribuidor_id"]).limit(1).execute()
+                        dist_r = db.sb.table("distribuidores").select("nombre_comercial").eq("id", bodega_ac["distribuidor_id"]).limit(1).execute()
                         if dist_r.data:
-                            dist_nombre = dist_r.data[0]["nombre"]
+                            dist_nombre = dist_r.data[0]["nombre_comercial"]
                     now = datetime.now()
                     contract_path, contract_hash = generate_contract({
                         "razon_social": bodega_ac.get("razon_social", ""),
