@@ -9,3 +9,4 @@ pydantic>=2.9.0
 python-multipart==0.0.12
 cryptography>=42.0.0
 # force rebuild v5 - added flows infrastructure
+reportlab

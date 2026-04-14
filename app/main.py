@@ -499,6 +499,53 @@ async def meta_webhook_incoming(request: Request):
             if msg["message_id"]:
                 await meta_client.mark_as_read(msg["message_id"])
             continue
+        if btn == "ACEPTO":
+            try:
+                from datetime import datetime
+                from app.services.contract_generator import generate_contract
+                bodega_ac = db.get_bodega_by_phone(telefono)
+                if bodega_ac:
+                    bod_id = bodega_ac["id"]
+                    dist_nombre = "Red de distribuidores Circa"
+                    if bodega_ac.get("distribuidor_id"):
+                        dist_r = db.sb.table("distribuidores").select("nombre").eq("id", bodega_ac["distribuidor_id"]).limit(1).execute()
+                        if dist_r.data:
+                            dist_nombre = dist_r.data[0]["nombre"]
+                    now = datetime.now()
+                    contract_path, contract_hash = generate_contract({
+                        "razon_social": bodega_ac.get("razon_social", ""),
+                        "ruc": bodega_ac.get("ruc", ""),
+                        "representante_legal": bodega_ac.get("representante_legal", ""),
+                        "dni_representante": bodega_ac.get("dni_representante", ""),
+                        "direccion_fiscal": bodega_ac.get("direccion_fiscal", ""),
+                        "direccion_despacho": bodega_ac.get("direccion_despacho", ""),
+                        "email": bodega_ac.get("email", ""),
+                        "linea_aprobada": bodega_ac.get("linea_aprobada", 500),
+                        "nombre_comercial": bodega_ac.get("nombre_comercial", ""),
+                        "distribuidor_nombre": dist_nombre,
+                        "telefono": telefono.replace("+51", "").replace("+", ""),
+                        "fecha_firma": now.strftime("%d/%m/%Y"),
+                        "hora_firma": now.strftime("%H:%M:%S"),
+                    })
+                    nombre = bodega_ac.get("nombre_comercial") or bodega_ac.get("razon_social", "Bodega")
+                    await meta_client.send_contract_document(telefono, contract_path, nombre)
+                    db.sb.table("bodegas").update({
+                        "contrato_hash": contract_hash,
+                        "contrato_firmado_at": now.isoformat(),
+                    }).eq("id", bod_id).execute()
+                    import os
+                    try: os.remove(contract_path)
+                    except: pass
+                    await meta_client.send_pin_request(telefono, mode="create", bodega_id=bod_id)
+                    logger.info(f"Contract signed for bodega {bod_id}, hash={contract_hash}")
+                else:
+                    await meta_client.send_text(telefono, "Error. Escribe MENU para empezar.")
+            except Exception as e:
+                logger.error(f"ACEPTO handler error: {e}", exc_info=True)
+                await meta_client.send_text(telefono, "Error al procesar. Intenta de nuevo.")
+            if msg["message_id"]:
+                await meta_client.mark_as_read(msg["message_id"])
+            continue
         if btn == "PEDIDO":
             try:
                 bodega_ped = db.get_bodega_by_phone(telefono)

@@ -628,3 +628,48 @@ async def notify_distribuidor_new_order(distribuidor_wa: str, order_number: str,
             {"id": f"RECHAZAR_{order_number}", "title": "❌ Rechazar"},
         ]
     )
+
+
+# ══════════════════════════════════════════════
+# CONTRACT PDF SENDING
+# ══════════════════════════════════════════════
+
+async def send_contract_document(to: str, file_path: str, bodega_nombre: str) -> bool:
+    """Upload and send contract PDF via WhatsApp."""
+    import os as _os
+    
+    # 1) Upload PDF to Meta
+    url_upload = f"{GRAPH_API_URL}/{_phone_number_id()}/media"
+    filename = _os.path.basename(file_path)
+    
+    async with httpx.AsyncClient(timeout=30) as client:
+        with open(file_path, "rb") as f:
+            resp = await client.post(
+                url_upload,
+                headers={"Authorization": f"Bearer {_access_token()}"},
+                data={"messaging_product": "whatsapp", "type": "application/pdf"},
+                files={"file": (filename, f, "application/pdf")},
+            )
+    
+    if resp.status_code != 200:
+        logger.error(f"Contract upload failed: {resp.text}")
+        return False
+    
+    media_id = resp.json().get("id")
+    
+    # 2) Send as document message
+    safe_name = bodega_nombre.replace(" ", "_").replace(".", "")
+    result = await _send_message({
+        "messaging_product": "whatsapp",
+        "to": to,
+        "type": "document",
+        "document": {
+            "id": media_id,
+            "filename": f"Contrato_Circa_{safe_name}.pdf",
+            "caption": f"Contrato de Facilidad de Financiamiento — {bodega_nombre}\n\nEste documento confirma tu aceptacion de los terminos de Circa."
+        }
+    })
+    
+    if result:
+        logger.info(f"Contract PDF sent to {to}")
+    return result is not None
