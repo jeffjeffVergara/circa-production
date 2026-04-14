@@ -87,6 +87,8 @@ def verify_selfie(image_bytes: bytes) -> dict:
                                 "4) Es una foto real tomada en el momento (no foto de foto, no pantalla, no impresion). "
                                 "5) El rostro esta bien iluminado, nitido y sin obstrucciones (lentes oscuros, mascarilla, gorro que tape la cara). "
                                 "6) Los ojos estan abiertos y visibles. "
+                                "7) Parece una selfie tomada EN ESTE MOMENTO (no una foto antigua, no una foto de otra foto, no una captura de pantalla). "
+                                "Si la imagen tiene bordes de otra app, barra de estado, o parece ser foto de una pantalla, es INVALIDA. "
                                 "Si CUALQUIER requisito falla, responde valid=false. "
                                 "Responde SOLO en formato JSON, sin otro texto: "
                                 '{"valid": true, "reason": "Selfie valida: rostro frontal, bien iluminado", "confidence": "high"} '
@@ -168,6 +170,8 @@ def verify_dni_photo(image_bytes: bytes, expected_dni: str, expected_name: str) 
                                 "2) Se puede leer el numero de DNI? Si es asi, extraelo. "
                                 "3) Se puede leer el nombre? Si es asi, extraelo. "
                                 f"4) El DNI esperado es {expected_dni} y el nombre esperado es {expected_name}. Coincide? "
+                                f"5) Parece una foto tomada EN ESTE MOMENTO del documento fisico real? "
+                                f"Si parece una captura de pantalla, foto de otra foto, o imagen descargada de internet, es INVALIDA. "
                                 "Responde SOLO en formato JSON: "
                                 '{"valid": true/false, "reason": "explicacion breve en espanol", '
                                 '"dni_found": "numero extraido o vacio", "name_found": "nombre extraido o vacio", '
