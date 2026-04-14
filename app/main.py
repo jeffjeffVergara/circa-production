@@ -537,6 +537,8 @@ async def meta_webhook_incoming(request: Request):
                     try: os.remove(contract_path)
                     except: pass
                     await meta_client.send_pin_request(telefono, mode="create", bodega_id=bod_id)
+                    # Update session so state machine doesn't interfere
+                    db.upsert_session(telefono, "pin_create", {"bodega_id": bod_id}, bod_id)
                     logger.info(f"Contract signed for bodega {bod_id}, hash={contract_hash}")
                 else:
                     await meta_client.send_text(telefono, "Error. Escribe MENU para empezar.")
