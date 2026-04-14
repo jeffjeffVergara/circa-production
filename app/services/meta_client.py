@@ -345,14 +345,19 @@ async def send_ruc_verified(to: str, razon_social: str, ruc: str, direccion: str
 
 
 async def send_dni_request(to: str):
-    """Ask for DNI number to verify with RENIEC."""
+    """Ask for DNI — rep legal must do it."""
     return await send_text(
         to=to,
         text=(
-            "Ahora necesito verificar tu identidad.\n\n"
-            "Escribe el *DNI del representante legal* (8 d\xedgitos):"
+            "*Paso 2 de 4: Verificar identidad*\n\n"
+            "Este paso debe completarlo el *representante legal* personalmente. Se le pedira:\n\n"
+            "1. Escribir su numero de DNI\n"
+            "2. Enviar foto de su DNI fisico\n"
+            "3. Tomarse una selfie en vivo\n\n"
+            "Empecemos. Escribe el *DNI del representante legal* (8 digitos):"
         ),
     )
+
 
 async def send_biometria_request(to: str, nombre_rep: str):
     """Ask for selfie photo for Claude Vision verification."""

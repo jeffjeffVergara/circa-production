@@ -41,68 +41,76 @@ def _draw_rounded_rect(draw, xy, radius, fill):
 
 
 def generate_account_activated_card(nombre: str, linea: float, distribuidor: str) -> bytes:
-    """Generate account activation confirmation card."""
-    W, H = 600, 500
+    """Generate account activation card — large, clear, branded."""
+    W, H = 800, 600
     img = Image.new("RGB", (W, H), CIRCA_DARK)
     draw = ImageDraw.Draw(img)
     
     # Top accent bar
-    draw.rectangle([0, 0, W, 6], fill=CIRCA_BLUE)
+    draw.rectangle([0, 0, W, 8], fill=CIRCA_BLUE)
     
-    # Circa logo text
-    font_logo = _get_font(28, bold=True)
-    draw.text((30, 25), "CIRCA", fill=CIRCA_BLUE, font=font_logo)
+    # Circa logo
+    font_logo = _get_font(32, bold=True)
+    draw.text((40, 30), "CIRCA", fill=CIRCA_BLUE, font=font_logo)
     
-    # Check circle
-    cx, cy, cr = W//2, 120, 35
+    # Large check circle
+    cx, cy, cr = W//2, 150, 50
     draw.ellipse([cx-cr, cy-cr, cx+cr, cy+cr], fill=GREEN_CHECK)
-    font_check = _get_font(40, bold=True)
+    font_check = _get_font(55, bold=True)
     cw = draw.textlength("\u2713", font=font_check)
-    draw.text((cx - cw//2, cy - 22), "\u2713", fill=WHITE, font=font_check)
+    draw.text((cx - cw//2, cy - 30), "\u2713", fill=WHITE, font=font_check)
     
-    # Title
-    font_title = _get_font(26, bold=True)
+    # Title - large
+    font_title = _get_font(34, bold=True)
     title = "Cuenta activada"
     tw = draw.textlength(title, font=font_title)
-    draw.text((W//2 - tw//2, 170), title, fill=WHITE, font=font_title)
+    draw.text((W//2 - tw//2, 215), title, fill=WHITE, font=font_title)
+    
+    # Clave creada subtitle
+    font_sub = _get_font(18)
+    sub = "Clave creada con exito"
+    sw = draw.textlength(sub, font=font_sub)
+    draw.text((W//2 - sw//2, 258), sub, fill=GREEN_CHECK, font=font_sub)
     
     # Bodega name
-    font_name = _get_font(18)
+    font_name = _get_font(22)
     nw = draw.textlength(nombre, font=font_name)
-    draw.text((W//2 - nw//2, 210), nombre, fill=TEXT_GRAY, font=font_name)
+    draw.text((W//2 - nw//2, 300), nombre, fill=(180, 180, 200), font=font_name)
     
     # Credit amount card
-    _draw_rounded_rect(draw, (60, 250, W-60, 370), 15, CIRCA_BLUE)
-    font_label = _get_font(16)
-    font_amount = _get_font(42, bold=True)
+    _draw_rounded_rect(draw, (80, 340, W-80, 470), 18, CIRCA_BLUE)
     
+    font_label = _get_font(20)
     label = "Credito disponible"
     lw = draw.textlength(label, font=font_label)
-    draw.text((W//2 - lw//2, 265), label, fill=(200, 220, 255), font=font_label)
+    draw.text((W//2 - lw//2, 355), label, fill=(200, 220, 255), font=font_label)
     
+    font_amount = _get_font(56, bold=True)
     amount_str = f"S/{linea:,.2f}"
     aw = draw.textlength(amount_str, font=font_amount)
-    draw.text((W//2 - aw//2, 295), amount_str, fill=WHITE, font=font_amount)
+    draw.text((W//2 - aw//2, 385), amount_str, fill=WHITE, font=font_amount)
     
-    # Distribuidor
-    font_small = _get_font(14)
+    font_dist = _get_font(16)
     dist_text = f"Distribuidor: {distribuidor}"
-    dw = draw.textlength(dist_text, font=font_small)
-    draw.text((W//2 - dw//2, 345), dist_text, fill=(180, 200, 230), font=font_small)
+    dw = draw.textlength(dist_text, font=font_dist)
+    draw.text((W//2 - dw//2, 445), dist_text, fill=(180, 200, 230), font=font_dist)
     
     # Footer
-    font_footer = _get_font(13)
+    font_footer = _get_font(15)
     now = datetime.now()
     footer = f"{now.strftime('%d/%m/%Y %H:%M')} | Circa"
     fw = draw.textlength(footer, font=font_footer)
-    draw.text((W//2 - fw//2, 400), footer, fill=TEXT_GRAY, font=font_footer)
+    draw.text((W//2 - fw//2, 495), footer, fill=TEXT_GRAY, font=font_footer)
     
-    # Bottom line
-    draw.rectangle([60, 440, W-60, 441], fill=(60, 60, 80))
-    font_tiny = _get_font(11)
-    legal = "Pide mercaderia y paga despues. Tu credito se renueva al pagar."
-    legw = draw.textlength(legal, font=font_tiny)
-    draw.text((W//2 - legw//2, 455), legal, fill=TEXT_GRAY, font=font_tiny)
+    # Bottom tagline
+    draw.rectangle([80, 535, W-80, 536], fill=(60, 60, 80))
+    font_tag = _get_font(14)
+    tag = "Compra hoy. Paga despues. Tu credito se renueva al pagar."
+    tagw = draw.textlength(tag, font=font_tag)
+    draw.text((W//2 - tagw//2, 550), tag, fill=TEXT_GRAY, font=font_tag)
+    
+    # Bottom bar
+    draw.rectangle([0, H-6, W, H], fill=CIRCA_BLUE)
     
     buf = io.BytesIO()
     img.save(buf, format="PNG", quality=95)
