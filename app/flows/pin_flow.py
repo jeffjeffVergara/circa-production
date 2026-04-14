@@ -87,7 +87,7 @@ def _handle_pin_create(data: dict) -> dict:
     # Check for pending session to get bodega_id
     if not bodega_id or bodega_id == "test":
         try:
-            ses = db.sb.table("sesiones").select("bodega_id, fase").in_("fase", ["pin_pago", "pin_create"]).limit(1).execute()
+            ses = db.sb.table("sesiones").select("bodega_id, fase").in_("fase", ["pin_pago", "reg_pin"]).limit(1).execute()
             if ses.data:
                 bodega_id = ses.data[0].get("bodega_id", bodega_id)
                 found_fase = ses.data[0].get("fase", "")
