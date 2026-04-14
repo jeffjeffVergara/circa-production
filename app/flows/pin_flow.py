@@ -120,6 +120,7 @@ def _handle_pin_create(data: dict) -> dict:
         "data": {
             "bodega_id": bodega_id,
             "pin_hash_temp": hashlib.sha256(pin.encode()).hexdigest(),
+            "error_msg": "",
         }
     }
 
