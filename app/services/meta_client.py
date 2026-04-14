@@ -274,40 +274,44 @@ async def mark_as_read(message_id: str) -> dict | None:
 # ══════════════════════════════════════════════
 
 async def send_menu(to: str, linea_disponible: float):
-    """Send the main menu with 4 options as list."""
+    """Main menu."""
     return await send_list(
         to=to,
-        body=f"✅ *Cuenta activada*\nLínea disponible: *S/{linea_disponible:.2f}*\n\n¿Qué deseas hacer?",
+        body=f"\U0001f4b0 Cr\u00e9dito disponible: *S/{linea_disponible:.2f}*\n\n\u00bfQu\u00e9 deseas hacer?",
         button_text="Ver opciones",
         header="Circa",
         sections=[{
-            "title": "Menú principal",
+            "title": "Men\u00fa principal",
             "rows": [
-                {"id": "PEDIDO", "title": "🛍 Hacer un pedido", "description": "Arma tu pedido del catálogo"},
-                {"id": "REPETIR", "title": "🔄 Repetir último pedido", "description": "Pide lo mismo que la vez pasada"},
-                {"id": "LINEA", "title": "💰 Ver mi línea", "description": "Consulta tu crédito disponible"},
-                {"id": "ESTADO", "title": "📋 Mis pedidos", "description": "Revisa el estado de tus pedidos"},
-            ]
+                {"id": "PEDIDO", "title": "Hacer un nuevo pedido", "description": "Arma tu pedido del cat\u00e1logo"},
+                {"id": "REPETIR", "title": "Repetir pedido anterior", "description": "Vuelve a pedir lo mismo"},
+                {"id": "LINEA", "title": "Ver mi cr\u00e9dito disponible", "description": "Cu\u00e1nto puedes comprar"},
+                {"id": "ESTADO", "title": "Estado de mis pedidos", "description": "Seguimiento y pagos"},
+            ],
         }]
     )
 
 
 async def send_welcome(to: str, nombre: str, linea: float, distribuidor: str):
-    """Send rich welcome message — Circa initiates conversation."""
+    """Welcome message — trust-first, no bank language."""
     return await send_buttons(
         to=to,
-        header="Circa — Crédito para tu bodega",
+        header="Circa",
         body=(
-            f"¡Hola! 👋 Soy *Circa*, tu aliado para financiar inventario.\n\n"
-            f"🎉 *¡Buenas noticias!*\n"
-            f"Bodega *\"{nombre}\"* tiene una línea pre-aprobada de hasta\n\n"
-            f"💰 *S/{linea:.2f}*\n\n"
-            f"Distribuidor: {distribuidor}\n\n"
-            f"¿Deseas activar tu cuenta?"
+            f"\u00a1Hola, *{nombre}*! \U0001f44b\n\n"
+            f"\U0001f389 *\u00a1Felicitaciones!* Por tu buen historial con *{distribuidor}*, "
+            f"puedes comprar hasta:\n\n"
+            f"\U0001f4b0 *S/{linea:.2f}* en mercader\u00eda\n\n"
+            f"\u00bfC\u00f3mo funciona?\n\n"
+            f"\u2022 Pide lo que necesites a *{distribuidor}*\n"
+            f"\u2022 Circa le paga directo al distribuidor\n"
+            f"\u2022 T\u00fa pagas en *7, 15 o 30 d\u00edas*\n"
+            f"\u2022 Cuando pagas, tu cr\u00e9dito se renueva\n\n"
+            f"Sin garant\u00edas. Sin papeleo. Todo por WhatsApp."
         ),
         buttons=[
-            {"id": "ACTIVAR", "title": "Sí, activar 🚀"},
-            {"id": "MAS_INFO", "title": "Más info"},
+            {"id": "SI", "title": "Activar mi cuenta"},
+            {"id": "MAS_INFO", "title": "\u00bfC\u00f3mo funciona?"},
         ]
     )
 
