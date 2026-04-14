@@ -1,61 +1,55 @@
 """
 Selfie verification using Claude Vision API.
-Checks if the image is a valid selfie (real person, looking at camera).
 """
 import os
 import httpx
 import base64
+import json
 import logging
 
 logger = logging.getLogger("circa.vision")
 
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 
-
-async def download_whatsapp_media(media_id: str) -> bytes | None:
-    """Download media from WhatsApp Cloud API."""
+def download_whatsapp_media_sync(media_id: str) -> bytes | None:
+    """Download media from WhatsApp Cloud API (sync)."""
     token = os.getenv("META_ACCESS_TOKEN", "")
-    phone_id = os.getenv("META_PHONE_NUMBER_ID", "1076586305533033")
     
-    async with httpx.AsyncClient(timeout=15) as client:
-        # Step 1: Get media URL
-        r = await client.get(
-            f"https://graph.facebook.com/v23.0/{media_id}",
-            headers={"Authorization": f"Bearer {token}"},
-        )
-        if r.status_code != 200:
-            logger.error(f"Media URL fetch failed: {r.text}")
-            return None
-        media_url = r.json().get("url")
-        if not media_url:
-            return None
-        
-        # Step 2: Download the actual file
-        r2 = await client.get(
-            media_url,
-            headers={"Authorization": f"Bearer {token}"},
-        )
-        if r2.status_code != 200:
-            logger.error(f"Media download failed: {r2.status_code}")
-            return None
-        
-        return r2.content
+    # Step 1: Get media URL
+    r = httpx.get(
+        f"https://graph.facebook.com/v23.0/{media_id}",
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=15,
+    )
+    if r.status_code != 200:
+        logger.error(f"Media URL fetch failed: {r.text}")
+        return None
+    media_url = r.json().get("url")
+    if not media_url:
+        return None
+    
+    # Step 2: Download the actual file
+    r2 = httpx.get(
+        media_url,
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=15,
+    )
+    if r2.status_code != 200:
+        logger.error(f"Media download failed: {r2.status_code}")
+        return None
+    
+    logger.info(f"Downloaded media {media_id}: {len(r2.content)} bytes")
+    return r2.content
 
 
-def verify_selfie_sync(image_bytes: bytes) -> dict:
+def verify_selfie(image_bytes: bytes) -> dict:
     """
     Use Claude Vision to verify a selfie.
-    
-    Returns:
-        {
-            "valid": True/False,
-            "reason": "explanation",
-            "confidence": "high/medium/low"
-        }
+    Returns: {"valid": bool, "reason": str, "confidence": str}
     """
-    if not ANTHROPIC_API_KEY:
-        logger.warning("No ANTHROPIC_API_KEY set, skipping vision check")
-        return {"valid": True, "reason": "Verificacion omitida (sin API key)", "confidence": "low"}
+    api_key = os.getenv("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        logger.warning("No ANTHROPIC_API_KEY, skipping vision")
+        return {"valid": True, "reason": "Sin API key", "confidence": "low"}
     
     b64 = base64.standard_b64encode(image_bytes).decode("utf-8")
     
@@ -63,7 +57,7 @@ def verify_selfie_sync(image_bytes: bytes) -> dict:
         r = httpx.post(
             "https://api.anthropic.com/v1/messages",
             headers={
-                "x-api-key": ANTHROPIC_API_KEY,
+                "x-api-key": api_key,
                 "anthropic-version": "2023-06-01",
                 "content-type": "application/json",
             },
@@ -84,38 +78,42 @@ def verify_selfie_sync(image_bytes: bytes) -> dict:
                         {
                             "type": "text",
                             "text": (
-                                "You are a KYC selfie verification system. "
-                                "Analyze this image and determine if it is a valid selfie for identity verification. "
-                                "Check: 1) Is there exactly one human face clearly visible? "
-                                "2) Is the person looking at the camera? "
-                                "3) Is it a real photo (not a photo of a photo, not a screen, not a drawing)? "
-                                "4) Is the face well-lit and not obscured? "
-                                "Respond in this exact JSON format only, no other text: "
-                                '{"valid": true/false, "reason": "brief explanation in Spanish", "confidence": "high/medium/low"}'
+                                "Eres un sistema KYC de verificacion de selfie. "
+                                "Analiza esta imagen y determina si es una selfie valida. "
+                                "Verifica: 1) Hay exactamente un rostro humano visible? "
+                                "2) La persona mira a la camara? "
+                                "3) Es una foto real (no foto de foto, no pantalla, no dibujo)? "
+                                "4) El rostro esta bien iluminado y no tapado? "
+                                "Responde SOLO en este formato JSON exacto, sin otro texto: "
+                                '{"valid": true, "reason": "explicacion breve", "confidence": "high"} '
+                                "o "
+                                '{"valid": false, "reason": "explicacion breve", "confidence": "high"}'
                             ),
                         },
                     ],
                 }],
             },
-            timeout=20,
+            timeout=25,
         )
         
         if r.status_code != 200:
-            logger.error(f"Claude Vision error: {r.status_code} {r.text}")
-            return {"valid": True, "reason": "Error en verificacion, se acepta por defecto", "confidence": "low"}
+            logger.error(f"Claude Vision error: {r.status_code} {r.text[:200]}")
+            return {"valid": True, "reason": "Error verificacion", "confidence": "low"}
         
-        response_text = r.json()["content"][0]["text"].strip()
+        text = r.json()["content"][0]["text"].strip()
+        logger.info(f"Claude Vision raw: {text}")
         
-        # Parse JSON response
-        import json
-        # Clean markdown if present
-        if response_text.startswith("```"):
-            response_text = response_text.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
+        # Clean markdown
+        if text.startswith("```"):
+            text = text.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
+        if text.startswith("{"):
+            result = json.loads(text)
+            logger.info(f"Selfie result: {result}")
+            return result
         
-        result = json.loads(response_text)
-        logger.info(f"Selfie verification: {result}")
-        return result
+        logger.warning(f"Unexpected vision response: {text}")
+        return {"valid": True, "reason": "Respuesta inesperada", "confidence": "low"}
         
     except Exception as e:
         logger.error(f"Selfie verify error: {e}", exc_info=True)
-        return {"valid": True, "reason": "Error en verificacion, se acepta por defecto", "confidence": "low"}
+        return {"valid": True, "reason": "Error verificacion", "confidence": "low"}

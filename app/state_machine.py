@@ -248,28 +248,22 @@ def handle_message(telefono: str, body: str, media_url: str = None) -> list:
             if not bodega_bio:
                 return ["\u274c Error al consultar tu bodega. Escribe *Hola* para reiniciar."]
             
-            # Verify selfie with Claude Vision (async download + sync verify)
+            rep_name = datos.get("dni_nombre") or bodega_bio.get("representante_legal", "")
+            
+            # Verify selfie with Claude Vision (fully sync)
             try:
-                import asyncio
-                from app.services.vision import download_whatsapp_media, verify_selfie_sync
-                loop = asyncio.get_event_loop()
-                image_bytes = loop.run_until_complete(download_whatsapp_media(media_url))
+                from app.services.vision import download_whatsapp_media_sync, verify_selfie
+                image_bytes = download_whatsapp_media_sync(media_url)
                 if image_bytes:
-                    check = verify_selfie_sync(image_bytes)
+                    check = verify_selfie(image_bytes)
                     if not check.get("valid", False):
-                        reason = check.get("reason", "La imagen no es una selfie v\u00e1lida.")
-                        return [f"\u274c {reason}\n\nPor favor, toma una *selfie mirando a la c\u00e1mara*."]
-                    datos["biometria_verified"] = True
-                    rep_name = datos.get("dni_nombre") or bodega_bio.get("representante_legal", "")
-                else:
-                    # Could not download, accept anyway for demo
-                    datos["biometria_verified"] = True
-                    rep_name = datos.get("dni_nombre") or bodega_bio.get("representante_legal", "")
+                        reason = check.get("reason", "La imagen no es una selfie valida.")
+                        return [f"\u274c {reason}\n\nPor favor, toma una *selfie mirando a la camara*."]
+                datos["biometria_verified"] = True
             except Exception as e:
                 import logging
                 logging.getLogger("circa").error(f"Vision check error: {e}", exc_info=True)
                 datos["biometria_verified"] = True
-                rep_name = datos.get("dni_nombre") or bodega_bio.get("representante_legal", "")
             
             dist_r = db.sb.table("distribuidores").select("nombre_comercial").eq("id", bodega_bio["distribuidor_id"]).execute()
             dist = dist_r.data[0] if dist_r.data else None
