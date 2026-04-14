@@ -277,15 +277,14 @@ async def send_menu(to: str, linea_disponible: float):
     """Main menu."""
     return await send_list(
         to=to,
-        body=f"\U0001f4b0 Cr\u00e9dito disponible: *S/{linea_disponible:.2f}*\n\n\u00bfQu\u00e9 deseas hacer?",
+        body=f"Credito disponible: *S/{linea_disponible:.2f}*\n\nQue deseas hacer?",
         button_text="Ver opciones",
-        header="Circa",
         sections=[{
-            "title": "Men\u00fa",
+            "title": "Menu",
             "rows": [
-                {"id": "PEDIDO", "title": "Hacer un nuevo pedido", "description": "Arma tu pedido del cat\u00e1logo"},
-                {"id": "REPETIR", "title": "Repetir pedido anterior", "description": "Pide lo mismo que la vez pasada"},
-                {"id": "LINEA", "title": "Ver mi cr\u00e9dito", "description": "Cu\u00e1nto tienes disponible"},
+                {"id": "PEDIDO", "title": "Hacer un nuevo pedido", "description": "Arma tu pedido del catalogo"},
+                {"id": "REPETIR", "title": "Repetir pedido anterior", "description": "Pide lo mismo de antes"},
+                {"id": "LINEA", "title": "Ver mi credito", "description": "Cuanto tienes disponible"},
                 {"id": "ESTADO", "title": "Estado de mis pedidos", "description": "Seguimiento y pagos"},
             ],
         }]
