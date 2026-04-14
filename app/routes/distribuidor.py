@@ -105,6 +105,40 @@ async def update_status(pedido_id: str, body: StatusUpdate, dist: dict = Depends
     tel = bodega.get("telefono_whatsapp","")
     if tel and nuevo in WA_MESSAGES:
         _send_wa_text(tel, WA_MESSAGES[nuevo].format(numero=pedido.get("numero",pedido_id[:8]), distribuidor=dist["nombre_comercial"]))
+    # If entregado, send payment reminder
+    if nuevo == "entregado":
+        try:
+            ped = _sb_get("pedidos", {"select":"*","id":f"eq.{pedido_id}"})[0]
+            monto_fin = ped.get("monto_financiado") or 0
+            fee = ped.get("fee_monto") or 0
+            total_credito = round(monto_fin + fee, 2)
+            plazo = ped.get("plazo_dias") or 7
+            venc = ped.get("fecha_vencimiento") or ""
+            if not venc and ped.get("created_at"):
+                from datetime import timedelta
+                created = datetime.fromisoformat(ped["created_at"].replace("Z","+00:00"))
+                venc = (created + timedelta(days=plazo)).strftime("%d/%m/%Y")
+            num = ped.get("numero", "")
+            if tel and monto_fin > 0:
+                reminder = (
+                    f"\U0001f4b3 *Recordatorio de pago*\n"
+                    f"━━━━━━━━━━━━━━━━━━\n\n"
+                    f"Pedido: *{num}*\n"
+                    f"Monto financiado: S/{monto_fin:.2f}\n"
+                    f"Fee: S/{fee:.2f}\n"
+                    f"*Total a pagar: S/{total_credito:.2f}*\n\n"
+                    f"Vence: *{venc}*\n"
+                    f"Plazo: {plazo} dias\n\n"
+                    f"━━━━━━━━━━━━━━━━━━\n"
+                    f"Paga por Yape o Plin al:\n"
+                    f"\U0001f4f1 *986311567*\n"
+                    f"\U0001f464 Circa Pagos S.A.C.\n\n"
+                    f"Despues de pagar, escribe *YA PAGUE* en este chat."
+                )
+                _send_wa_text(tel, reminder)
+        except Exception as e:
+            import logging
+            logging.getLogger("circa").error(f"Payment reminder error: {e}")
     return {"ok":True,"pedido_id":pedido_id,"estado_anterior":current,"estado_nuevo":nuevo,"notificado":bool(tel)}
 
 @router.post("/pedidos/{pedido_id}/facturar")
@@ -213,4 +247,114 @@ async def upload_sustento(pedido_id: str, file: UploadFile = File(...), dist: di
     except Exception as e:
         _sb_patch("pedidos", {"prueba_entrega_url": f"uploaded:{file.filename}"}, {"id": f"eq.{pedido_id}"})
         return {"ok": True, "url": f"uploaded:{file.filename}", "note": str(e)}
+
+# ===================== CIRCA ADMIN =====================
+
+ADMIN_TOKEN = os.getenv("CIRCA_ADMIN_TOKEN", "circa-admin-2026")
+
+async def verify_admin(x_admin_token: str = Header(..., alias="X-Admin-Token")):
+    if x_admin_token != ADMIN_TOKEN:
+        raise HTTPException(status_code=401, detail="Token admin invalido")
+    return True
+
+@router.get("/admin/pedidos")
+async def admin_list_pedidos(
+    bodega: Optional[str] = None,
+    distribuidor: Optional[str] = None,
+    estado: Optional[str] = None,
+    admin: bool = Depends(verify_admin),
+):
+    """List all orders with full details — admin view."""
+    params = {"select":"*","order":"created_at.desc","limit":"200"}
+    if estado: params["estado"] = f"eq.{estado}"
+    pedidos = _sb_get("pedidos", params)
+    # Fetch all bodegas and distribuidores
+    bodega_ids = list(set(p.get("bodega_id","") for p in pedidos if p.get("bodega_id")))
+    dist_ids = list(set(p.get("distribuidor_id","") for p in pedidos if p.get("distribuidor_id")))
+    bodegas_map = {}
+    for bid in bodega_ids:
+        try:
+            rows = _sb_get("bodegas", {"select":"id,nombre_comercial,telefono_whatsapp,ruc,direccion,razon_social,linea_credito,linea_disponible","id":f"eq.{bid}"})
+            if rows: bodegas_map[bid] = rows[0]
+        except: pass
+    dist_map = {}
+    for did in dist_ids:
+        try:
+            rows = _sb_get("distribuidores", {"select":"id,nombre_comercial,ruc","id":f"eq.{did}"})
+            if rows: dist_map[did] = rows[0]
+        except: pass
+    for p in pedidos:
+        p["bodega"] = bodegas_map.get(p.get("bodega_id"), {})
+        p["distribuidor"] = dist_map.get(p.get("distribuidor_id"), {})
+        if "items_json" in p and "items" not in p:
+            p["items"] = p["items_json"]
+    # Filter by name if provided
+    if bodega:
+        bl = bodega.lower()
+        pedidos = [p for p in pedidos if bl in (p.get("bodega",{}).get("nombre_comercial","") or "").lower()]
+    if distribuidor:
+        dl = distribuidor.lower()
+        pedidos = [p for p in pedidos if dl in (p.get("distribuidor",{}).get("nombre_comercial","") or "").lower()]
+    return {"pedidos": pedidos, "total": len(pedidos)}
+
+@router.get("/admin/resumen")
+async def admin_resumen(admin: bool = Depends(verify_admin)):
+    """Dashboard summary for Circa admin."""
+    pedidos = _sb_get("pedidos", {"select":"estado,monto_productos,monto_financiado,monto_contado,fee_monto,total","limit":"500"})
+    estados = {}
+    total_financiado = 0
+    total_fee = 0
+    total_contado = 0
+    for p in pedidos:
+        e = p.get("estado","?")
+        estados[e] = estados.get(e, 0) + 1
+        total_financiado += p.get("monto_financiado") or 0
+        total_fee += p.get("fee_monto") or 0
+        total_contado += p.get("monto_contado") or 0
+    return {
+        "pedidos_por_estado": estados,
+        "total_pedidos": len(pedidos),
+        "total_financiado": round(total_financiado, 2),
+        "total_fee_circa": round(total_fee, 2),
+        "total_contado": round(total_contado, 2),
+        "circa_cobra_bodegas": round(total_financiado + total_fee, 2),
+    }
+
+@router.post("/admin/cobranza/{pedido_id}")
+async def admin_send_cobranza(pedido_id: str, admin: bool = Depends(verify_admin)):
+    """Manually send payment reminder to bodeguero."""
+    rows = _sb_get("pedidos", {"select":"*","id":f"eq.{pedido_id}"})
+    if not rows:
+        raise HTTPException(status_code=404, detail="Pedido no encontrado")
+    ped = rows[0]
+    bid = ped.get("bodega_id","")
+    try:
+        b_rows = _sb_get("bodegas", {"select":"telefono_whatsapp,nombre_comercial","id":f"eq.{bid}"})
+        tel = b_rows[0].get("telefono_whatsapp","") if b_rows else ""
+    except:
+        tel = ""
+    if not tel:
+        raise HTTPException(status_code=400, detail="Bodega sin telefono")
+    monto_fin = ped.get("monto_financiado") or 0
+    fee = ped.get("fee_monto") or 0
+    total_credito = round(monto_fin + fee, 2)
+    plazo = ped.get("plazo_dias") or 7
+    venc = ped.get("fecha_vencimiento") or "Por definir"
+    num = ped.get("numero", "")
+    reminder = (
+        f"\U0001f4b3 *Recordatorio de pago — Circa*\n"
+        f"\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\n"
+        f"Pedido: *{num}*\n"
+        f"Monto financiado: S/{monto_fin:.2f}\n"
+        f"Fee: S/{fee:.2f}\n"
+        f"*Total a pagar: S/{total_credito:.2f}*\n\n"
+        f"Vence: *{venc}*\n\n"
+        f"\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n"
+        f"Paga por Yape o Plin al:\n"
+        f"\U0001f4f1 *986311567*\n"
+        f"\U0001f464 Circa Pagos S.A.C.\n\n"
+        f"Escribe *YA PAGUE* en este chat."
+    )
+    _send_wa_text(tel, reminder)
+    return {"ok": True, "enviado_a": tel, "pedido": num}
 
