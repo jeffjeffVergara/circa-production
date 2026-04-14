@@ -78,16 +78,20 @@ def verify_selfie(image_bytes: bytes) -> dict:
                         {
                             "type": "text",
                             "text": (
-                                "Eres un sistema KYC de verificacion de selfie. "
-                                "Analiza esta imagen y determina si es una selfie valida. "
-                                "Verifica: 1) Hay exactamente un rostro humano visible? "
-                                "2) La persona mira a la camara? "
-                                "3) Es una foto real (no foto de foto, no pantalla, no dibujo)? "
-                                "4) El rostro esta bien iluminado y no tapado? "
-                                "Responde SOLO en este formato JSON exacto, sin otro texto: "
-                                '{"valid": true, "reason": "explicacion breve", "confidence": "high"} '
+                                "Eres un sistema estricto de verificacion biometrica KYC. "
+                                "Analiza esta imagen con criterios ESTRICTOS. "
+                                "La selfie es VALIDA solo si cumple TODOS estos requisitos: "
+                                "1) Hay exactamente UN rostro humano claramente visible. "
+                                "2) La persona mira DIRECTAMENTE a la camara (no de perfil, no mirando a otro lado). "
+                                "3) El rostro esta centrado y ocupa al menos 30% de la imagen. "
+                                "4) Es una foto real tomada en el momento (no foto de foto, no pantalla, no impresion). "
+                                "5) El rostro esta bien iluminado, nitido y sin obstrucciones (lentes oscuros, mascarilla, gorro que tape la cara). "
+                                "6) Los ojos estan abiertos y visibles. "
+                                "Si CUALQUIER requisito falla, responde valid=false. "
+                                "Responde SOLO en formato JSON, sin otro texto: "
+                                '{"valid": true, "reason": "Selfie valida: rostro frontal, bien iluminado", "confidence": "high"} '
                                 "o "
-                                '{"valid": false, "reason": "explicacion breve", "confidence": "high"}'
+                                '{"valid": false, "reason": "motivo especifico en espanol", "confidence": "high"}'
                             ),
                         },
                     ],
