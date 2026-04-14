@@ -1044,7 +1044,7 @@ async def simulate_full_flow(pedido_id: str):
         await mc.send_buttons(
             tel,
             f"⏰ *Recordatorio de pago*\n\n"
-            f"Pedido: {items_text}\n"
+            f"Pedido *#{pedido.get('numero', '')}*:\n{items_text}\n"
             f"Monto: *S/{monto:.2f}*\n"
             f"Vence: *{venc}*\n\n"
             f"Paga por Yape o Plin al:\n"
