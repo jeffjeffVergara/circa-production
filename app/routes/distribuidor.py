@@ -18,7 +18,10 @@ def _sb_headers():
 
 def _sb_get(path, params=None):
     r = httpx.get(f"{SUPABASE_URL}/rest/v1/{path}", headers=_sb_headers(), params=params or {}, timeout=15)
-    r.raise_for_status()
+    if r.status_code >= 400:
+        import logging
+        logging.getLogger("circa").error(f"Supabase error {r.status_code}: {r.text}")
+        r.raise_for_status()
     return r.json()
 
 def _sb_patch(path, data, params=None):
@@ -60,21 +63,39 @@ class StatusUpdate(BaseModel):
 
 @router.get("/pedidos")
 async def list_pedidos(estado: Optional[str] = None, dist: dict = Depends(verify_distribuidor)):
-    params = {"select":"*,bodegas(nombre_comercial,telefono,ruc,direccion)","distribuidor_id":f"eq.{dist['id']}","order":"created_at.desc"}
+    params = {"select":"*","distribuidor_id":f"eq.{dist['id']}","order":"created_at.desc"}
     if estado: params["estado"] = f"eq.{estado}"
-    return {"pedidos": _sb_get("pedidos", params), "distribuidor": dist["nombre_comercial"]}
+    pedidos = _sb_get("pedidos", params)
+    # Fetch bodega data separately
+    bodega_ids = list(set(p.get("bodega_id","") for p in pedidos if p.get("bodega_id")))
+    bodegas_map = {}
+    for bid in bodega_ids:
+        try:
+            rows = _sb_get("bodegas", {"select":"id,nombre_comercial,telefono,ruc,direccion,razon_social","id":f"eq.{bid}"})
+            if rows: bodegas_map[bid] = rows[0]
+        except: pass
+    for p in pedidos:
+        p["bodegas"] = bodegas_map.get(p.get("bodega_id"), {})
+        if "items_json" in p and "items" not in p:
+            p["items"] = p["items_json"]
+    return {"pedidos": pedidos, "distribuidor": dist["nombre_comercial"]}
 
 @router.get("/pedidos/{pedido_id}")
 async def get_pedido(pedido_id: str, dist: dict = Depends(verify_distribuidor)):
-    rows = _sb_get("pedidos", {"select":"*,bodegas(nombre_comercial,telefono,ruc,direccion)","id":f"eq.{pedido_id}","distribuidor_id":f"eq.{dist['id']}"})
+    rows = _sb_get("pedidos", {"select":"*","id":f"eq.{pedido_id}","distribuidor_id":f"eq.{dist['id']}"})
     if not rows: raise HTTPException(status_code=404, detail="Pedido no encontrado")
     return rows[0]
 
 @router.post("/pedidos/{pedido_id}/status")
 async def update_status(pedido_id: str, body: StatusUpdate, dist: dict = Depends(verify_distribuidor)):
-    rows = _sb_get("pedidos", {"select":"*,bodegas(nombre_comercial,telefono)","id":f"eq.{pedido_id}","distribuidor_id":f"eq.{dist['id']}"})
+    rows = _sb_get("pedidos", {"select":"*","id":f"eq.{pedido_id}","distribuidor_id":f"eq.{dist['id']}"})
     if not rows: raise HTTPException(status_code=404, detail="Pedido no encontrado")
     pedido = rows[0]
+    # Fetch bodega for notification
+    try:
+        b_rows = _sb_get("bodegas", {"select":"nombre_comercial,telefono","id":f"eq.{pedido.get('bodega_id','')}"})
+        pedido["bodegas"] = b_rows[0] if b_rows else {}
+    except: pedido["bodegas"] = {}
     current = pedido["estado"]
     nuevo = body.nuevo_estado
     if nuevo != STATUS_FLOW.get(current):
@@ -88,13 +109,17 @@ async def update_status(pedido_id: str, body: StatusUpdate, dist: dict = Depends
 
 @router.post("/pedidos/{pedido_id}/facturar")
 async def preparar_factura(pedido_id: str, dist: dict = Depends(verify_distribuidor)):
-    rows = _sb_get("pedidos", {"select":"*,bodegas(nombre_comercial,telefono,ruc,direccion,razon_social)","id":f"eq.{pedido_id}","distribuidor_id":f"eq.{dist['id']}"})
+    rows = _sb_get("pedidos", {"select":"*","id":f"eq.{pedido_id}","distribuidor_id":f"eq.{dist['id']}"})
     if not rows: raise HTTPException(status_code=404, detail="Pedido no encontrado")
     pedido = rows[0]
+    try:
+        b_rows = _sb_get("bodegas", {"select":"nombre_comercial,telefono,ruc,direccion,razon_social","id":f"eq.{pedido.get('bodega_id','')}"})
+        pedido["bodegas"] = b_rows[0] if b_rows else {}
+    except: pedido["bodegas"] = {}
     if pedido["estado"] not in ("despachado","en_camino","entregado"):
         raise HTTPException(status_code=400, detail="Solo se puede facturar pedidos despachados o entregados")
     bodega = pedido.get("bodegas") or {}
-    items = pedido.get("items", [])
+    items = pedido.get("items_json", pedido.get("items", []))
     lineas, subtotal = [], 0
     for i, item in enumerate(items, 1):
         pu = item.get("precio_unitario", item.get("precio", 0))
