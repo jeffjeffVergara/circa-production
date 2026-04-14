@@ -26,9 +26,9 @@ FLOW_PRIVATE_KEY = os.getenv("FLOW_PRIVATE_KEY", "")
 
 # ── App ──
 APP_BASE_URL = os.getenv("APP_BASE_URL", "http://localhost:8000")
-YAPE_PHONE = os.getenv("YAPE_PHONE", "987654321")
+YAPE_PHONE = os.getenv("YAPE_PHONE", "986311567")
 YAPE_NAME = os.getenv("YAPE_NAME", "Circa Lab S.A.C.")
-PLIN_PHONE = os.getenv("PLIN_PHONE", "987654321")
+PLIN_PHONE = os.getenv("PLIN_PHONE", "986311567")
 
 # ── Security ──
 PIN_MAX_ATTEMPTS = 3

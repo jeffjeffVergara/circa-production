@@ -377,10 +377,8 @@ async def send_linea_oferta(to: str, nombre: str, linea: float, distribuidor: st
     return await send_buttons(
         to=to,
         body=(
-            f"✅ *Biometría facial verificada.*\n"
-            f"Identidad confirmada.\n\n"
             f"━━━━━━━━━━━━━━━━━━\n"
-            f"📋 *Línea de crédito pre-aprobada*\n\n"
+            f"📋 *Tu crédito con Circa*\n\n"
             f"Bodega: *{nombre}*\n"
             f"Monto: *S/{linea:.2f}*\n"
             f"Distribuidor: {distribuidor}\n"
@@ -550,8 +548,8 @@ async def send_tracking_update(to: str, order_number: str, estado: str, detalle:
 
 async def send_payment_instructions(to: str, order_number: str, monto: float, vencimiento: str):
     """Send payment instructions with Yape details."""
-    yape_phone = os.getenv("YAPE_PHONE", "987654321")
-    yape_name = os.getenv("YAPE_NAME", "Circa Lab S.A.C.")
+    yape_phone = os.getenv("YAPE_PHONE", "986311567")
+    yape_name = os.getenv("YAPE_NAME", "Circa Pagos S.A.C.")
     
     return await send_buttons(
         to=to,
