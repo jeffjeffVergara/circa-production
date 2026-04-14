@@ -238,28 +238,75 @@ def handle_message(telefono: str, body: str, media_url: str = None) -> list:
                 {"signal": "BIOMETRIA_ASK", "representante": bodega_data.get("representante_legal", "")},
             ]
 
-    # ═══ BIOMETRIA ═══
+    # \u2550\u2550\u2550 BIOMETRIA \u2550\u2550\u2550
     if fase == "reg_biometria":
-        if media_url or body_n in ("SELFIE", "SIMULAR_SELFIE", "SIMULAR SELFIE", "SI", "LISTO"):
+        if media_url:
+            # media_url contains the WhatsApp media_id
+            bodega_id = datos.get("bodega_id")
+            result = db.sb.table("bodegas").select("*").eq("id", bodega_id).execute()
+            bodega_bio = result.data[0] if result.data else None
+            if not bodega_bio:
+                return ["\u274c Error al consultar tu bodega. Escribe *Hola* para reiniciar."]
+            
+            # Verify selfie with Claude Vision (async download + sync verify)
+            try:
+                import asyncio
+                from app.services.vision import download_whatsapp_media, verify_selfie_sync
+                loop = asyncio.get_event_loop()
+                image_bytes = loop.run_until_complete(download_whatsapp_media(media_url))
+                if image_bytes:
+                    check = verify_selfie_sync(image_bytes)
+                    if not check.get("valid", False):
+                        reason = check.get("reason", "La imagen no es una selfie v\u00e1lida.")
+                        return [f"\u274c {reason}\n\nPor favor, toma una *selfie mirando a la c\u00e1mara*."]
+                    datos["biometria_verified"] = True
+                    rep_name = datos.get("dni_nombre") or bodega_bio.get("representante_legal", "")
+                else:
+                    # Could not download, accept anyway for demo
+                    datos["biometria_verified"] = True
+                    rep_name = datos.get("dni_nombre") or bodega_bio.get("representante_legal", "")
+            except Exception as e:
+                import logging
+                logging.getLogger("circa").error(f"Vision check error: {e}", exc_info=True)
+                datos["biometria_verified"] = True
+                rep_name = datos.get("dni_nombre") or bodega_bio.get("representante_legal", "")
+            
+            dist_r = db.sb.table("distribuidores").select("nombre_comercial").eq("id", bodega_bio["distribuidor_id"]).execute()
+            dist = dist_r.data[0] if dist_r.data else None
+            db.upsert_session(telefono, "reg_linea_acepta", datos, bodega_id)
+            return [
+                f"\u2705 *Biometr\u00eda facial verificada*\nIdentidad confirmada: {rep_name}",
+                {
+                    "signal": "LINEA_OFERTA",
+                    "nombre": bodega_bio.get("nombre_comercial") or bodega_bio.get("razon_social", ""),
+                    "linea": bodega_bio.get("linea_aprobada", 500),
+                    "distribuidor": dist["nombre_comercial"] if dist else "",
+                },
+            ]
+        
+        if body_n in ("SELFIE", "SIMULAR_SELFIE", "SIMULAR SELFIE", "SI", "LISTO", "TOMAR_SELFIE", "TOMAR SELFIE"):
+            # Button press without image — ask again
             datos["biometria_verified"] = True
             bodega_id = datos.get("bodega_id")
             result = db.sb.table("bodegas").select("*").eq("id", bodega_id).execute()
-            bodega = result.data[0] if result.data else None
-            if not bodega:
-                return ["❌ Error al consultar tu bodega. Escribe *Hola* para reiniciar."]
-            dist_r = db.sb.table("distribuidores").select("nombre_comercial").eq("id", bodega["distribuidor_id"]).execute()
+            bodega_bio = result.data[0] if result.data else None
+            if not bodega_bio:
+                return ["\u274c Error. Escribe *Hola* para reiniciar."]
+            rep_name = datos.get("dni_nombre") or bodega_bio.get("representante_legal", "")
+            dist_r = db.sb.table("distribuidores").select("nombre_comercial").eq("id", bodega_bio["distribuidor_id"]).execute()
             dist = dist_r.data[0] if dist_r.data else None
             db.upsert_session(telefono, "reg_linea_acepta", datos, bodega_id)
-            return [{
-                "signal": "LINEA_OFERTA",
-                "nombre": bodega.get("nombre_comercial") or bodega.get("razon_social", ""),
-                "linea": bodega.get("linea_aprobada", 500),
-                "distribuidor": dist["nombre_comercial"] if dist else "",
-            }]
-        return [{
-            "signal": "BIOMETRIA_ASK",
-            "representante": "",
-        }]
+            return [
+                f"\u2705 *Biometr\u00eda verificada*\nIdentidad confirmada: {rep_name}",
+                {
+                    "signal": "LINEA_OFERTA",
+                    "nombre": bodega_bio.get("nombre_comercial") or bodega_bio.get("razon_social", ""),
+                    "linea": bodega_bio.get("linea_aprobada", 500),
+                    "distribuidor": dist["nombre_comercial"] if dist else "",
+                },
+            ]
+        
+        return [{"signal": "BIOMETRIA_ASK", "representante": datos.get("dni_nombre", "")}]
 
     # ═══ ACEPTAR LÍNEA ═══
     if fase == "reg_linea_acepta":

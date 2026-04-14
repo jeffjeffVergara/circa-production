@@ -351,10 +351,9 @@ async def meta_webhook_incoming(request: Request):
         body_text = msg["body"]
         media_url = None
         
-        # Handle image (DNI photo)
+        # Handle image (selfie for biometria)
         if msg["type"] == "image" and msg["media_id"]:
-            # TODO: Download and store DNI image
-            pass
+            media_url = msg["media_id"]  # Pass media_id to state machine
         
         # Handle Flow response
         if body_text == "__FLOW_RESPONSE__" and msg["flow_data"]:
