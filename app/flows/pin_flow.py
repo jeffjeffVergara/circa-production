@@ -84,14 +84,16 @@ def _handle_pin_create(data: dict) -> dict:
             }
         }
     
-    # Always check if there is a pending payment session
-    if not bodega_id or bodega_id == "test" or mode != "verify":
+    # Check for pending session to get bodega_id
+    if not bodega_id or bodega_id == "test":
         try:
-            ses = db.sb.table("sesiones").select("bodega_id, fase").eq("fase", "pin_pago").limit(1).execute()
+            ses = db.sb.table("sesiones").select("bodega_id, fase").in_("fase", ["pin_pago", "pin_create"]).limit(1).execute()
             if ses.data:
                 bodega_id = ses.data[0].get("bodega_id", bodega_id)
-                mode = "verify"
-                logger.info(f"PIN: found pending session, bodega={bodega_id}")
+                found_fase = ses.data[0].get("fase", "")
+                if found_fase == "pin_pago":
+                    mode = "verify"
+                logger.info(f"PIN: found session fase={found_fase}, bodega={bodega_id}")
         except Exception as e:
             logger.error(f"Session lookup: {e}")
     
