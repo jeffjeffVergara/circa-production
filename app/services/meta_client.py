@@ -357,7 +357,8 @@ async def send_biometria_request(to: str, nombre_rep: str):
         text=(
             f"Ahora necesito una *selfie en vivo* para verificacion biometrica.\n\n"
             f"\U0001f933 {nombre_rep}, toma una foto de tu rostro mirando a la camara "
-            f"y enviala como imagen en este chat."
+            f"y enviala como imagen en este chat.\n\n"
+            f"\U0001f512 Tip: enviala como *Vista unica* (\u2460) para mayor seguridad."
         ),
     )
 
