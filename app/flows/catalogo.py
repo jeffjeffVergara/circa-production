@@ -449,7 +449,7 @@ async def _do_checkout(bodega_id, session):
     dist  = session.get("dist", "a1b2c3d4-0001-4000-8000-000000000001")
 
     # Build cart summary
-    items_text = "\n".join(f"{i['qty']}x {i['name']} — S/{i['sub']:.2f}" for i in cart)
+    items_text = "\n".join(f"▸ {i['qty']}x *{i['name']}*\n   S/{i['sub']:.2f}" for i in cart)
 
     pedido_id = "000"
     try:
@@ -512,7 +512,7 @@ async def _send_payment_options(phone, pedido_id, total, items_text, bodega_id=N
 
     if linea >= total:
         await meta_client.send_text(phone,
-            f"Tu pedido:\n{items_text}\n\n"
+            f"\U0001f6d2 *TU PEDIDO*\n━━━━━━━━━━━━━━━━━━\n{items_text}\n━━━━━━━━━━━━━━━━━━\n"
             f"*TOTAL: S/{total:.2f}*\n"
             f"Credito disponible: *S/{linea:.2f}*")
         await meta_client.send_list(
@@ -528,7 +528,7 @@ async def _send_payment_options(phone, pedido_id, total, items_text, bodega_id=N
     elif linea > 0:
         contado_min = total - linea
         await meta_client.send_text(phone,
-            f"Tu pedido:\n{items_text}\n\n"
+            f"\U0001f6d2 *TU PEDIDO*\n━━━━━━━━━━━━━━━━━━\n{items_text}\n━━━━━━━━━━━━━━━━━━\n"
             f"*TOTAL: S/{total:.2f}*\n"
             f"Credito disponible: *S/{linea:.2f}*\n"
             f"Minimo al contado: S/{contado_min:.2f}")
@@ -551,7 +551,7 @@ async def _send_payment_options(phone, pedido_id, total, items_text, bodega_id=N
             "bodega_id": bodega_id,
         }).execute()
         await meta_client.send_text(phone,
-            f"Tu pedido:\n{items_text}\n\n"
+            f"\U0001f6d2 *TU PEDIDO*\n━━━━━━━━━━━━━━━━━━\n{items_text}\n━━━━━━━━━━━━━━━━━━\n"
             f"TOTAL: S/{total:.2f}\n"
             f"Sin linea disponible. Solo contado.\n\n"
             f"Ingresa tu clave Circa para confirmar:")

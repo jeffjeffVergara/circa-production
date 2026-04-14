@@ -468,11 +468,11 @@ async def meta_webhook_incoming(request: Request):
                     pedido = r.data[0]
                     total = pedido["monto_productos"]
                     if btn.startswith("FIN100_"):
-                        fin_amt = min(total, linea)
+                        fin_amt = min(linea, total)
                     elif btn.startswith("FIN50_"):
-                        fin_amt = min(round(total * 0.5, 2), linea)
+                        fin_amt = min(round(linea * 0.5, 2), total)
                     else:
-                        fin_amt = min(round(total * 0.25, 2), linea)
+                        fin_amt = min(round(linea * 0.25, 2), total)
                     contado = round(total - fin_amt, 2)
                     fee7 = max(fin_amt * 0.03, 5); fee15 = max(fin_amt * 0.05, 5); fee30 = max(fin_amt * 0.07, 5)
                     pid = str(pedido["id"])[:8]
