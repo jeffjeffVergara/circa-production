@@ -341,19 +341,14 @@ async def send_ruc_verified(to: str, razon_social: str, ruc: str, direccion: str
 
 
 async def send_dni_request(to: str):
-    """Ask for DNI photo."""
-    return await send_buttons(
+    """Ask for DNI number to verify with RENIEC."""
+    return await send_text(
         to=to,
-        body=(
-            "📷 Para verificar tu identidad, necesito una *foto de tu DNI* (anverso).\n\n"
-            "Esto es solo una vez, para cumplir con los requisitos de seguridad.\n\n"
-            "⚠️ La foto debe ser tomada en este momento."
+        text=(
+            "Ahora necesito verificar tu identidad.\n\n"
+            "Escribe el *DNI del representante legal* (8 d\xedgitos):"
         ),
-        buttons=[
-            {"id": "SIMULAR_DNI", "title": "📸 Simular subir DNI"},
-        ]
     )
-
 
 async def send_biometria_request(to: str, nombre_rep: str):
     """Ask for facial biometry after DNI verified."""
