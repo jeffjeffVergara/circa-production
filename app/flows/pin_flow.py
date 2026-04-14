@@ -24,7 +24,7 @@ async def handle_pin_flow(flow_data: dict) -> dict:
     data = flow_data.get("data", {})
     flow_token = flow_data.get("flow_token", "")
     
-    logger.info(f"PIN Flow: screen={screen}, action={action}")
+    logger.info(f"PIN Flow: screen={screen}, action={action}, data_keys={list(data.keys())}, data={data}")
     
     # Health check ping from Meta
     if action == "ping":
