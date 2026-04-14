@@ -285,26 +285,8 @@ def handle_message(telefono: str, body: str, media_url: str = None) -> list:
             ]
         
         if body_n in ("SELFIE", "SIMULAR_SELFIE", "SIMULAR SELFIE", "SI", "LISTO", "TOMAR_SELFIE", "TOMAR SELFIE"):
-            # Button press without image — ask again
-            datos["biometria_verified"] = True
-            bodega_id = datos.get("bodega_id")
-            result = db.sb.table("bodegas").select("*").eq("id", bodega_id).execute()
-            bodega_bio = result.data[0] if result.data else None
-            if not bodega_bio:
-                return ["\u274c Error. Escribe *Hola* para reiniciar."]
-            rep_name = datos.get("dni_nombre") or bodega_bio.get("representante_legal", "")
-            dist_r = db.sb.table("distribuidores").select("nombre_comercial").eq("id", bodega_bio["distribuidor_id"]).execute()
-            dist = dist_r.data[0] if dist_r.data else None
-            db.upsert_session(telefono, "reg_linea_acepta", datos, bodega_id)
-            return [
-                f"\u2705 *Biometr\u00eda verificada*\nIdentidad confirmada: {rep_name}",
-                {
-                    "signal": "LINEA_OFERTA",
-                    "nombre": bodega_bio.get("nombre_comercial") or bodega_bio.get("razon_social", ""),
-                    "linea": bodega_bio.get("linea_aprobada", 500),
-                    "distribuidor": dist["nombre_comercial"] if dist else "",
-                },
-            ]
+            # Button press without image — remind to send photo
+            return ["\U0001f933 Env\u00eda una *foto de tu rostro* como imagen en este chat."]
         
         return [{"signal": "BIOMETRIA_ASK", "representante": datos.get("dni_nombre", "")}]
 

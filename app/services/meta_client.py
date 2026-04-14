@@ -351,17 +351,14 @@ async def send_dni_request(to: str):
     )
 
 async def send_biometria_request(to: str, nombre_rep: str):
-    """Ask for facial biometry after DNI verified."""
-    return await send_buttons(
+    """Ask for selfie photo for Claude Vision verification."""
+    return await send_text(
         to=to,
-        body=(
-            f"✅ DNI verificado contra RENIEC.\n\n"
-            f"Ahora necesito una *selfie en vivo* para verificación biométrica.\n\n"
-            f"🤳 {nombre_rep}, toma una foto de tu rostro mirando a la cámara."
+        text=(
+            f"Ahora necesito una *selfie en vivo* para verificacion biometrica.\n\n"
+            f"\U0001f933 {nombre_rep}, toma una foto de tu rostro mirando a la camara "
+            f"y enviala como imagen en este chat."
         ),
-        buttons=[
-            {"id": "SIMULAR_SELFIE", "title": "🤳 Tomar selfie"},
-        ]
     )
 
 
