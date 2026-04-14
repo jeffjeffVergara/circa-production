@@ -71,7 +71,7 @@ async def list_pedidos(estado: Optional[str] = None, dist: dict = Depends(verify
     bodegas_map = {}
     for bid in bodega_ids:
         try:
-            rows = _sb_get("bodegas", {"select":"id,nombre_comercial,telefono,ruc,direccion,razon_social","id":f"eq.{bid}"})
+            rows = _sb_get("bodegas", {"select":"id,nombre_comercial,telefono_whatsapp_whatsapp,ruc,direccion,razon_social","id":f"eq.{bid}"})
             if rows: bodegas_map[bid] = rows[0]
         except: pass
     for p in pedidos:
@@ -93,7 +93,7 @@ async def update_status(pedido_id: str, body: StatusUpdate, dist: dict = Depends
     pedido = rows[0]
     # Fetch bodega for notification
     try:
-        b_rows = _sb_get("bodegas", {"select":"nombre_comercial,telefono","id":f"eq.{pedido.get('bodega_id','')}"})
+        b_rows = _sb_get("bodegas", {"select":"nombre_comercial,telefono_whatsapp","id":f"eq.{pedido.get('bodega_id','')}"})
         pedido["bodegas"] = b_rows[0] if b_rows else {}
     except: pedido["bodegas"] = {}
     current = pedido["estado"]
@@ -102,7 +102,7 @@ async def update_status(pedido_id: str, body: StatusUpdate, dist: dict = Depends
         raise HTTPException(status_code=400, detail=f"No se puede pasar de '{current}' a '{nuevo}'. Siguiente: '{STATUS_FLOW.get(current)}'")
     _sb_patch("pedidos", {"estado": nuevo, f"fecha_{nuevo}": datetime.now(timezone.utc).isoformat()}, {"id": f"eq.{pedido_id}"})
     bodega = pedido.get("bodegas") or {}
-    tel = bodega.get("telefono","")
+    tel = bodega.get("telefono_whatsapp","")
     if tel and nuevo in WA_MESSAGES:
         _send_wa_text(tel, WA_MESSAGES[nuevo].format(numero=pedido.get("numero",pedido_id[:8]), distribuidor=dist["nombre_comercial"]))
     return {"ok":True,"pedido_id":pedido_id,"estado_anterior":current,"estado_nuevo":nuevo,"notificado":bool(tel)}
@@ -113,7 +113,7 @@ async def preparar_factura(pedido_id: str, dist: dict = Depends(verify_distribui
     if not rows: raise HTTPException(status_code=404, detail="Pedido no encontrado")
     pedido = rows[0]
     try:
-        b_rows = _sb_get("bodegas", {"select":"nombre_comercial,telefono,ruc,direccion,razon_social","id":f"eq.{pedido.get('bodega_id','')}"})
+        b_rows = _sb_get("bodegas", {"select":"nombre_comercial,telefono_whatsapp_whatsapp,ruc,direccion,razon_social","id":f"eq.{pedido.get('bodega_id','')}"})
         pedido["bodegas"] = b_rows[0] if b_rows else {}
     except: pedido["bodegas"] = {}
     if pedido["estado"] not in ("despachado","en_camino","entregado"):
