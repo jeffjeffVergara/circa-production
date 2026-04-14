@@ -207,35 +207,56 @@ def handle_message(telefono: str, body: str, media_url: str = None) -> list:
         # Verify with RENIEC via ApiInti
         reniec = consultar_dni_sync(dni)
         if reniec:
-            nombre_completo = reniec.get("nombre_completo", "")
+            nombre_reniec = reniec.get("nombre_completo", "")
+            
+            # Cross-check: DNI name must match representante legal from SUNAT/bodega
+            rep_legal = bodega_data.get("representante_legal", "")
+            if rep_legal and nombre_reniec:
+                # Normalize both names for comparison
+                import unicodedata
+                def _norm(s):
+                    s = unicodedata.normalize("NFKD", s.upper())
+                    return "".join(c for c in s if not unicodedata.combining(c)).strip()
+                
+                norm_reniec = _norm(nombre_reniec)
+                norm_rep = _norm(rep_legal)
+                
+                # Check if names match (allow partial — last names must match)
+                reniec_parts = set(norm_reniec.replace(",", "").split())
+                rep_parts = set(norm_rep.replace(",", "").split())
+                common = reniec_parts & rep_parts
+                
+                if len(common) < 2:
+                    return [
+                        f"\u274c El DNI {dni} pertenece a *{nombre_reniec}*, "
+                        f"pero el representante legal registrado es *{rep_legal}*.\n\n"
+                        f"Escribe el DNI correcto del representante legal:"
+                    ]
+            
             db.update_bodega(bodega_id, {
                 "dni_representante": dni,
-                "representante_legal": nombre_completo or bodega_data.get("representante_legal", ""),
+                "representante_legal": nombre_reniec or bodega_data.get("representante_legal", ""),
             })
             datos["dni_verified"] = True
-            datos["dni_nombre"] = nombre_completo
+            datos["dni_nombre"] = nombre_reniec
             db.upsert_session(telefono, "reg_dni", datos, bodega_id)
             
             if datos.get("is_reset"):
                 db.upsert_session(telefono, "reg_pin", datos, bodega_id)
                 return [
-                    f"\u2705 *DNI verificado en RENIEC*\n{nombre_completo}",
+                    f"\u2705 *DNI verificado en RENIEC*\n{nombre_reniec}",
                     {"signal": "PIN_ASK", "mode": "create", "bodega_id": bodega_id},
                 ]
             
             db.upsert_session(telefono, "reg_biometria", datos, bodega_id)
             return [
-                f"\u2705 *DNI verificado en RENIEC*\n{nombre_completo}",
-                {"signal": "BIOMETRIA_ASK", "representante": nombre_completo},
+                f"\u2705 *DNI verificado en RENIEC*\nIdentidad confirmada: {nombre_reniec}",
+                {"signal": "BIOMETRIA_ASK", "representante": nombre_reniec},
             ]
         else:
-            # RENIEC failed — continue with manual data
-            datos["dni_verified"] = True
-            db.update_bodega(bodega_id, {"dni_representante": dni})
-            db.upsert_session(telefono, "reg_biometria", datos, bodega_id)
             return [
-                f"\u2705 DNI registrado: {dni}",
-                {"signal": "BIOMETRIA_ASK", "representante": bodega_data.get("representante_legal", "")},
+                "\u26a0\ufe0f No pudimos verificar el DNI en RENIEC. Intenta de nuevo.\n\n"
+                "Escribe el *DNI del representante legal* (8 d\u00edgitos):"
             ]
 
     # \u2550\u2550\u2550 BIOMETRIA \u2550\u2550\u2550
