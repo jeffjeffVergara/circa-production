@@ -68,6 +68,13 @@ async def _route_pin(flow_data: dict) -> dict:
 
 def _handle_pin_create(data: dict) -> dict:
     """Validate PIN — either create new or verify for payment."""
+    # Check if this is actually a PIN confirmation (Flow reuses PIN_CREATE screen)
+    if data.get("pin_hash_temp") and data.get("pin_confirm"):
+        import asyncio
+        return asyncio.get_event_loop().run_until_complete(
+            _handle_pin_confirm(data, data.get("flow_token", ""))
+        )
+    
     pin = (data.get("pin") or "").strip()
     bodega_id = data.get("bodega_id", "")
     mode = data.get("mode", "create")
