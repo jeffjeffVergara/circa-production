@@ -1,249 +1,258 @@
 """
-Circa branded confirmation cards — sent as images in WhatsApp.
-Uses PIL to generate clean, branded cards.
+Circa branded confirmation cards — Plin/Yape style.
+Clean, light backgrounds, large amounts, professional.
 """
 import os
 import io
 from datetime import datetime
 from PIL import Image, ImageDraw, ImageFont
 
-# Circa brand colors
-CIRCA_BLUE = (74, 144, 217)
-CIRCA_DARK = (26, 26, 46)
+# Colors
 WHITE = (255, 255, 255)
-LIGHT_GRAY = (245, 248, 250)
-GREEN_CHECK = (34, 197, 94)
-TEXT_DARK = (34, 34, 34)
-TEXT_GRAY = (120, 120, 120)
+BG_LIGHT = (248, 250, 252)
+CIRCA_BLUE = (37, 99, 235)
+CIRCA_DARK = (15, 23, 42)
+GREEN = (22, 163, 74)
+GREEN_LIGHT = (220, 252, 231)
+BLUE_LIGHT = (219, 234, 254)
+GRAY_100 = (241, 245, 249)
+GRAY_300 = (203, 213, 225)
+GRAY_500 = (100, 116, 139)
+GRAY_700 = (51, 65, 85)
+BORDER = (226, 232, 240)
+RED_SOFT = (254, 226, 226)
+ORANGE = (234, 88, 12)
 
 
-def _get_font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont:
-    """Get font — use system fonts available on Railway (Linux)."""
-    font_paths = [
+def _get_font(size, bold=False):
+    paths = [
         "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
         "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
     ]
-    for fp in font_paths:
+    for fp in paths:
         if os.path.exists(fp):
             return ImageFont.truetype(fp, size)
     return ImageFont.load_default()
 
 
-def _draw_rounded_rect(draw, xy, radius, fill):
-    """Draw a rounded rectangle."""
+def _rounded_rect(draw, xy, radius, fill, outline=None):
     x1, y1, x2, y2 = xy
-    draw.rectangle([x1 + radius, y1, x2 - radius, y2], fill=fill)
-    draw.rectangle([x1, y1 + radius, x2, y2 - radius], fill=fill)
-    draw.pieslice([x1, y1, x1 + 2*radius, y1 + 2*radius], 180, 270, fill=fill)
-    draw.pieslice([x2 - 2*radius, y1, x2, y1 + 2*radius], 270, 360, fill=fill)
-    draw.pieslice([x1, y2 - 2*radius, x1 + 2*radius, y2], 90, 180, fill=fill)
-    draw.pieslice([x2 - 2*radius, y2 - 2*radius, x2, y2], 0, 90, fill=fill)
+    draw.rectangle([x1+radius, y1, x2-radius, y2], fill=fill)
+    draw.rectangle([x1, y1+radius, x2, y2-radius], fill=fill)
+    draw.pieslice([x1, y1, x1+2*radius, y1+2*radius], 180, 270, fill=fill)
+    draw.pieslice([x2-2*radius, y1, x2, y1+2*radius], 270, 360, fill=fill)
+    draw.pieslice([x1, y2-2*radius, x1+2*radius, y2], 90, 180, fill=fill)
+    draw.pieslice([x2-2*radius, y2-2*radius, x2, y2], 0, 90, fill=fill)
+    if outline:
+        draw.arc([x1, y1, x1+2*radius, y1+2*radius], 180, 270, fill=outline, width=2)
+        draw.arc([x2-2*radius, y1, x2, y1+2*radius], 270, 360, fill=outline, width=2)
+        draw.arc([x1, y2-2*radius, x1+2*radius, y2], 90, 180, fill=outline, width=2)
+        draw.arc([x2-2*radius, y2-2*radius, x2, y2], 0, 90, fill=outline, width=2)
+        draw.line([x1+radius, y1, x2-radius, y1], fill=outline, width=2)
+        draw.line([x1+radius, y2, x2-radius, y2], fill=outline, width=2)
+        draw.line([x1, y1+radius, x1, y2-radius], fill=outline, width=2)
+        draw.line([x2, y1+radius, x2, y2-radius], fill=outline, width=2)
 
 
-def generate_account_activated_card(nombre: str, linea: float, distribuidor: str) -> bytes:
-    """Generate account activation card."""
-    W, H = 800, 600
-    img = Image.new("RGB", (W, H), CIRCA_DARK)
+def _draw_check_circle(draw, cx, cy, r):
+    draw.ellipse([cx-r, cy-r, cx+r, cy+r], fill=GREEN)
+    # White checkmark
+    draw.line([(cx-r*0.35, cy), (cx-r*0.08, cy+r*0.3), (cx+r*0.4, cy-r*0.3)], fill=WHITE, width=max(4, r//6))
+
+
+def _draw_circa_logo(draw, cx, y, size=20):
+    font = _get_font(size, bold=True)
+    tw = draw.textlength("CIRCA", font=font)
+    draw.text((cx - tw//2, y), "CIRCA", fill=CIRCA_BLUE, font=font)
+
+
+def _draw_isotipo(img, x, y, h=36):
+    iso_path = os.path.join(os.path.dirname(__file__), "..", "static", "circa_isotipo.png")
+    if os.path.exists(iso_path):
+        iso = Image.open(iso_path).convert("RGBA")
+        iso_w = int(iso.width * h / iso.height)
+        iso = iso.resize((iso_w, h), Image.LANCZOS)
+        img.paste(iso, (x, y), iso)
+        return iso_w
+    return 0
+
+
+def _center_text(draw, text, y, font, fill, W):
+    tw = draw.textlength(text, font=font)
+    draw.text((W//2 - tw//2, y), text, fill=fill, font=font)
+
+
+def generate_account_activated_card(nombre, linea, distribuidor):
+    W, H = 650, 520
+    img = Image.new("RGB", (W, H), WHITE)
     draw = ImageDraw.Draw(img)
-    
-    # Top accent bar
-    draw.rectangle([0, 0, W, 8], fill=CIRCA_BLUE)
-    
-    # Circa isotipo
-    _iso_path = os.path.join(os.path.dirname(__file__), "..", "static", "circa_isotipo.png")
-    if os.path.exists(_iso_path):
-        _iso = Image.open(_iso_path).convert("RGBA")
-        _iso_h = 40
-        _iso_w = int(_iso.width * _iso_h / _iso.height)
-        _iso = _iso.resize((_iso_w, _iso_h), Image.LANCZOS)
-        img.paste(_iso, (30, 25), _iso)
-    else:
-        font_logo = _get_font(32, bold=True)
-        draw.text((40, 30), "CIRCA", fill=CIRCA_BLUE, font=font_logo)
-    
-    # Large green circle with white checkmark
-    cx, cy, cr = W//2, 155, 55
-    draw.ellipse([cx-cr, cy-cr, cx+cr, cy+cr], fill=GREEN_CHECK)
-    font_check = _get_font(60, bold=True)
-    chk = "✓"
-    chk_w = draw.textlength(chk, font=font_check)
-    draw.text((cx - chk_w//2, cy - 35), chk, fill=WHITE, font=font_check)
-    
+
+    # Top blue bar
+    draw.rectangle([0, 0, W, 6], fill=CIRCA_BLUE)
+
+    # Isotipo + CIRCA centered
+    iso_w = _draw_isotipo(img, W//2 - 70, 28, 32)
+    f_logo = _get_font(24, bold=True)
+    draw.text((W//2 - 70 + iso_w + 10, 30), "CIRCA", fill=CIRCA_DARK, font=f_logo)
+
+    # Divider
+    draw.line([60, 75, W-60, 75], fill=BORDER, width=1)
+
+    # Green check circle
+    _draw_check_circle(draw, W//2, 130, 40)
+
     # Title
-    font_title = _get_font(36, bold=True)
-    title = "Cuenta activada"
-    tw = draw.textlength(title, font=font_title)
-    draw.text((W//2 - tw//2, 225), title, fill=WHITE, font=font_title)
-    
-    # Subtitle
-    font_sub = _get_font(20)
-    sub = "Clave creada con exito"
-    sw = draw.textlength(sub, font=font_sub)
-    draw.text((W//2 - sw//2, 272), sub, fill=GREEN_CHECK, font=font_sub)
-    
-    # Bodega name
-    font_name = _get_font(22)
-    nw = draw.textlength(nombre, font=font_name)
-    draw.text((W//2 - nw//2, 310), nombre, fill=(180, 180, 200), font=font_name)
-    
+    f_title = _get_font(28, bold=True)
+    _center_text(draw, "Cuenta activada", 185, f_title, CIRCA_DARK, W)
+
+    f_sub = _get_font(16)
+    _center_text(draw, "Clave creada con exito", 220, f_sub, GREEN, W)
+
+    # Name
+    f_name = _get_font(18, bold=True)
+    _center_text(draw, nombre, 255, f_name, GRAY_700, W)
+
     # Credit box
-    _draw_rounded_rect(draw, (80, 350, W-80, 480), 18, CIRCA_BLUE)
-    
-    font_label = _get_font(20)
-    label = "Credito disponible"
-    lw = draw.textlength(label, font=font_label)
-    draw.text((W//2 - lw//2, 365), label, fill=(200, 220, 255), font=font_label)
-    
-    font_amount = _get_font(56, bold=True)
-    amount_str = f"S/{linea:,.2f}"
-    aw = draw.textlength(amount_str, font=font_amount)
-    draw.text((W//2 - aw//2, 395), amount_str, fill=WHITE, font=font_amount)
-    
-    font_dist = _get_font(16)
-    dist_text = f"Distribuidor: {distribuidor}"
-    dw = draw.textlength(dist_text, font=font_dist)
-    draw.text((W//2 - dw//2, 455), dist_text, fill=(180, 200, 230), font=font_dist)
-    
+    _rounded_rect(draw, (60, 295, W-60, 420), 16, BLUE_LIGHT, outline=CIRCA_BLUE)
+
+    f_label = _get_font(14)
+    _center_text(draw, "CREDITO DISPONIBLE", 310, f_label, CIRCA_BLUE, W)
+
+    f_amount = _get_font(48, bold=True)
+    amount_str = f"S/ {linea:,.2f}"
+    _center_text(draw, amount_str, 335, f_amount, CIRCA_DARK, W)
+
+    f_dist = _get_font(14)
+    _center_text(draw, f"Distribuidor: {distribuidor}", 395, f_dist, GRAY_500, W)
+
     # Footer
-    font_footer = _get_font(15)
+    draw.line([60, 440, W-60, 440], fill=BORDER, width=1)
+    f_footer = _get_font(12)
     now = datetime.now()
-    footer = f"{now.strftime('%d/%m/%Y %H:%M')} | Circa"
-    fw = draw.textlength(footer, font=font_footer)
-    draw.text((W//2 - fw//2, 505), footer, fill=TEXT_GRAY, font=font_footer)
-    
-    draw.rectangle([80, 540, W-80, 541], fill=(60, 60, 80))
-    font_tag = _get_font(14)
-    tag = "Compra hoy. Paga despues. Tu credito se renueva al pagar."
-    tagw = draw.textlength(tag, font=font_tag)
-    draw.text((W//2 - tagw//2, 555), tag, fill=TEXT_GRAY, font=font_tag)
-    
-    draw.rectangle([0, H-6, W, H], fill=CIRCA_BLUE)
-    
+    _center_text(draw, f"{now.strftime('%d/%m/%Y %H:%M')} | Circa", 455, f_footer, GRAY_500, W)
+    _center_text(draw, "Compra hoy. Paga despues.", 475, f_footer, GRAY_500, W)
+
+    # Bottom bar
+    draw.rectangle([0, H-5, W, H], fill=CIRCA_BLUE)
+
     buf = io.BytesIO()
     img.save(buf, format="PNG", quality=95)
     return buf.getvalue()
 
 
-def generate_contract_signed_card(nombre: str, ruc: str, linea: float, contract_hash: str) -> bytes:
-    """Generate contract signed confirmation card."""
-    W, H = 600, 480
-    img = Image.new("RGB", (W, H), CIRCA_DARK)
+def generate_contract_signed_card(nombre, ruc, linea, contract_hash):
+    W, H = 650, 500
+    img = Image.new("RGB", (W, H), WHITE)
     draw = ImageDraw.Draw(img)
-    
+
     draw.rectangle([0, 0, W, 6], fill=CIRCA_BLUE)
-    
-    _iso_path = os.path.join(os.path.dirname(__file__), "..", "static", "circa_isotipo.png")
-    if os.path.exists(_iso_path):
-        _iso = Image.open(_iso_path).convert("RGBA")
-        _iso_h = 34
-        _iso_w = int(_iso.width * _iso_h / _iso.height)
-        _iso = _iso.resize((_iso_w, _iso_h), Image.LANCZOS)
-        img.paste(_iso, (25, 20), _iso)
-    else:
-        font_logo = _get_font(28, bold=True)
-        draw.text((30, 25), "CIRCA", fill=CIRCA_BLUE, font=font_logo)
-    
-    # Check
-    cx, cy, cr = W//2, 110, 30
-    draw.ellipse([cx-cr, cy-cr, cx+cr, cy+cr], fill=GREEN_CHECK)
-    font_check = _get_font(34, bold=True)
-    cw = draw.textlength("\u2713", font=font_check)
-    draw.text((cx - cw//2, cy - 19), "\u2713", fill=WHITE, font=font_check)
-    
-    # Title
-    font_title = _get_font(22, bold=True)
-    title = "Contrato firmado digitalmente"
-    tw = draw.textlength(title, font=font_title)
-    draw.text((W//2 - tw//2, 155), title, fill=WHITE, font=font_title)
-    
+
+    iso_w = _draw_isotipo(img, W//2 - 70, 28, 32)
+    f_logo = _get_font(24, bold=True)
+    draw.text((W//2 - 70 + iso_w + 10, 30), "CIRCA", fill=CIRCA_DARK, font=f_logo)
+
+    draw.line([60, 75, W-60, 75], fill=BORDER, width=1)
+
+    _draw_check_circle(draw, W//2, 125, 32)
+
+    f_title = _get_font(24, bold=True)
+    _center_text(draw, "Contrato firmado", 170, f_title, CIRCA_DARK, W)
+
     # Details box
-    _draw_rounded_rect(draw, (50, 200, W-50, 390), 12, (35, 35, 55))
-    
-    font_detail = _get_font(15)
-    font_value = _get_font(15, bold=True)
-    y = 220
+    _rounded_rect(draw, (60, 210, W-60, 400), 14, GRAY_100, outline=BORDER)
+
+    f_label = _get_font(13)
+    f_value = _get_font(14, bold=True)
+    y = 230
     details = [
-        ("Bodega:", nombre),
-        ("RUC:", ruc),
-        ("Credito aprobado:", f"S/{linea:,.2f}"),
-        ("Contrato:", "Facilidad de Financiamiento Circa v2.0"),
-        ("Hash:", contract_hash[:16] if contract_hash else "---"),
+        ("Bodega", nombre),
+        ("RUC", ruc),
+        ("Credito aprobado", f"S/ {linea:,.2f}"),
+        ("Contrato", "Facilidad de Financiamiento v2.0"),
+        ("Hash", contract_hash[:16] if contract_hash else "---"),
     ]
     for label, value in details:
-        draw.text((75, y), label, fill=TEXT_GRAY, font=font_detail)
-        draw.text((240, y), value, fill=WHITE, font=font_value)
+        draw.text((85, y), label, fill=GRAY_500, font=f_label)
+        draw.text((250, y), value, fill=CIRCA_DARK, font=f_value)
         y += 32
-    
+
     # Footer
-    font_footer = _get_font(13)
+    draw.line([60, 415, W-60, 415], fill=BORDER, width=1)
+    f_footer = _get_font(12)
     now = datetime.now()
-    draw.text((75, 400), f"Firmado: {now.strftime('%d/%m/%Y %H:%M')}", fill=TEXT_GRAY, font=font_footer)
-    draw.text((75, 420), "Recibiras el contrato completo en PDF", fill=CIRCA_BLUE, font=font_footer)
-    
-    # Bottom bar
-    draw.rectangle([0, H-4, W, H], fill=CIRCA_BLUE)
-    
+    _center_text(draw, f"Firmado: {now.strftime('%d/%m/%Y %H:%M')}", 430, f_footer, GRAY_500, W)
+    _center_text(draw, "Recibiras el contrato completo en PDF", 450, f_footer, CIRCA_BLUE, W)
+
+    draw.rectangle([0, H-5, W, H], fill=CIRCA_BLUE)
+
     buf = io.BytesIO()
     img.save(buf, format="PNG", quality=95)
     return buf.getvalue()
 
 
-def generate_order_confirmed_card(numero: str, items_summary: str, 
-                                   monto: float, fee: float, total: float,
-                                   dias: int, vencimiento: str) -> bytes:
-    """Generate order confirmation card."""
-    W, H = 600, 420
-    img = Image.new("RGB", (W, H), CIRCA_DARK)
+def generate_order_confirmed_card(numero, items_summary, monto, fee, total, dias, vencimiento):
+    W, H = 650, 520
+    img = Image.new("RGB", (W, H), WHITE)
     draw = ImageDraw.Draw(img)
-    
-    draw.rectangle([0, 0, W, 6], fill=CIRCA_BLUE)
-    
-    _iso_path = os.path.join(os.path.dirname(__file__), "..", "static", "circa_isotipo.png")
-    if os.path.exists(_iso_path):
-        _iso = Image.open(_iso_path).convert("RGBA")
-        _iso_h = 34
-        _iso_w = int(_iso.width * _iso_h / _iso.height)
-        _iso = _iso.resize((_iso_w, _iso_h), Image.LANCZOS)
-        img.paste(_iso, (25, 20), _iso)
-    else:
-        font_logo = _get_font(28, bold=True)
-        draw.text((30, 25), "CIRCA", fill=CIRCA_BLUE, font=font_logo)
-    
-    # Check + order number
-    cx, cy, cr = 55, 90, 22
-    draw.ellipse([cx-cr, cy-cr, cx+cr, cy+cr], fill=GREEN_CHECK)
-    font_check = _get_font(26, bold=True)
-    cw = draw.textlength("\u2713", font=font_check)
-    draw.text((cx - cw//2, cy - 15), "\u2713", fill=WHITE, font=font_check)
-    
-    font_title = _get_font(22, bold=True)
-    draw.text((90, 78), f"Pedido {numero} confirmado", fill=WHITE, font=font_title)
-    
+
+    # Top green bar (order = green theme)
+    draw.rectangle([0, 0, W, 6], fill=GREEN)
+
+    # Logo
+    iso_w = _draw_isotipo(img, W//2 - 70, 24, 30)
+    f_logo = _get_font(22, bold=True)
+    draw.text((W//2 - 70 + iso_w + 10, 26), "CIRCA", fill=CIRCA_DARK, font=f_logo)
+
+    draw.line([60, 68, W-60, 68], fill=BORDER, width=1)
+
+    # Check + pedido
+    _draw_check_circle(draw, W//2, 115, 35)
+
+    f_title = _get_font(26, bold=True)
+    _center_text(draw, f"Pedido {numero}", 160, f_title, CIRCA_DARK, W)
+
+    f_status = _get_font(16, bold=True)
+    _center_text(draw, "CONFIRMADO", 193, f_status, GREEN, W)
+
     # Amount box
-    _draw_rounded_rect(draw, (40, 130, W-40, 260), 12, CIRCA_BLUE)
-    
-    font_amt_label = _get_font(14)
-    font_amt = _get_font(36, bold=True)
-    font_detail = _get_font(14)
-    
-    draw.text((70, 145), "Total financiado", fill=(200, 220, 255), font=font_amt_label)
-    draw.text((70, 170), f"S/{total:,.2f}", fill=WHITE, font=font_amt)
-    
-    draw.text((70, 220), f"Monto: S/{monto:.2f}  |  Fee ({dias}d): S/{fee:.2f}", fill=(200, 220, 255), font=font_detail)
-    
+    _rounded_rect(draw, (60, 230, W-60, 350), 16, GREEN_LIGHT, outline=GREEN)
+
+    f_label2 = _get_font(13)
+    if dias > 0:
+        _center_text(draw, "TOTAL FINANCIADO", 248, f_label2, GREEN, W)
+    else:
+        _center_text(draw, "TOTAL CONTADO", 248, f_label2, GREEN, W)
+
+    f_big = _get_font(44, bold=True)
+    _center_text(draw, f"S/ {total:,.2f}", 270, f_big, CIRCA_DARK, W)
+
+    if dias > 0:
+        f_detail = _get_font(13)
+        _center_text(draw, f"Monto: S/{monto:.2f}  |  Fee ({dias}d): S/{fee:.2f}", 325, f_detail, GRAY_700, W)
+
     # Details
-    font_info = _get_font(15)
-    draw.text((70, 280), f"Plazo: {dias} dias  |  Vence: {vencimiento}", fill=TEXT_GRAY, font=font_info)
-    draw.text((70, 310), "Pago a Circa por Yape o Plin", fill=TEXT_GRAY, font=font_info)
-    draw.text((70, 340), "Recibiras actualizaciones por WhatsApp", fill=CIRCA_BLUE, font=font_info)
-    
+    f_info = _get_font(14)
+    y = 370
+    if dias > 0:
+        _center_text(draw, f"Plazo: {dias} dias  |  Vence: {vencimiento}", y, f_info, GRAY_700, W)
+        y += 25
+        _center_text(draw, "Pago a Circa por Yape o Plin al 986311567", y, f_info, GRAY_500, W)
+        y += 25
+    else:
+        _center_text(draw, "Tu distribuidor preparara tu pedido", y, f_info, GRAY_700, W)
+        y += 25
+
+    f_tracking = _get_font(13)
+    _center_text(draw, "Recibiras actualizaciones por WhatsApp", y, f_tracking, CIRCA_BLUE, W)
+
     # Footer
-    font_footer = _get_font(12)
+    draw.line([60, H-65, W-60, H-65], fill=BORDER, width=1)
+    f_footer = _get_font(12)
     now = datetime.now()
-    draw.text((70, 380), f"{now.strftime('%d/%m/%Y %H:%M')} | Circa", fill=TEXT_GRAY, font=font_footer)
-    
-    draw.rectangle([0, H-4, W, H], fill=CIRCA_BLUE)
-    
+    _center_text(draw, f"{now.strftime('%d/%m/%Y %H:%M')} | Circa", H-50, f_footer, GRAY_500, W)
+
+    draw.rectangle([0, H-5, W, H], fill=GREEN)
+
     buf = io.BytesIO()
     img.save(buf, format="PNG", quality=95)
     return buf.getvalue()
