@@ -301,7 +301,7 @@ async def send_welcome(to: str, nombre: str, linea: float, distribuidor: str):
             f"\u00a1Hola, *{nombre}*! \U0001f44b\n\n"
             f"\U0001f389 *\u00a1Felicitaciones!* Por tu buen historial con *{distribuidor}*, "
             f"puedes comprar hasta:\n\n"
-            f"\U0001f4b0 *S/{linea:.2f}* en mercader\u00eda\n\n"
+            f"\U0001f4b0 *S/{linea:.2f}* en mercader\u00eda con financiamiento\n\n"
             f"\u00bfC\u00f3mo funciona?\n\n"
             f"\u2022 Pide lo que necesites a *{distribuidor}*\n"
             f"\u2022 Circa le paga directo al distribuidor\n"
