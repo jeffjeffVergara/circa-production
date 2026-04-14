@@ -281,11 +281,11 @@ async def send_menu(to: str, linea_disponible: float):
         button_text="Ver opciones",
         header="Circa",
         sections=[{
-            "title": "Men\u00fa principal",
+            "title": "Men\u00fa",
             "rows": [
                 {"id": "PEDIDO", "title": "Hacer un nuevo pedido", "description": "Arma tu pedido del cat\u00e1logo"},
-                {"id": "REPETIR", "title": "Repetir pedido anterior", "description": "Vuelve a pedir lo mismo"},
-                {"id": "LINEA", "title": "Ver mi cr\u00e9dito disponible", "description": "Cu\u00e1nto puedes comprar"},
+                {"id": "REPETIR", "title": "Repetir pedido anterior", "description": "Pide lo mismo que la vez pasada"},
+                {"id": "LINEA", "title": "Ver mi cr\u00e9dito", "description": "Cu\u00e1nto tienes disponible"},
                 {"id": "ESTADO", "title": "Estado de mis pedidos", "description": "Seguimiento y pagos"},
             ],
         }]
@@ -293,7 +293,7 @@ async def send_menu(to: str, linea_disponible: float):
 
 
 async def send_welcome(to: str, nombre: str, linea: float, distribuidor: str):
-    """Welcome message — trust-first, no bank language."""
+    """Welcome message."""
     return await send_buttons(
         to=to,
         header="Circa",
@@ -303,11 +303,12 @@ async def send_welcome(to: str, nombre: str, linea: float, distribuidor: str):
             f"puedes comprar hasta:\n\n"
             f"\U0001f4b0 *S/{linea:.2f}* en mercader\u00eda con financiamiento\n\n"
             f"\u00bfC\u00f3mo funciona?\n\n"
-            f"\u2022 Pide lo que necesites a *{distribuidor}*\n"
-            f"\u2022 Circa le paga directo al distribuidor\n"
-            f"\u2022 T\u00fa pagas en *7, 15 o 30 d\u00edas*\n"
-            f"\u2022 Cuando pagas, tu cr\u00e9dito se renueva\n\n"
-            f"Sin garant\u00edas. Sin papeleo. Todo por WhatsApp."
+            f"1. Pide lo que necesites a *{distribuidor}*\n"
+            f"2. Circa le paga directo al distribuidor\n"
+            f"3. T\u00fa eliges pagar en *7, 15 o 30 d\u00edas*\n"
+            f"4. Pagas a Circa por *Yape o Plin*\n"
+            f"5. Tu cr\u00e9dito se renueva al pagar\n\n"
+            f"No necesitas ir a ning\u00fan banco. Todo por WhatsApp."
         ),
         buttons=[
             {"id": "SI", "title": "Activar mi cuenta"},
