@@ -129,7 +129,7 @@ def is_ruc_eligible(ruc_data: dict) -> tuple[bool, str]:
 # ══════════════════════════════════════════════
 
 async def _ruc_apiinti(ruc: str) -> dict | None:
-    url = f"https://api.apiinti.dev/api/v1/ruc/{ruc}"
+    url = f"https://app.apiinti.dev/api/v1/ruc/{ruc}"
     async with httpx.AsyncClient(timeout=TIMEOUT) as client:
         r = await client.get(url, headers={"Authorization": f"Bearer {PERU_API_TOKEN}"})
         if r.status_code != 200:
@@ -150,7 +150,7 @@ async def _ruc_apiinti(ruc: str) -> dict | None:
 
 
 async def _dni_apiinti(dni: str) -> dict | None:
-    url = f"https://api.apiinti.dev/api/v1/dni/{dni}"
+    url = f"https://app.apiinti.dev/api/v1/dni/{dni}"
     async with httpx.AsyncClient(timeout=TIMEOUT) as client:
         r = await client.get(url, headers={"Authorization": f"Bearer {PERU_API_TOKEN}"})
         if r.status_code != 200:
@@ -299,7 +299,7 @@ def consultar_dni_sync(dni: str) -> dict | None:
 
 
 def _ruc_apiinti_sync(ruc: str) -> dict | None:
-    url = f"https://api.apiinti.dev/api/v1/ruc/{ruc}"
+    url = f"https://app.apiinti.dev/api/v1/ruc/{ruc}"
     r = httpx.get(url, headers={"Authorization": f"Bearer {PERU_API_TOKEN}"}, timeout=TIMEOUT)
     if r.status_code != 200:
         logger.warning(f"ApiInti RUC sync {ruc}: HTTP {r.status_code}")
@@ -319,7 +319,7 @@ def _ruc_apiinti_sync(ruc: str) -> dict | None:
 
 
 def _dni_apiinti_sync(dni: str) -> dict | None:
-    url = f"https://api.apiinti.dev/api/v1/dni/{dni}"
+    url = f"https://app.apiinti.dev/api/v1/dni/{dni}"
     r = httpx.get(url, headers={"Authorization": f"Bearer {PERU_API_TOKEN}"}, timeout=TIMEOUT)
     if r.status_code != 200:
         logger.warning(f"ApiInti DNI sync {dni}: HTTP {r.status_code}")
