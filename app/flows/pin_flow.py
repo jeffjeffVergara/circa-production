@@ -121,12 +121,50 @@ def _handle_pin_create(data: dict) -> dict:
             }
         }
     
-    # Pass hash to confirmation screen (PIN never stored in plaintext)
+    # No PIN_CONFIRM screen in Flow — activate directly
+    if mode == "create" and bodega_id:
+        try:
+            from app.services.pin import hash_pin
+            pin_hashed = hash_pin(pin)
+            db.update_bodega(bodega_id, {
+                "estado": "activo",
+                "pin_hash": pin_hashed,
+                "pin_intentos": 0,
+                "pin_bloqueado_hasta": None,
+            })
+            # Update session
+            bodega = db.sb.table("bodegas").select("telefono_whatsapp, linea_disponible").eq("id", bodega_id).execute()
+            telefono = bodega.data[0]["telefono_whatsapp"] if bodega.data else ""
+            linea = bodega.data[0]["linea_disponible"] if bodega.data else 500
+            if telefono:
+                db.upsert_session(telefono, "menu", {}, bodega_id)
+            # Send activation message via sync requests
+            try:
+                import requests as req
+                import os
+                token = os.getenv("META_ACCESS_TOKEN", "")
+                phone_id = os.getenv("META_PHONE_NUMBER_ID", "1076586305533033")
+                phone = telefono.replace("+", "")
+                req.post(
+                    f"https://graph.facebook.com/v23.0/{phone_id}/messages",
+                    headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                    json={"messaging_product": "whatsapp", "to": phone, "type": "text",
+                          "text": {"body": f"\u2705 *Cuenta activada*\nL\u00ednea disponible: *S/{linea:.2f}*\n\nEscribe MENU para empezar a pedir."}},
+                    timeout=10,
+                )
+            except Exception as e:
+                logger.error(f"Activation msg error: {e}")
+            logger.info(f"Bodega {bodega_id} activated via PIN Flow (single step)")
+            return {"screen": "SUCCESS", "data": {"message": f"Clave creada. Linea: S/{linea:.2f}"}}
+        except Exception as e:
+            logger.error(f"PIN activate error: {e}", exc_info=True)
+            return {"screen": "PIN_CREATE", "data": {"bodega_id": bodega_id, "error_msg": "Error al activar. Intenta de nuevo."}}
+    
+    # Fallback — should not reach here
     return {
-        "screen": "PIN_CONFIRM",
+        "screen": "PIN_CREATE",
         "data": {
             "bodega_id": bodega_id,
-            "pin_hash_temp": hashlib.sha256(pin.encode()).hexdigest(),
             "error_msg": "",
         }
     }
