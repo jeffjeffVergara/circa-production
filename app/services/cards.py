@@ -49,15 +49,25 @@ def generate_account_activated_card(nombre: str, linea: float, distribuidor: str
     # Top accent bar
     draw.rectangle([0, 0, W, 8], fill=CIRCA_BLUE)
     
-    # Circa logo
-    font_logo = _get_font(32, bold=True)
-    draw.text((40, 30), "CIRCA", fill=CIRCA_BLUE, font=font_logo)
+    # Circa isotipo
+    _iso_path = os.path.join(os.path.dirname(__file__), "..", "static", "circa_isotipo.png")
+    if os.path.exists(_iso_path):
+        _iso = Image.open(_iso_path).convert("RGBA")
+        _iso_h = 40
+        _iso_w = int(_iso.width * _iso_h / _iso.height)
+        _iso = _iso.resize((_iso_w, _iso_h), Image.LANCZOS)
+        img.paste(_iso, (30, 25), _iso)
+    else:
+        font_logo = _get_font(32, bold=True)
+        draw.text((40, 30), "CIRCA", fill=CIRCA_BLUE, font=font_logo)
     
-    # Large green circle with white checkmark drawn manually
+    # Large green circle with white checkmark
     cx, cy, cr = W//2, 155, 55
     draw.ellipse([cx-cr, cy-cr, cx+cr, cy+cr], fill=GREEN_CHECK)
-    # Draw checkmark as lines
-    draw.line([(cx-22, cy), (cx-5, cy+20), (cx+25, cy-18)], fill=WHITE, width=7)
+    font_check = _get_font(60, bold=True)
+    chk = "✓"
+    chk_w = draw.textlength(chk, font=font_check)
+    draw.text((cx - chk_w//2, cy - 35), chk, fill=WHITE, font=font_check)
     
     # Title
     font_title = _get_font(36, bold=True)
@@ -122,8 +132,16 @@ def generate_contract_signed_card(nombre: str, ruc: str, linea: float, contract_
     
     draw.rectangle([0, 0, W, 6], fill=CIRCA_BLUE)
     
-    font_logo = _get_font(28, bold=True)
-    draw.text((30, 25), "CIRCA", fill=CIRCA_BLUE, font=font_logo)
+    _iso_path = os.path.join(os.path.dirname(__file__), "..", "static", "circa_isotipo.png")
+    if os.path.exists(_iso_path):
+        _iso = Image.open(_iso_path).convert("RGBA")
+        _iso_h = 34
+        _iso_w = int(_iso.width * _iso_h / _iso.height)
+        _iso = _iso.resize((_iso_w, _iso_h), Image.LANCZOS)
+        img.paste(_iso, (25, 20), _iso)
+    else:
+        font_logo = _get_font(28, bold=True)
+        draw.text((30, 25), "CIRCA", fill=CIRCA_BLUE, font=font_logo)
     
     # Check
     cx, cy, cr = W//2, 110, 30
@@ -180,8 +198,16 @@ def generate_order_confirmed_card(numero: str, items_summary: str,
     
     draw.rectangle([0, 0, W, 6], fill=CIRCA_BLUE)
     
-    font_logo = _get_font(28, bold=True)
-    draw.text((30, 25), "CIRCA", fill=CIRCA_BLUE, font=font_logo)
+    _iso_path = os.path.join(os.path.dirname(__file__), "..", "static", "circa_isotipo.png")
+    if os.path.exists(_iso_path):
+        _iso = Image.open(_iso_path).convert("RGBA")
+        _iso_h = 34
+        _iso_w = int(_iso.width * _iso_h / _iso.height)
+        _iso = _iso.resize((_iso_w, _iso_h), Image.LANCZOS)
+        img.paste(_iso, (25, 20), _iso)
+    else:
+        font_logo = _get_font(28, bold=True)
+        draw.text((30, 25), "CIRCA", fill=CIRCA_BLUE, font=font_logo)
     
     # Check + order number
     cx, cy, cr = 55, 90, 22
