@@ -626,6 +626,51 @@ async def notify_distribuidor_new_order(distribuidor_wa: str, order_number: str,
 
 
 # ══════════════════════════════════════════════
+# IMAGE SENDING (for branded cards)
+# ══════════════════════════════════════════════
+
+async def send_image_bytes(to: str, image_bytes: bytes, caption: str = "") -> bool:
+    """Upload and send an image from bytes."""
+    import tempfile, os as _os
+    
+    # Write to temp file
+    tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+    tmp.write(image_bytes)
+    tmp.close()
+    
+    try:
+        url_upload = f"{GRAPH_API_URL}/{_phone_number_id()}/media"
+        async with httpx.AsyncClient(timeout=30) as client:
+            with open(tmp.name, "rb") as f:
+                resp = await client.post(
+                    url_upload,
+                    headers={"Authorization": f"Bearer {_access_token()}"},
+                    data={"messaging_product": "whatsapp", "type": "image/png"},
+                    files={"file": ("card.png", f, "image/png")},
+                )
+        
+        if resp.status_code != 200:
+            logger.error(f"Card upload failed: {resp.text}")
+            return False
+        
+        media_id = resp.json().get("id")
+        
+        payload = {
+            "messaging_product": "whatsapp",
+            "to": to,
+            "type": "image",
+            "image": {"id": media_id},
+        }
+        if caption:
+            payload["image"]["caption"] = caption
+        
+        result = await _send(to, payload)
+        return result is not None
+    finally:
+        _os.unlink(tmp.name)
+
+
+# ══════════════════════════════════════════════
 # CONTRACT PDF SENDING
 # ══════════════════════════════════════════════
 

@@ -145,13 +145,56 @@ def _handle_pin_create(data: dict) -> dict:
                 token = os.getenv("META_ACCESS_TOKEN", "")
                 phone_id = os.getenv("META_PHONE_NUMBER_ID", "1076586305533033")
                 phone = telefono.replace("+", "")
-                req.post(
-                    f"https://graph.facebook.com/v23.0/{phone_id}/messages",
-                    headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-                    json={"messaging_product": "whatsapp", "to": phone, "type": "text",
-                          "text": {"body": f"\U0001f512 *Clave creada con \u00e9xito*\n\nTu clave Circa de 4 d\u00edgitos ha sido guardada.\n\n\u2705 *Cuenta activada*\nL\u00ednea disponible: *S/{linea:.2f}*\n\nEscribe MENU para empezar a pedir."}},
-                    timeout=10,
-                )
+                # Send branded activation card
+                try:
+                    from app.services.cards import generate_account_activated_card
+                    bodega_full = db.sb.table("bodegas").select("nombre_comercial, razon_social, distribuidor_id").eq("id", bodega_id).limit(1).execute()
+                    b_name = "Tu bodega"
+                    dist_name = "Tu distribuidor"
+                    if bodega_full.data:
+                        b_name = bodega_full.data[0].get("nombre_comercial") or bodega_full.data[0].get("razon_social", b_name)
+                        d_id = bodega_full.data[0].get("distribuidor_id")
+                        if d_id:
+                            d_r = db.sb.table("distribuidores").select("nombre_comercial").eq("id", d_id).limit(1).execute()
+                            if d_r.data:
+                                dist_name = d_r.data[0]["nombre_comercial"]
+                    card_bytes = generate_account_activated_card(b_name, linea, dist_name)
+                    
+                    # Upload and send card image
+                    import tempfile
+                    tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+                    tmp.write(card_bytes)
+                    tmp.close()
+                    
+                    # Upload media
+                    upload_r = req.post(
+                        f"https://graph.facebook.com/v23.0/{phone_id}/media",
+                        headers={"Authorization": f"Bearer {token}"},
+                        data={"messaging_product": "whatsapp", "type": "image/png"},
+                        files={"file": ("card.png", open(tmp.name, "rb"), "image/png")},
+                        timeout=15,
+                    )
+                    if upload_r.status_code == 200:
+                        media_id = upload_r.json().get("id")
+                        req.post(
+                            f"https://graph.facebook.com/v23.0/{phone_id}/messages",
+                            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                            json={"messaging_product": "whatsapp", "to": phone, "type": "image",
+                                  "image": {"id": media_id, "caption": "\U0001f512 Clave creada \u2022 \u2705 Cuenta activada\n\nEscribe MENU para empezar a pedir."}},
+                            timeout=10,
+                        )
+                    import os as _os2
+                    _os2.unlink(tmp.name)
+                except Exception as card_err:
+                    logger.error(f"Card generation error: {card_err}")
+                    # Fallback to text
+                    req.post(
+                        f"https://graph.facebook.com/v23.0/{phone_id}/messages",
+                        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                        json={"messaging_product": "whatsapp", "to": phone, "type": "text",
+                              "text": {"body": f"\U0001f512 *Clave creada con exito*\n\n\u2705 *Cuenta activada*\nCredito disponible: *S/{linea:.2f}*\n\nEscribe MENU para empezar a pedir."}},
+                        timeout=10,
+                    )
             except Exception as e:
                 logger.error(f"Activation msg error: {e}")
             logger.info(f"Bodega {bodega_id} activated via PIN Flow (single step)")
