@@ -121,3 +121,81 @@ def verify_selfie(image_bytes: bytes) -> dict:
     except Exception as e:
         logger.error(f"Selfie verify error: {e}", exc_info=True)
         return {"valid": True, "reason": "Error verificacion", "confidence": "low"}
+
+
+
+def verify_dni_photo(image_bytes: bytes, expected_dni: str, expected_name: str) -> dict:
+    """
+    Use Claude Vision to verify a DNI card photo.
+    Checks: real card, extracts number, compares with expected.
+    Returns: {"valid": bool, "reason": str, "dni_found": str}
+    """
+    api_key = os.getenv("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        return {"valid": True, "reason": "Sin API key", "dni_found": ""}
+    
+    b64 = base64.standard_b64encode(image_bytes).decode("utf-8")
+    
+    try:
+        r = httpx.post(
+            "https://api.anthropic.com/v1/messages",
+            headers={
+                "x-api-key": api_key,
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json",
+            },
+            json={
+                "model": "claude-sonnet-4-20250514",
+                "max_tokens": 300,
+                "messages": [{
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": "image/jpeg",
+                                "data": b64,
+                            },
+                        },
+                        {
+                            "type": "text",
+                            "text": (
+                                "Eres un sistema KYC de verificacion de documentos de identidad peruanos. "
+                                "Analiza esta imagen y determina si es una foto real de un DNI peruano (documento nacional de identidad). "
+                                "Verifica: "
+                                "1) Es un documento DNI peruano real y fisico (no una foto de pantalla, no editado)? "
+                                "2) Se puede leer el numero de DNI? Si es asi, extraelo. "
+                                "3) Se puede leer el nombre? Si es asi, extraelo. "
+                                f"4) El DNI esperado es {expected_dni} y el nombre esperado es {expected_name}. Coincide? "
+                                "Responde SOLO en formato JSON: "
+                                '{"valid": true/false, "reason": "explicacion breve en espanol", '
+                                '"dni_found": "numero extraido o vacio", "name_found": "nombre extraido o vacio", '
+                                '"matches_expected": true/false}'
+                            ),
+                        },
+                    ],
+                }],
+            },
+            timeout=25,
+        )
+        
+        if r.status_code != 200:
+            logger.error(f"Claude DNI check error: {r.status_code}")
+            return {"valid": True, "reason": "Error verificacion", "dni_found": ""}
+        
+        text = r.json()["content"][0]["text"].strip()
+        logger.info(f"Claude DNI raw: {text}")
+        
+        if text.startswith("```"):
+            text = text.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
+        if text.startswith("{"):
+            result = json.loads(text)
+            logger.info(f"DNI photo result: {result}")
+            return result
+        
+        return {"valid": True, "reason": "Respuesta inesperada", "dni_found": ""}
+        
+    except Exception as e:
+        logger.error(f"DNI photo verify error: {e}", exc_info=True)
+        return {"valid": True, "reason": "Error verificacion", "dni_found": ""}
