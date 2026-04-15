@@ -16,7 +16,7 @@ DASH = (190, 198, 210)
 FONTS_DIR = os.path.join(os.path.dirname(__file__), "..", "static", "fonts")
 
 def _f(size, weight="regular"):
-    names = {"black": "Inter-Black.ttf", "bold": "Inter-Bold.ttf", "regular": "Inter-Regular.ttf"}
+    names = {"black": "Inter.ttf", "bold": "Inter.ttf", "regular": "Inter.ttf"}
     p = os.path.join(FONTS_DIR, names.get(weight, "Inter-Regular.ttf"))
     if os.path.exists(p):
         return ImageFont.truetype(p, size)
