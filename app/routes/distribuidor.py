@@ -41,9 +41,9 @@ STATUS_LABELS = {"confirmado":"Nuevo","recibido":"Recibido","en_preparacion":"En
 WA_MESSAGES = {
     "recibido": "✅ *Pedido {numero} recibido*\n{distribuidor} confirmo que recibio tu pedido.",
     "en_preparacion": "📦 *Pedido {numero} en preparacion*\n{distribuidor} esta armando tu pedido.",
-    "despachado": "🚚 *Pedido {numero} despachado*\n{distribuidor} envio tu pedido. Ya va en camino!",
-    "en_camino": "🚚 *Pedido {numero} en camino*\nTu pedido esta siendo entregado.",
-    "entregado": "🎉 *Pedido {numero} entregado*\nTu pedido fue entregado. Gracias por comprar con Circa!",
+    "despachado": "🚚 *Pedido {numero} despachado*\n{distribuidor} despacho tu pedido. Salio del almacen.",
+    "en_camino": "🚚 *Pedido {numero} en camino*\nTu pedido va camino a tu bodega.",
+    "entregado": "🎉 *Pedido {numero} entregado*\nTu pedido fue entregado en tu bodega. Gracias por comprar con Circa!",
 }
 
 META_TOKEN = os.getenv("META_ACCESS_TOKEN", "")
