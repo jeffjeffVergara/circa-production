@@ -1,27 +1,28 @@
 """
-Circa branded cards — ticket style matching HTML mockup.
-Blue frame, white card, punch holes, large typography.
+Circa branded cards — ticket style, Inter font, no emojis.
 """
-import os, io, math
+import os, io
 from datetime import datetime
 from PIL import Image, ImageDraw, ImageFont
 
-# Colors matching the HTML
 BLUE = (37, 99, 235)
 GREEN = (22, 163, 74)
-GREEN_LIGHT = (220, 252, 231)
 WHITE = (255, 255, 255)
 BLACK = (17, 17, 17)
 MUTED = (107, 114, 128)
 LINE = (229, 231, 235)
-DASH_LINE = (209, 213, 219)
-CARD_BG = WHITE
-FRAME_BG = BLUE
+DASH = (190, 198, 210)
 
-def _f(size, bold=False):
-    for fp in ["/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-               "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"]:
-        if os.path.exists(fp): return ImageFont.truetype(fp, size)
+FONTS_DIR = os.path.join(os.path.dirname(__file__), "..", "static", "fonts")
+
+def _f(size, weight="regular"):
+    names = {"black": "Inter-Black.ttf", "bold": "Inter-Bold.ttf", "regular": "Inter-Regular.ttf"}
+    p = os.path.join(FONTS_DIR, names.get(weight, "Inter-Regular.ttf"))
+    if os.path.exists(p):
+        return ImageFont.truetype(p, size)
+    fb = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if weight != "regular" else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+    if os.path.exists(fb):
+        return ImageFont.truetype(fb, size)
     return ImageFont.load_default()
 
 def _ct(d, t, y, font, fill, W):
@@ -35,108 +36,87 @@ def _rr(d, xy, r, fill):
     for c,a in [((x1,y1),(180,270)),((x2-2*r,y1),(270,360)),((x1,y2-2*r),(90,180)),((x2-2*r,y2-2*r),(0,90))]:
         d.pieslice([c[0],c[1],c[0]+2*r,c[1]+2*r], a[0], a[1], fill=fill)
 
-def _dashed_line(d, x1, y, x2, fill=DASH_LINE, dash=12, gap=8):
+def _dash(d, x1, y, x2, fill=DASH, w=2):
     x = x1
     while x < x2:
-        d.line([(x, y), (min(x+dash, x2), y)], fill=fill, width=2)
-        x += dash + gap
+        d.line([(x,y),(min(x+14,x2),y)], fill=fill, width=w)
+        x += 22
 
-def _punch_holes(d, W, H, y_pct=0.64, r=22):
-    cy = int(H * y_pct)
-    d.ellipse([-r, cy-r, r, cy+r], fill=FRAME_BG)
-    d.ellipse([W-r, cy-r, W+r, cy+r], fill=FRAME_BG)
+def _holes(d, W, H, pad, y_pct, frame_color):
+    cy = pad + int((H-pad*2) * y_pct)
+    d.ellipse([pad-26, cy-26, pad+26, cy+26], fill=frame_color)
+    d.ellipse([W-pad-26, cy-26, W-pad+26, cy+26], fill=frame_color)
 
-def _logo(img, d, W, y=40, h=70):
+def _check(d, cx, cy, r):
+    d.ellipse([cx-r, cy-r, cx+r, cy+r], fill=GREEN)
+    lw = max(8, r//4)
+    pts = [(cx-r*0.32, cy+r*0.05), (cx-r*0.05, cy+r*0.35), (cx+r*0.42, cy-r*0.28)]
+    d.line(pts, fill=WHITE, width=lw)
+
+def _logo(img, d, W, y, h):
     p = os.path.join(os.path.dirname(__file__), "..", "static", "circa_isotipo.png")
-    fl = _f(52, True)
+    fl = _f(int(h*0.78), "black")
     tw = d.textlength("CIRCA", font=fl)
     if os.path.exists(p):
         iso = Image.open(p).convert("RGBA")
         iw = int(iso.width * h / iso.height)
         iso = iso.resize((iw, h), Image.LANCZOS)
-        total = iw + 18 + tw
+        total = iw + 16 + tw
         sx = int((W - total) / 2)
         img.paste(iso, (sx, y), iso)
-        d.text((sx + iw + 18, y + 8), "CIRCA", fill=BLACK, font=fl)
+        d.text((sx + iw + 16, y + int(h*0.12)), "CIRCA", fill=BLACK, font=fl)
     else:
         _ct(d, "CIRCA", y, fl, BLUE, W)
 
-def _check(d, cx, cy, r=58):
-    d.ellipse([cx-r, cy-r, cx+r, cy+r], fill=GREEN)
-    lw = max(8, r//5)
-    d.line([(cx-r*0.32, cy+r*0.05),(cx-r*0.05, cy+r*0.35),(cx+r*0.42, cy-r*0.3)], fill=WHITE, width=lw)
+def _detail_row(d, x, y, label, value, W, pad):
+    _dash(d, x, y, W-pad-60)
+    y += 20
+    d.text((x, y), label, fill=MUTED, font=_f(26, "bold"))
+    d.text((x + 240, y), value, fill=BLACK, font=_f(26))
+    return y + 55
 
 
 def generate_account_activated_card(nombre, linea, distribuidor):
-    W, H = 1080, 1360
-    PAD = 40
-    CW, CH = W - PAD*2, H - PAD*2
-
-    img = Image.new("RGB", (W, H), FRAME_BG)
+    W, H = 1080, 1280
+    P = 36
+    img = Image.new("RGB", (W, H), BLUE)
     d = ImageDraw.Draw(img)
-    _rr(d, (PAD, PAD, W-PAD, H-PAD), 36, CARD_BG)
+    _rr(d, (P, P, W-P, H-P), 32, WHITE)
+    _holes(d, W, H, P, 0.57, BLUE)
 
-    # Punch holes at ~64%
-    _punch_holes(d, CW, CH, 0.58, 24)
-    # Redraw punch on actual coords
-    hole_y = PAD + int(CH * 0.58)
-    d.ellipse([PAD-24, hole_y-24, PAD+24, hole_y+24], fill=FRAME_BG)
-    d.ellipse([W-PAD-24, hole_y-24, W-PAD+24, hole_y+24], fill=FRAME_BG)
+    y = P + 55
+    _logo(img, d, W, y, 80)
+    y += 110
 
-    cx = W // 2
-    y = PAD + 50
-    _logo(img, d, W, y, 70)
-    y += 100
+    _check(d, W//2, y, 64)
+    y += 90
 
-    _check(d, cx, y, 58)
-    y += 80
+    _ct(d, "Cuenta activada!", y, _f(40, "bold"), GREEN, W)
+    y += 60
+    _ct(d, nombre, y, _f(46, "black"), BLACK, W)
+    y += 75
 
-    _ct(d, "Cuenta activada!", y, _f(36, True), GREEN, W)
-    y += 55
-    _ct(d, nombre, y, _f(44, True), BLACK, W)
-    y += 70
+    d.line([(P+55, y), (W-P-55, y)], fill=LINE, width=2)
+    y += 40
 
-    d.line([(PAD+50, y), (W-PAD-50, y)], fill=LINE, width=2)
-    y += 30
-
-    _ct(d, "CREDITO DISPONIBLE", y, _f(26, True), BLUE, W)
-    y += 45
-
+    _ct(d, "CREDITO DISPONIBLE", y, _f(28, "black"), BLUE, W)
+    y += 50
     amt = "S/ {:,.2f}".format(linea)
-    _ct(d, amt, y, _f(96, True), BLUE, W)
+    _ct(d, amt, y, _f(100, "black"), BLUE, W)
     y += 130
 
-    # Detail rows with emojis
-    left = PAD + 70
-    _dashed_line(d, left, y, W-PAD-70)
-    y += 25
-    d.text((left, y), "🏪", fill=BLACK, font=_f(28))
-    d.text((left+50, y), "Bodega", fill=MUTED, font=_f(24, True))
-    d.text((left+220, y), nombre, fill=BLACK, font=_f(24))
-    y += 55
-
-    _dashed_line(d, left, y, W-PAD-70)
-    y += 25
-    d.text((left, y), "🏢", fill=BLACK, font=_f(28))
-    d.text((left+50, y), "Distribuidor", fill=MUTED, font=_f(24, True))
-    d.text((left+220, y), distribuidor, fill=BLACK, font=_f(24))
-    y += 55
-
-    _dashed_line(d, left, y, W-PAD-70)
-    y += 25
+    x = P + 70
+    y = _detail_row(d, x, y, "Bodega", nombre, W, P)
+    y = _detail_row(d, x, y, "Distribuidor", distribuidor, W, P)
     now = datetime.now()
-    d.text((left, y), "📅", fill=BLACK, font=_f(28))
-    d.text((left+50, y), "Activada", fill=MUTED, font=_f(24, True))
-    d.text((left+220, y), now.strftime("%d %b %Y, %H:%M"), fill=BLACK, font=_f(24))
-    y += 70
+    y = _detail_row(d, x, y, "Activada", now.strftime("%d %b %Y, %H:%M"), W, P)
+    y += 15
 
-    # Footer dashed blue line
-    _dashed_line(d, PAD+50, y, W-PAD-50, fill=BLUE, dash=10, gap=8)
+    _dash(d, P+55, y, W-P-55, fill=BLUE, w=3)
     y += 30
-    d.text((left, y), "🛡️", fill=GREEN, font=_f(28))
-    d.text((left+50, y), "Compra hoy. Paga despues.", fill=GREEN, font=_f(22, True))
-    y += 35
-    d.text((left+50, y), "7, 15 o 30 dias. Tu linea se renueva al pagar.", fill=MUTED, font=_f(20))
+    d.text((x, y), "Compra hoy. Paga despues.", fill=GREEN, font=_f(26, "bold"))
+    y += 38
+    d.text((x, y), "7, 15 o 30 dias. Tu linea se renueva al pagar.", fill=MUTED, font=_f(22))
 
     buf = io.BytesIO()
     img.save(buf, format="PNG", quality=95)
@@ -144,52 +124,39 @@ def generate_account_activated_card(nombre, linea, distribuidor):
 
 
 def generate_contract_signed_card(nombre, ruc, linea, contract_hash):
-    W, H = 1080, 1200
-    PAD = 40
-    img = Image.new("RGB", (W, H), FRAME_BG)
+    W, H = 1080, 1120
+    P = 36
+    img = Image.new("RGB", (W, H), BLUE)
     d = ImageDraw.Draw(img)
-    _rr(d, (PAD, PAD, W-PAD, H-PAD), 36, CARD_BG)
+    _rr(d, (P, P, W-P, H-P), 32, WHITE)
+    _holes(d, W, H, P, 0.52, BLUE)
 
-    hole_y = PAD + int((H-PAD*2) * 0.55)
-    d.ellipse([PAD-24, hole_y-24, PAD+24, hole_y+24], fill=FRAME_BG)
-    d.ellipse([W-PAD-24, hole_y-24, W-PAD+24, hole_y+24], fill=FRAME_BG)
-
-    cx = W // 2
-    y = PAD + 50
-    _logo(img, d, W, y, 65)
-    y += 95
-    _check(d, cx, y, 50)
+    y = P + 55
+    _logo(img, d, W, y, 72)
+    y += 100
+    _check(d, W//2, y, 52)
+    y += 75
+    _ct(d, "Contrato firmado", y, _f(40, "bold"), GREEN, W)
+    y += 58
+    _ct(d, nombre, y, _f(42, "black"), BLACK, W)
     y += 70
-    _ct(d, "Contrato firmado", y, _f(38, True), GREEN, W)
-    y += 55
-    _ct(d, nombre, y, _f(40, True), BLACK, W)
-    y += 65
 
-    d.line([(PAD+50, y), (W-PAD-50, y)], fill=LINE, width=2)
+    d.line([(P+55, y), (W-P-55, y)], fill=LINE, width=2)
     y += 30
 
-    left = PAD + 70
-    rows = [
-        ("📋", "RUC", ruc),
-        ("💰", "Credito", "S/ {:,.2f}".format(linea)),
-        ("📄", "Contrato", "Facilidad Financiamiento v2.0"),
-        ("🔒", "Hash", (contract_hash[:16] if contract_hash else "---")),
-    ]
-    for emoji, label, value in rows:
-        _dashed_line(d, left, y, W-PAD-70)
-        y += 22
-        d.text((left, y), emoji, fill=BLACK, font=_f(26))
-        d.text((left+50, y), label, fill=MUTED, font=_f(22, True))
-        d.text((left+220, y), value, fill=BLACK, font=_f(22))
-        y += 50
+    x = P + 70
+    y = _detail_row(d, x, y, "RUC", ruc, W, P)
+    y = _detail_row(d, x, y, "Credito", "S/ {:,.2f}".format(linea), W, P)
+    y = _detail_row(d, x, y, "Contrato", "Facilidad Financiamiento v2.0", W, P)
+    y = _detail_row(d, x, y, "Hash", (contract_hash[:16] if contract_hash else "---"), W, P)
+    y += 15
 
-    y += 20
-    _dashed_line(d, PAD+50, y, W-PAD-50, fill=BLUE, dash=10, gap=8)
+    _dash(d, P+55, y, W-P-55, fill=BLUE, w=3)
     y += 30
     now = datetime.now()
-    _ct(d, "Firmado: " + now.strftime("%d/%m/%Y %H:%M"), y, _f(22), MUTED, W)
-    y += 35
-    _ct(d, "Recibiras el contrato completo en PDF", y, _f(22), BLUE, W)
+    _ct(d, "Firmado: " + now.strftime("%d/%m/%Y %H:%M"), y, _f(24), MUTED, W)
+    y += 38
+    _ct(d, "Recibiras el contrato completo en PDF", y, _f(24), BLUE, W)
 
     buf = io.BytesIO()
     img.save(buf, format="PNG", quality=95)
@@ -197,72 +164,52 @@ def generate_contract_signed_card(nombre, ruc, linea, contract_hash):
 
 
 def generate_order_confirmed_card(numero, items_summary, monto, fee, total, dias, vencimiento):
-    W, H = 1080, 1360
-    PAD = 40
+    W, H = 1080, 1300
+    P = 36
     img = Image.new("RGB", (W, H), GREEN)
     d = ImageDraw.Draw(img)
-    _rr(d, (PAD, PAD, W-PAD, H-PAD), 36, CARD_BG)
+    _rr(d, (P, P, W-P, H-P), 32, WHITE)
+    _holes(d, W, H, P, 0.48, GREEN)
 
-    hole_y = PAD + int((H-PAD*2) * 0.50)
-    d.ellipse([PAD-24, hole_y-24, PAD+24, hole_y+24], fill=GREEN)
-    d.ellipse([W-PAD-24, hole_y-24, W-PAD+24, hole_y+24], fill=GREEN)
-
-    cx = W // 2
-    y = PAD + 50
-    _logo(img, d, W, y, 65)
+    y = P + 50
+    _logo(img, d, W, y, 68)
     y += 95
-    _check(d, cx, y, 55)
-    y += 75
+    _check(d, W//2, y, 58)
+    y += 80
+    _ct(d, "Pedido confirmado!", y, _f(38, "bold"), GREEN, W)
+    y += 55
+    _ct(d, numero, y, _f(52, "black"), BLACK, W)
+    y += 78
 
-    _ct(d, "Pedido confirmado!", y, _f(36, True), GREEN, W)
-    y += 50
-    _ct(d, numero, y, _f(48, True), BLACK, W)
-    y += 70
+    d.line([(P+55, y), (W-P-55, y)], fill=LINE, width=2)
+    y += 35
 
-    d.line([(PAD+50, y), (W-PAD-50, y)], fill=LINE, width=2)
-    y += 30
+    lbl = "TOTAL FINANCIADO" if dias > 0 else "TOTAL CONTADO"
+    _ct(d, lbl, y, _f(26, "black"), GREEN, W)
+    y += 45
+    _ct(d, "S/ {:,.2f}".format(total), y, _f(92, "black"), BLACK, W)
+    y += 120
 
+    x = P + 70
     if dias > 0:
-        _ct(d, "TOTAL FINANCIADO", y, _f(24, True), GREEN, W)
+        y = _detail_row(d, x, y, "Financiado", "S/ {:.2f}".format(monto), W, P)
+        y = _detail_row(d, x, y, "Fee ({}d)".format(dias), "S/ {:.2f}".format(fee), W, P)
+        y = _detail_row(d, x, y, "Plazo", "{} dias".format(dias), W, P)
+        y = _detail_row(d, x, y, "Vence", vencimiento, W, P)
     else:
-        _ct(d, "TOTAL CONTADO", y, _f(24, True), GREEN, W)
-    y += 40
-    _ct(d, "S/ {:,.2f}".format(total), y, _f(88, True), BLACK, W)
-    y += 115
+        y = _detail_row(d, x, y, "Total", "S/ {:.2f}".format(total), W, P)
+        y = _detail_row(d, x, y, "Entrega", "Tu distribuidor preparara tu pedido", W, P)
+    y += 15
 
-    left = PAD + 70
+    _dash(d, P+55, y, W-P-55, fill=GREEN, w=3)
+    y += 28
     if dias > 0:
-        rows = [
-            ("💰", "Financiado", "S/ {:.2f}".format(monto)),
-            ("📊", "Fee ({}d)".format(dias), "S/ {:.2f}".format(fee)),
-            ("📅", "Plazo", "{} dias".format(dias)),
-            ("⏰", "Vence", vencimiento),
-        ]
-    else:
-        rows = [
-            ("💰", "Total", "S/ {:.2f}".format(total)),
-            ("🚚", "Entrega", "Tu distribuidor preparara tu pedido"),
-        ]
-    for emoji, label, value in rows:
-        _dashed_line(d, left, y, W-PAD-70)
-        y += 22
-        d.text((left, y), emoji, fill=BLACK, font=_f(26))
-        d.text((left+50, y), label, fill=MUTED, font=_f(22, True))
-        d.text((left+250, y), value, fill=BLACK, font=_f(22, True))
-        y += 50
-
-    y += 20
-    _dashed_line(d, PAD+50, y, W-PAD-50, fill=GREEN, dash=10, gap=8)
-    y += 25
-    if dias > 0:
-        d.text((left, y), "📱", fill=GREEN, font=_f(26))
-        d.text((left+50, y), "Paga por Yape o Plin al 986311567", fill=MUTED, font=_f(22))
-        y += 40
-    d.text((left, y), "📩", fill=GREEN, font=_f(26))
-    d.text((left+50, y), "Recibiras actualizaciones por WhatsApp", fill=BLUE, font=_f(22))
-    y += 50
+        d.text((x, y), "Paga por Yape o Plin al 986311567", fill=MUTED, font=_f(24))
+        y += 38
+    d.text((x, y), "Recibiras actualizaciones por WhatsApp", fill=BLUE, font=_f(24))
+    y += 45
     now = datetime.now()
-    _ct(d, now.strftime("%d/%m/%Y %H:%M") + " | Circa", y, _f(20), MUTED, W)
+    _ct(d, now.strftime("%d/%m/%Y %H:%M") + " | Circa", y, _f(22), MUTED, W)
 
     buf = io.BytesIO()
     img.save(buf, format="PNG", quality=95)
