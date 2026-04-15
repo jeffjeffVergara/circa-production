@@ -71,7 +71,7 @@ async def list_pedidos(estado: Optional[str] = None, dist: dict = Depends(verify
     bodegas_map = {}
     for bid in bodega_ids:
         try:
-            rows = _sb_get("bodegas", {"select":"id,nombre_comercial,telefono_whatsapp,ruc,direccion,razon_social","id":f"eq.{bid}"})
+            rows = _sb_get("bodegas", {"select":"id,nombre_comercial,telefono_whatsapp,ruc,direccion_fiscal","id":f"eq.{bid}"})
             if rows: bodegas_map[bid] = rows[0]
         except: pass
     for p in pedidos:
@@ -274,7 +274,7 @@ async def admin_list_pedidos(
     bodegas_map = {}
     for bid in bodega_ids:
         try:
-            rows = _sb_get("bodegas", {"select":"id,nombre_comercial,telefono_whatsapp,ruc,direccion,razon_social,linea_credito,linea_disponible","id":f"eq.{bid}"})
+            rows = _sb_get("bodegas", {"select":"id,nombre_comercial,telefono_whatsapp,ruc,direccion_fiscal,linea_credito,linea_disponible","id":f"eq.{bid}"})
             if rows: bodegas_map[bid] = rows[0]
         except: pass
     dist_map = {}
