@@ -520,10 +520,10 @@ async def _send_payment_options(phone, pedido_id, total, items_text, bodega_id=N
             body="Cuanto deseas financiar con Circa?",
             button_text="Elegir opcion",
             sections=[{"title": "Financiamiento", "rows": [
-                {"id": f"CONTADO_{pid}", "title": "Pagar todo al contado", "description": f"Sin financiamiento"},
-                {"id": f"FIN25_{pid}", "title": f"25% — S/{fin25:.2f}", "description": f"Contado: S/{round(total-fin25,2):.2f}"},
-                {"id": f"FIN50_{pid}", "title": f"50% — S/{fin50:.2f}", "description": f"Contado: S/{round(total-fin50,2):.2f}"},
-                {"id": f"FIN100_{pid}", "title": f"Financiar todo", "description": f"S/{min(total,linea):.2f} con Circa"},
+                {"id": f"CONTADO_{pid}", "title": "Pagar todo al contado", "description": "No financiar"},
+                {"id": f"FIN25_{pid}", "title": f"25% linea — S/{fin25:.2f}", "description": f"Contado: S/{round(total-fin25,2):.2f}"},
+                {"id": f"FIN50_{pid}", "title": f"50% linea — S/{fin50:.2f}", "description": f"Contado: S/{round(total-fin50,2):.2f}"},
+                {"id": f"FIN100_{pid}", "title": "Usar toda mi linea", "description": f"S/{min(total,linea):.2f} con Circa"},
             ]}])
     elif linea > 0:
         contado_min = total - linea
@@ -538,8 +538,8 @@ async def _send_payment_options(phone, pedido_id, total, items_text, bodega_id=N
             button_text="Elegir opcion",
             sections=[{"title": "Financiamiento", "rows": [
                 {"id": f"CONTADO_{pid}", "title": "Pagar todo al contado", "description": "Sin financiamiento"},
-                {"id": f"FIN25_{pid}", "title": f"25% — S/{fin25:.2f}", "description": f"Contado: S/{round(total-fin25,2):.2f}"},
-                {"id": f"FIN50_{pid}", "title": f"50% — S/{fin50:.2f}", "description": f"Contado: S/{round(total-fin50,2):.2f}"},
+                {"id": f"FIN25_{pid}", "title": f"25% linea — S/{fin25:.2f}", "description": f"Contado: S/{round(total-fin25,2):.2f}"},
+                {"id": f"FIN50_{pid}", "title": f"50% linea — S/{fin50:.2f}", "description": f"Contado: S/{round(total-fin50,2):.2f}"},
                 {"id": f"FIN100_{pid}", "title": "Usar todo mi credito", "description": f"S/{linea:.2f} con Circa"},
             ]}])
     else:

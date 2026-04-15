@@ -549,7 +549,7 @@ async def send_tracking_update(to: str, order_number: str, estado: str, detalle:
 async def send_payment_instructions(to: str, order_number: str, monto: float, vencimiento: str):
     """Send payment instructions with Yape details."""
     yape_phone = os.getenv("YAPE_PHONE", "986311567")
-    yape_name = os.getenv("YAPE_NAME", "Circa Pagos S.A.C.")
+    yape_name = os.getenv("YAPE_NAME", "PALI SAC")
     
     return await send_buttons(
         to=to,

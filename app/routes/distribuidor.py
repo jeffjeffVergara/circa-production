@@ -132,7 +132,7 @@ async def update_status(pedido_id: str, body: StatusUpdate, dist: dict = Depends
                     f"━━━━━━━━━━━━━━━━━━\n"
                     f"Paga por Yape o Plin al:\n"
                     f"\U0001f4f1 *986311567*\n"
-                    f"\U0001f464 Circa Pagos S.A.C.\n\n"
+                    f"\U0001f464 PALI SAC\n\n"
                     f"Despues de pagar, escribe *YA PAGUE* en este chat."
                 )
                 _send_wa_text(tel, reminder)
@@ -352,7 +352,7 @@ async def admin_send_cobranza(pedido_id: str, admin: bool = Depends(verify_admin
         f"\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n"
         f"Paga por Yape o Plin al:\n"
         f"\U0001f4f1 *986311567*\n"
-        f"\U0001f464 Circa Pagos S.A.C.\n\n"
+        f"\U0001f464 PALI SAC\n\n"
         f"Escribe *YA PAGUE* en este chat."
     )
     _send_wa_text(tel, reminder)
