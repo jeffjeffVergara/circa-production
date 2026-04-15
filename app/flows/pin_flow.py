@@ -133,7 +133,7 @@ def _handle_pin_create(data: dict) -> dict:
                 "pin_bloqueado_hasta": None,
             })
             # Update session
-            bodega = db.sb.table("bodegas").select("telefono_whatsapp, linea_disponible, linea_credito").eq("id", bodega_id).execute()
+            bodega = db.sb.table("bodegas").select("telefono_whatsapp, linea_disponible").eq("id", bodega_id).execute()
             telefono = bodega.data[0]["telefono_whatsapp"] if bodega.data else ""
             linea = bodega.data[0].get("linea_credito") or bodega.data[0].get("linea_disponible") or 500 if bodega.data else 500
             if telefono:
@@ -387,7 +387,7 @@ async def _handle_pin_confirm(data: dict, flow_token: str) -> dict:
         db.sign_contract(bodega_id, contract_hash[:16])
         
         # Update session to menu
-        bodega = db.sb.table("bodegas").select("telefono_whatsapp, linea_disponible, linea_credito").eq("id", bodega_id).execute()
+        bodega = db.sb.table("bodegas").select("telefono_whatsapp, linea_disponible").eq("id", bodega_id).execute()
         telefono = bodega.data[0]["telefono_whatsapp"] if bodega.data else ""
         linea = bodega.data[0].get("linea_credito") or bodega.data[0].get("linea_disponible") or 500 if bodega.data else 500
         
