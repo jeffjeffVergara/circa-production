@@ -90,15 +90,15 @@ def _logo_text(d, W, y, h):
 def _detail_row(d, x, y, label, value, W, pad):
     """Detail row with dashed separator."""
     _dash(d, x, y, W - pad - 60)
-    y += 20
-    d.text((x, y), label, fill=MUTED, font=_f(26, "bold"))
-    d.text((x + 240, y), value, fill=BLACK, font=_f(26))
-    return y + 55
+    y += 22
+    d.text((x, y), label, fill=MUTED, font=_f(32, "bold"))
+    d.text((x + 280, y), value, fill=BLACK, font=_f(32))
+    return y + 65
 
 
 def generate_account_activated_card(nombre, linea, distribuidor):
     """Card 1: Cuenta activada — blue frame."""
-    W, H = 1080, 1280
+    W, H = 1080, 1480
     P = 36
     img = Image.new("RGB", (W, H), BLUE)
     d = ImageDraw.Draw(img)
@@ -106,22 +106,22 @@ def generate_account_activated_card(nombre, linea, distribuidor):
     _holes(d, W, H, P, 0.57, BLUE)
 
     y = P + 55
-    _logo_text(d, W, y, 80)
+    _logo_text(d, W, y, 100)
+    y += 140
+    _check(d, W // 2, y, 80)
     y += 110
-    _check(d, W // 2, y, 64)
-    y += 90
-    _ct(d, "Cuenta activada!", y, _f(40, "bold"), GREEN, W)
-    y += 60
-    _ct(d, nombre, y, _f(46, "black"), BLACK, W)
+    _ct(d, "Cuenta activada!", y, _f(52, "bold"), GREEN, W)
     y += 75
+    _ct(d, nombre, y, _f(60, "black"), BLACK, W)
+    y += 90
 
     d.line([(P + 55, y), (W - P - 55, y)], fill=LINE, width=2)
-    y += 40
-    _ct(d, "CREDITO DISPONIBLE", y, _f(28, "black"), BLUE, W)
-    y += 50
+    y += 45
+    _ct(d, "CREDITO DISPONIBLE", y, _f(34, "black"), BLUE, W)
+    y += 55
     amt = "S/ {:,.2f}".format(linea)
-    _ct(d, amt, y, _f(100, "black"), BLUE, W)
-    y += 130
+    _ct(d, amt, y, _f(130, "black"), BLUE, W)
+    y += 165
 
     x = P + 70
     y = _detail_row(d, x, y, "Bodega", nombre, W, P)
@@ -184,7 +184,7 @@ def generate_contract_signed_card(nombre, ruc, linea, contract_hash):
 
 def generate_order_confirmed_card(numero, items_summary, monto, fee, total, dias, vencimiento):
     """Card 2: Pedido confirmado — green frame."""
-    W, H = 1080, 1300
+    W, H = 1080, 1520
     P = 36
     img = Image.new("RGB", (W, H), GREEN)
     d = ImageDraw.Draw(img)
@@ -192,22 +192,22 @@ def generate_order_confirmed_card(numero, items_summary, monto, fee, total, dias
     _holes(d, W, H, P, 0.48, GREEN)
 
     y = P + 50
-    _logo_text(d, W, y, 68)
-    y += 95
-    _check(d, W // 2, y, 58)
-    y += 80
-    _ct(d, "Pedido confirmado!", y, _f(38, "bold"), GREEN, W)
-    y += 55
-    _ct(d, numero, y, _f(52, "black"), BLACK, W)
-    y += 78
+    _logo_text(d, W, y, 100)
+    y += 140
+    _check(d, W // 2, y, 80)
+    y += 110
+    _ct(d, "Pedido confirmado!", y, _f(52, "bold"), GREEN, W)
+    y += 75
+    _ct(d, numero, y, _f(68, "black"), BLACK, W)
+    y += 100
 
     d.line([(P + 55, y), (W - P - 55, y)], fill=LINE, width=2)
-    y += 35
-    lbl = "TOTAL FINANCIADO" if dias > 0 else "TOTAL CONTADO"
-    _ct(d, lbl, y, _f(26, "black"), GREEN, W)
     y += 45
-    _ct(d, "S/ {:,.2f}".format(total), y, _f(92, "black"), BLACK, W)
-    y += 120
+    lbl = "TOTAL FINANCIADO" if dias > 0 else "TOTAL CONTADO"
+    _ct(d, lbl, y, _f(34, "black"), GREEN, W)
+    y += 55
+    _ct(d, "S/ {:,.2f}".format(total), y, _f(120, "black"), BLACK, W)
+    y += 155
 
     x = P + 70
     if dias > 0:
@@ -236,37 +236,37 @@ def generate_order_confirmed_card(numero, items_summary, monto, fee, total, dias
 
 
 def generate_payment_reminder_card(numero, monto_financiado, fee, total, dias, vencimiento):
-    """Card 3: Recordatorio de pago — amber/orange frame."""
-    W, H = 1080, 1200
+    """Card 3: Recordatorio de pago — black frame."""
+    W, H = 1080, 1480
     P = 36
-    img = Image.new("RGB", (W, H), AMBER)
+    img = Image.new("RGB", (W, H), BLACK)
     d = ImageDraw.Draw(img)
     _rr(d, (P, P, W - P, H - P), 32, WHITE)
-    _holes(d, W, H, P, 0.50, AMBER)
+    _holes(d, W, H, P, 0.50, BLACK)
 
     y = P + 50
-    _logo_text(d, W, y, 68)
-    y += 95
+    _logo_text(d, W, y, 100)
+    y += 140
 
     # Warning icon (circle with !)
     cx, cy = W // 2, y
-    r = 52
-    d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=AMBER)
+    r = 70
+    d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=RED)
     ef = _f(60, "black")
     tw = d.textlength("!", font=ef)
     d.text(((W - tw) / 2, cy - 34), "!", fill=WHITE, font=ef)
     y += 80
 
-    _ct(d, "Recordatorio de pago", y, _f(38, "bold"), AMBER, W)
-    y += 65
+    _ct(d, "Recordatorio de pago", y, _f(52, "bold"), RED, W)
+    y += 80
 
     d.line([(P + 55, y), (W - P - 55, y)], fill=LINE, width=2)
-    y += 35
-
-    _ct(d, "TOTAL A PAGAR", y, _f(26, "black"), AMBER, W)
     y += 45
-    _ct(d, "S/ {:,.2f}".format(total), y, _f(92, "black"), BLACK, W)
-    y += 130
+
+    _ct(d, "TOTAL A PAGAR", y, _f(34, "black"), RED, W)
+    y += 55
+    _ct(d, "S/ {:,.2f}".format(total), y, _f(120, "black"), BLACK, W)
+    y += 155
 
     x = P + 70
     y = _detail_row(d, x, y, "Pedido", numero, W, P)
@@ -276,7 +276,7 @@ def generate_payment_reminder_card(numero, monto_financiado, fee, total, dias, v
     y = _detail_row(d, x, y, "Vence", vencimiento, W, P)
     y += 15
 
-    _dash(d, P + 55, y, W - P - 55, fill=AMBER, w=3)
+    _dash(d, P + 55, y, W - P - 55, fill=RED, w=3)
     y += 28
     d.text((x, y), "Paga por Yape o Plin al:", fill=BLACK, font=_f(24, "bold"))
     y += 38
