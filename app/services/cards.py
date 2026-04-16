@@ -19,7 +19,10 @@ def _f(size, weight="regular"):
     names = {"black": "Inter.ttf", "bold": "Inter.ttf", "regular": "Inter.ttf"}
     p = os.path.join(FONTS_DIR, names.get(weight, "Inter-Regular.ttf"))
     if os.path.exists(p):
-        return ImageFont.truetype(p, size)
+        try:
+            return ImageFont.truetype(p, size)
+        except Exception:
+            pass
     fb = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if weight != "regular" else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
     if os.path.exists(fb):
         return ImageFont.truetype(fb, size)
