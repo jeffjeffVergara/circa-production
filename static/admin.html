@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Circa ADM</title>
+<style>
+:root{--bg:#0f172a;--card:#1e293b;--card-hover:#263449;--border:#334155;--text:#e2e8f0;--muted:#94a3b8;--blue:#2563eb;--blue-light:#60a5fa;--green:#10b981;--yellow:#eab308;--orange:#f97316;--red:#ef4444;--purple:#a855f7}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:var(--bg);color:var(--text);font-size:14px}
+.login{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px}
+.login-box{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:40px;width:100%;max-width:420px}
+.login-box h1{color:var(--blue-light);margin-bottom:8px;letter-spacing:4px;font-size:32px}
+.login-box p{color:var(--muted);margin-bottom:24px}
+.input{width:100%;padding:12px 14px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px}
+.input:focus{outline:none;border-color:var(--blue)}
+.btn{padding:10px 16px;background:var(--blue);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;transition:all .2s}
+.btn:hover{opacity:.9}
+.btn-secondary{background:var(--border);color:var(--text)}
+.btn-green{background:var(--green)}
+.btn-red{background:var(--red)}
+.btn-outline{background:transparent;border:1px solid var(--border);color:var(--text)}
+.btn-small{padding:6px 10px;font-size:12px}
+.header{background:var(--card);border-bottom:1px solid var(--border);padding:14px 24px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:10}
+.header-left{display:flex;align-items:center;gap:20px}
+.logo{color:var(--blue-light);font-weight:900;letter-spacing:4px;font-size:20px}
+.header-sub{color:var(--muted);font-size:12px}
+.header-right{display:flex;gap:10px;align-items:center}
+.container{padding:24px;max-width:1600px;margin:0 auto}
+.tabs{display:flex;gap:4px;background:var(--card);padding:4px;border-radius:10px;margin-bottom:20px;border:1px solid var(--border)}
+.tab{flex:1;padding:10px 16px;background:transparent;border:none;color:var(--muted);font-size:14px;font-weight:600;cursor:pointer;border-radius:8px;transition:all .2s}
+.tab.active{background:var(--blue);color:#fff}
+.tab:hover:not(.active){background:var(--border);color:var(--text)}
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin-bottom:24px}
+.kpi{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px}
+.kpi-label{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px}
+.kpi-value{font-size:28px;font-weight:700}
+.kpi-value.blue{color:var(--blue-light)}
+.kpi-value.green{color:var(--green)}
+.kpi-value.orange{color:var(--orange)}
+.kpi-value.red{color:var(--red)}
+.section{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:20px}
+.section h2{font-size:16px;font-weight:700;margin-bottom:16px;color:var(--text);display:flex;align-items:center;justify-content:space-between}
+.filters{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px}
+.filters input,.filters select{padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;min-width:150px}
+.dist-group{border:1px solid var(--border);border-radius:10px;margin-bottom:14px;overflow:hidden}
+.dist-header{background:var(--card-hover);padding:14px 18px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.dist-name{font-weight:700;font-size:15px;color:var(--blue-light)}
+.dist-total{color:var(--green);font-weight:700;font-size:16px}
+.dist-body{padding:14px 18px}
+.pedido-row{display:grid;grid-template-columns:100px 1fr 1fr 120px 120px;gap:12px;padding:10px 0;border-top:1px solid var(--border);align-items:center}
+.pedido-row:first-child{border-top:none}
+.pedido-num{color:var(--blue-light);font-weight:600}
+.pedido-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:12px;flex-wrap:wrap}
+.table-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;padding:10px;color:var(--muted);font-weight:600;text-transform:uppercase;font-size:11px;letter-spacing:.5px;border-bottom:1px solid var(--border)}
+td{padding:12px 10px;border-bottom:1px solid var(--border);vertical-align:middle}
+tr:hover td{background:var(--card-hover)}
+.badge{display:inline-block;padding:3px 8px;border-radius:12px;font-size:11px;font-weight:600;text-transform:uppercase}
+.badge-al_dia{background:rgba(16,185,129,.2);color:var(--green)}
+.badge-por_vencer{background:rgba(234,179,8,.2);color:var(--yellow)}
+.badge-vencido{background:rgba(239,68,68,.2);color:var(--red)}
+.badge-pagado{background:rgba(168,85,247,.2);color:var(--purple)}
+.badge-pendiente{background:rgba(148,163,184,.2);color:var(--muted)}
+.badge-confirmado{background:rgba(96,165,250,.2);color:var(--blue-light)}
+.badge-despachado{background:rgba(249,115,22,.2);color:var(--orange)}
+.badge-entregado{background:rgba(16,185,129,.2);color:var(--green)}
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:100;padding:20px}
+.modal{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:24px;width:100%;max-width:500px;max-height:90vh;overflow-y:auto}
+.modal h3{margin-bottom:16px;color:var(--blue-light)}
+.modal-field{margin-bottom:14px}
+.modal-field label{display:block;color:var(--muted);font-size:12px;margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px}
+.modal-field input,.modal-field select{width:100%;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text)}
+.modal-info{background:var(--bg);padding:12px;border-radius:8px;margin-bottom:16px}
+.modal-info-row{display:flex;justify-content:space-between;padding:4px 0}
+.modal-info-row span:first-child{color:var(--muted)}
+.modal-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:20px}
+.toast{position:fixed;bottom:20px;right:20px;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:14px 18px;z-index:200;box-shadow:0 10px 30px rgba(0,0,0,.4);max-width:320px}
+.toast.success{border-color:var(--green)}
+.toast.error{border-color:var(--red)}
+.empty{text-align:center;padding:40px;color:var(--muted)}
+.mono{font-family:monospace}
+.ranking-card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px}
+.ranking-card h3{font-size:13px;margin-bottom:12px;color:var(--text)}
+.ranking-item{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px}
+.ranking-item:last-child{border:none}
+.ranking-num{color:var(--muted);margin-right:8px}
+@media (max-width:768px){
+  .pedido-row{grid-template-columns:1fr 1fr;gap:8px}
+  .container{padding:12px}
+  .kpi-grid{grid-template-columns:1fr 1fr}
+  th:nth-child(n+5),td:nth-child(n+5){display:none}
+}
+</style>
+</head>
+<body>
+<div id="loginScreen" class="login">
+<div class="login-box">
+<h1>CIRCA</h1>
+<p>Panel de Administración</p>
+<div style="margin-bottom:16px">
+<label style="color:var(--muted);font-size:12px;display:block;margin-bottom:6px">Token de acceso</label>
+<input type="password" id="tokenInput" class="input" placeholder="circa-admin-..." onkeypress="if(event.key==='Enter')login()">
+</div>
+<button class="btn" style="width:100%" onclick="login()">Ingresar</button>
+<div id="loginError" style="color:var(--red);margin-top:12px;font-size:13px"></div>
+</div>
+</div>
+
+<div id="app" style="display:none">
+<div class="header">
+<div class="header-left">
+<div class="logo">CIRCA</div>
+<div class="header-sub" id="fechaHeader"></div>
+</div>
+<div class="header-right">
+<button class="btn btn-secondary btn-small" onclick="refreshAll()">🔄 Actualizar</button>
+<button class="btn btn-outline btn-small" onclick="logout()">Salir</button>
+</div>
+</div>
+
+<div class="container">
+
+<div class="tabs">
+<button class="tab active" onclick="showTab('dashboard')" id="tab-dashboard">📊 Dashboard</button>
+<button class="tab" onclick="showTab('pagos')" id="tab-pagos">💸 Pagos a distribuidores</button>
+<button class="tab" onclick="showTab('cobranzas')" id="tab-cobranzas">💰 Cobranzas</button>
+<button class="tab" onclick="showTab('pedidos')" id="tab-pedidos">📋 Todos los pedidos</button>
+</div>
+
+<!-- DASHBOARD TAB -->
+<div id="view-dashboard">
+<div class="kpi-grid">
+<div class="kpi"><div class="kpi-label">A pagar hoy a distribuidores</div><div class="kpi-value blue" id="kpiPagar">S/0.00</div></div>
+<div class="kpi"><div class="kpi-label">Pedidos activos</div><div class="kpi-value green" id="kpiActivos">0</div></div>
+<div class="kpi"><div class="kpi-label">Cobranzas vencidas</div><div class="kpi-value red" id="kpiVencidas">0</div></div>
+<div class="kpi"><div class="kpi-label">Monto vencido</div><div class="kpi-value orange" id="kpiMontoVencido">S/0.00</div></div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px" id="rankingGrid"></div>
+</div>
+
+<!-- PAGOS A DISTRIBUIDORES TAB -->
+<div id="view-pagos" style="display:none">
+<div class="section">
+<h2>💸 Pagos pendientes a distribuidores <span style="font-size:12px;color:var(--muted);font-weight:normal">(pedidos confirmados que Circa debe transferir)</span></h2>
+<div class="filters">
+<input type="date" id="pagosFechaDesde" onchange="loadPagos()">
+<input type="date" id="pagosFechaHasta" onchange="loadPagos()">
+<button class="btn btn-green btn-small" onclick="exportPagosCSV()">📥 Descargar resumen consolidado</button>
+</div>
+<div id="pagosList"></div>
+</div>
+</div>
+
+<!-- COBRANZAS TAB -->
+<div id="view-cobranzas" style="display:none">
+<div class="section">
+<h2>💰 Cobranzas (bodegas que deben pagar a Circa)</h2>
+<div class="filters">
+<input type="text" id="cobFiltroBodega" placeholder="Buscar bodega..." onkeyup="loadCobranzas()">
+<select id="cobFiltroDist" onchange="loadCobranzas()"><option value="">Todos los distribuidores</option></select>
+<select id="cobFiltroEstado" onchange="loadCobranzas()">
+<option value="todos">Todos</option>
+<option value="al_dia">Al día</option>
+<option value="por_vencer">Por vencer</option>
+<option value="vencido">Vencido</option>
+<option value="pagado">Pagado</option>
+</select>
+<input type="date" id="cobFechaDesde" onchange="loadCobranzas()">
+<input type="date" id="cobFechaHasta" onchange="loadCobranzas()">
+<button class="btn btn-green btn-small" onclick="exportCobranzasCSV()">📥 Descargar CSV</button>
+</div>
+
+<div id="statsDistribuidorGrid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;margin-bottom:20px"></div>
+
+<div class="table-wrap">
+<table>
+<thead><tr><th>Pedido</th><th>Bodega</th><th>Distribuidor</th><th>Entregado</th><th>Vence</th><th>Días</th><th>Monto</th><th>Estado</th><th>Acciones</th></tr></thead>
+<tbody id="cobranzasBody"></tbody>
+</table>
+</div>
+</div>
+</div>
+
+<!-- PEDIDOS TAB -->
+<div id="view-pedidos" style="display:none">
+<div class="section">
+<h2>📋 Todos los pedidos</h2>
+<div class="filters">
+<input type="text" id="pedFiltroBodega" placeholder="Buscar bodega..." onkeyup="loadPedidos()">
+<input type="text" id="pedFiltroDist" placeholder="Distribuidor..." onkeyup="loadPedidos()">
+<select id="pedFiltroEstado" onchange="loadPedidos()">
+<option value="">Todos</option>
+<option value="confirmado">Confirmado</option>
+<option value="recibido">Recibido</option>
+<option value="en_preparacion">Preparando</option>
+<option value="despachado">Despachado</option>
+<option value="en_camino">En camino</option>
+<option value="entregado">Entregado</option>
+<option value="pagado">Pagado</option>
+</select>
+<button class="btn btn-green btn-small" onclick="exportPedidosCSV()">📥 Descargar CSV</button>
+</div>
+<div class="table-wrap">
+<table>
+<thead><tr><th>Fecha</th><th>Pedido</th><th>Bodega</th><th>Distribuidor</th><th>Total</th><th>Circa paga</th><th>Estado</th></tr></thead>
+<tbody id="pedidosBody"></tbody>
+</table>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div id="modalContainer"></div>
+<div id="toastContainer"></div>
+
+<script>
+var TOKEN = "";
+var allCobranzas = [];
+var allPedidos = [];
+var allPagos = [];
+var statsDistribuidor = [];
+
+function login(){
+  var t = document.getElementById('tokenInput').value.trim();
+  if(!t){document.getElementById('loginError').textContent='Ingresa el token';return}
+  fetch('/api/distribuidor/admin/resumen', {headers:{'X-Admin-Token': t}})
+    .then(r=>{
+      if(!r.ok) throw new Error('Token inválido');
+      TOKEN = t;
+      localStorage.setItem('circa_admin_token', t);
+      document.getElementById('loginScreen').style.display='none';
+      document.getElementById('app').style.display='block';
+      document.getElementById('fechaHeader').textContent = new Date().toLocaleDateString('es-PE',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+      refreshAll();
+    })
+    .catch(e=>{document.getElementById('loginError').textContent = e.message});
+}
+
+function logout(){
+  TOKEN = "";
+  localStorage.removeItem('circa_admin_token');
+  location.reload();
+}
+
+function showTab(name){
+  ['dashboard','pagos','cobranzas','pedidos'].forEach(function(t){
+    document.getElementById('view-'+t).style.display = (t===name ? 'block':'none');
+    document.getElementById('tab-'+t).classList.toggle('active', t===name);
+  });
+  if(name==='pagos') loadPagos();
+  if(name==='cobranzas') loadCobranzas();
+  if(name==='pedidos') loadPedidos();
+  if(name==='dashboard') refreshAll();
+}
+
+function api(path){
+  return fetch(path, {headers:{'X-Admin-Token': TOKEN}}).then(r=>{
+    if(!r.ok) throw new Error('Error '+r.status);
+    return r.json();
+  });
+}
+
+function refreshAll(){
+  api('/api/distribuidor/admin/resumen').then(function(d){
+    document.getElementById('kpiActivos').textContent = d.total_pedidos || 0;
+    document.getElementById('kpiPagar').textContent = 'S/'+(d.circa_cobra_bodegas||0).toFixed(2);
+  }).catch(console.error);
+  
+  api('/api/distribuidor/admin/cobranzas').then(function(d){
+    allCobranzas = d.cobranzas || [];
+    statsDistribuidor = d.stats_distribuidor || [];
+    var vencidas = allCobranzas.filter(function(c){return c.status_cobranza==='vencido'});
+    document.getElementById('kpiVencidas').textContent = vencidas.length;
+    document.getElementById('kpiMontoVencido').textContent = 'S/'+vencidas.reduce(function(s,c){return s+c.total_pagar},0).toFixed(2);
+    renderRankings();
+    // Populate distributor filter
+    var sel = document.getElementById('cobFiltroDist');
+    var dists = new Set();
+    allCobranzas.forEach(function(c){if(c.distribuidor && c.distribuidor.nombre_comercial)dists.add(c.distribuidor.nombre_comercial)});
+    sel.innerHTML = '<option value="">Todos los distribuidores</option>' + Array.from(dists).map(function(d){return '<option value="'+d+'">'+d+'</option>'}).join('');
+  }).catch(console.error);
+}
+
+function renderRankings(){
+  var byDist = {};
+  allCobranzas.filter(function(c){return c.status_cobranza==='pagado'}).forEach(function(c){
+    var b = (c.bodega && c.bodega.nombre_comercial) || '?';
+    var d = (c.distribuidor && c.distribuidor.nombre_comercial) || '?';
+    var key = b+'|'+d;
+    if(!byDist[key]) byDist[key] = {bodega:b, dist:d, pagados:0, total:0};
+    byDist[key].pagados++;
+  });
+  allCobranzas.forEach(function(c){
+    var b = (c.bodega && c.bodega.nombre_comercial) || '?';
+    var d = (c.distribuidor && c.distribuidor.nombre_comercial) || '?';
+    var key = b+'|'+d;
+    if(!byDist[key]) byDist[key] = {bodega:b, dist:d, pagados:0, total:0};
+    byDist[key].total++;
+  });
+  var top = Object.values(byDist).filter(function(x){return x.total>0}).sort(function(a,b){return (b.pagados/b.total)-(a.pagados/a.total) || b.pagados-a.pagados}).slice(0,5);
+  
+  var vencidos = {};
+  allCobranzas.filter(function(c){return c.status_cobranza==='vencido'}).forEach(function(c){
+    var b = (c.bodega && c.bodega.nombre_comercial) || '?';
+    var d = (c.distribuidor && c.distribuidor.nombre_comercial) || '?';
+    var key = b+'|'+d;
+    if(!vencidos[key]) vencidos[key] = {bodega:b, dist:d, count:0, monto:0};
+    vencidos[key].count++;
+    vencidos[key].monto += c.total_pagar;
+  });
+  var atrasos = Object.values(vencidos).sort(function(a,b){return b.monto-a.monto}).slice(0,5);
+  
+  document.getElementById('rankingGrid').innerHTML = 
+    '<div class="ranking-card"><h3>🏆 Top bodegas puntuales</h3>'+
+    (top.length ? top.map(function(x,i){return '<div class="ranking-item"><div><span class="ranking-num">'+(i+1)+'.</span>'+x.bodega+' <span style="color:var(--muted);font-size:11px">('+x.dist+')</span></div><div>'+Math.round(100*x.pagados/x.total)+'% - '+x.total+' ped</div></div>'}).join('') : '<div class="empty">Sin datos</div>')+
+    '</div>'+
+    '<div class="ranking-card"><h3>⚠️ Bodegas con atrasos</h3>'+
+    (atrasos.length ? atrasos.map(function(x,i){return '<div class="ranking-item"><div><span class="ranking-num">'+(i+1)+'.</span>'+x.bodega+' <span style="color:var(--muted);font-size:11px">('+x.dist+')</span></div><div style="color:var(--red)">'+x.count+' venc · S/'+x.monto.toFixed(2)+'</div></div>'}).join('') : '<div class="empty" style="color:var(--green)">Sin atrasos 🎉</div>')+
+    '</div>';
+}
+
+function loadPagos(){
+  var fd = document.getElementById('pagosFechaDesde').value;
+  var fh = document.getElementById('pagosFechaHasta').value;
+  var url = '/api/distribuidor/admin/export-pagos-distribuidor?';
+  if(fd) url += 'fecha_desde='+fd+'&';
+  if(fh) url += 'fecha_hasta='+fh;
+  api(url).then(function(d){
+    allPagos = d.grupos || [];
+    var html = '';
+    allPagos.forEach(function(g){
+      if(!g.pedidos.length) return;
+      var dist = g.distribuidor || {};
+      html += '<div class="dist-group"><div class="dist-header"><div><div class="dist-name">'+(dist.nombre_comercial||'?')+'</div><div style="color:var(--muted);font-size:12px">RUC: '+(dist.ruc||'-')+' · '+g.pedidos.length+' pedidos</div></div><div class="dist-total">S/'+g.total_financiado.toFixed(2)+' <span style="font-size:11px;color:var(--muted)">a transferir</span></div></div><div class="dist-body">';
+      g.pedidos.forEach(function(p){
+        var b = p.bodega || {};
+        html += '<div class="pedido-row"><div class="pedido-num">'+(p.numero||'-')+'</div><div>'+(b.nombre_comercial||'?')+'</div><div style="color:var(--muted);font-size:12px">Total: S/'+(p.monto_productos||0)+'</div><div style="color:var(--blue-light);font-weight:600">S/'+(p.monto_financiado||0)+'</div><div><span class="badge badge-'+p.estado+'">'+p.estado+'</span></div></div>';
+      });
+      html += '</div></div>';
+    });
+    document.getElementById('pagosList').innerHTML = html || '<div class="empty">No hay pagos pendientes</div>';
+  });
+}
+
+function loadCobranzas(){
+  var bodega = document.getElementById('cobFiltroBodega').value;
+  var dist = document.getElementById('cobFiltroDist').value;
+  var estado = document.getElementById('cobFiltroEstado').value;
+  var fd = document.getElementById('cobFechaDesde').value;
+  var fh = document.getElementById('cobFechaHasta').value;
+  var url = '/api/distribuidor/admin/cobranzas?';
+  if(bodega) url += 'bodega='+encodeURIComponent(bodega)+'&';
+  if(dist) url += 'distribuidor='+encodeURIComponent(dist)+'&';
+  if(estado) url += 'estado='+estado+'&';
+  if(fd) url += 'fecha_desde='+fd+'&';
+  if(fh) url += 'fecha_hasta='+fh;
+  api(url).then(function(d){
+    allCobranzas = d.cobranzas || [];
+    statsDistribuidor = d.stats_distribuidor || [];
+    
+    // Stats cards per distribuidor
+    document.getElementById('statsDistribuidorGrid').innerHTML = statsDistribuidor.map(function(s){
+      return '<div class="ranking-card"><h3 style="color:var(--blue-light)">'+s.nombre+'</h3>'+
+        '<div class="ranking-item"><span>Total pedidos</span><strong>'+s.total+'</strong></div>'+
+        '<div class="ranking-item"><span>Al día ✅</span><strong style="color:var(--green)">'+(s.al_dia||0)+'</strong></div>'+
+        '<div class="ranking-item"><span>Por vencer 🟡</span><strong style="color:var(--yellow)">'+(s.por_vencer||0)+'</strong></div>'+
+        '<div class="ranking-item"><span>Vencidos 🔴</span><strong style="color:var(--red)">'+(s.vencido||0)+'</strong></div>'+
+        '<div class="ranking-item"><span>Pagados</span><strong style="color:var(--purple)">'+(s.pagado||0)+'</strong></div>'+
+        '<div class="ranking-item"><span>Tasa puntual</span><strong>'+(s.tasa_puntual||0)+'%</strong></div>'+
+        '<div class="ranking-item"><span>Monto vencido</span><strong style="color:var(--red)">S/'+(s.monto_vencido||0).toFixed(2)+'</strong></div>'+
+      '</div>';
+    }).join('');
+    
+    // Table
+    document.getElementById('cobranzasBody').innerHTML = allCobranzas.length ? allCobranzas.map(function(c){
+      var b = c.bodega || {};
+      var dt = c.distribuidor || {};
+      var dias = c.dias_restantes;
+      var diasText = dias===null ? '-' : (dias<0 ? '<span style="color:var(--red)">'+Math.abs(dias)+' días vencido</span>' : dias+' días');
+      var venc = c.fecha_vencimiento ? new Date(c.fecha_vencimiento).toLocaleDateString('es-PE',{day:'2-digit',month:'short'}) : '-';
+      var entr = c.fecha_entregado ? new Date(c.fecha_entregado).toLocaleDateString('es-PE',{day:'2-digit',month:'short'}) : '-';
+      var actions = c.status_cobranza==='pagado' 
+        ? '<span style="color:var(--purple);font-size:11px">✓ Pagado</span>'
+        : '<button class="btn btn-green btn-small" onclick="openVerificarPago(\''+c.pedido_id+'\')">💵 Verificar pago</button> <button class="btn btn-outline btn-small" onclick="enviarRecordatorio(\''+c.pedido_id+'\')">📨</button>';
+      return '<tr><td class="pedido-num mono">'+(c.numero||'-')+'</td><td>'+(b.nombre_comercial||'?')+'</td><td style="color:var(--muted)">'+(dt.nombre_comercial||'?')+'</td><td>'+entr+'</td><td>'+venc+'</td><td>'+diasText+'</td><td class="mono">S/'+c.total_pagar.toFixed(2)+'</td><td><span class="badge badge-'+c.status_cobranza+'">'+c.status_cobranza.replace('_',' ')+'</span></td><td>'+actions+'</td></tr>';
+    }).join('') : '<tr><td colspan="9" class="empty">Sin cobranzas</td></tr>';
+  });
+}
+
+function loadPedidos(){
+  var bodega = document.getElementById('pedFiltroBodega').value;
+  var dist = document.getElementById('pedFiltroDist').value;
+  var estado = document.getElementById('pedFiltroEstado').value;
+  var url = '/api/distribuidor/admin/pedidos?';
+  if(bodega) url += 'bodega='+encodeURIComponent(bodega)+'&';
+  if(dist) url += 'distribuidor='+encodeURIComponent(dist)+'&';
+  if(estado) url += 'estado='+estado;
+  api(url).then(function(d){
+    allPedidos = d.pedidos || [];
+    document.getElementById('pedidosBody').innerHTML = allPedidos.length ? allPedidos.map(function(p){
+      var b = p.bodega || {};
+      var dt = p.distribuidor || {};
+      var fecha = p.created_at ? new Date(p.created_at).toLocaleDateString('es-PE',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) : '-';
+      return '<tr><td>'+fecha+'</td><td class="pedido-num mono">'+(p.numero||'-')+'</td><td>'+(b.nombre_comercial||'?')+'</td><td style="color:var(--muted)">'+(dt.nombre_comercial||'?')+'</td><td class="mono">S/'+Number(p.monto_productos||0).toFixed(2)+'</td><td class="mono" style="color:var(--blue-light)">S/'+Number(p.monto_financiado||0).toFixed(2)+'</td><td><span class="badge badge-'+(p.estado||'').replace(' ','_')+'">'+(p.estado||'-')+'</span></td></tr>';
+    }).join('') : '<tr><td colspan="7" class="empty">Sin pedidos</td></tr>';
+  });
+}
+
+function openVerificarPago(pid){
+  var c = allCobranzas.find(function(x){return x.pedido_id===pid});
+  if(!c) return;
+  var b = c.bodega || {};
+  document.getElementById('modalContainer').innerHTML = 
+  '<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal"><h3>💵 Verificar pago</h3>'+
+  '<div class="modal-info">'+
+  '<div class="modal-info-row"><span>Pedido:</span><strong>'+(c.numero||'-')+'</strong></div>'+
+  '<div class="modal-info-row"><span>Bodega:</span><strong>'+(b.nombre_comercial||'?')+'</strong></div>'+
+  '<div class="modal-info-row"><span>Teléfono:</span><span class="mono">'+(b.telefono_whatsapp||'-')+'</span></div>'+
+  '<div class="modal-info-row"><span>Monto a pagar:</span><strong style="color:var(--blue-light)">S/'+c.total_pagar.toFixed(2)+'</strong></div>'+
+  '</div>'+
+  '<div class="modal-field"><label>Método de pago</label><select id="vpMetodo"><option value="yape">Yape</option><option value="plin">Plin</option><option value="transferencia">Transferencia</option><option value="efectivo">Efectivo</option></select></div>'+
+  '<div class="modal-field"><label>N° de operación / Referencia</label><input type="text" id="vpNroOp" placeholder="Ej: 123456"></div>'+
+  '<div class="modal-actions"><button class="btn btn-outline" onclick="closeModal()">Cancelar</button><button class="btn btn-green" onclick="confirmarPago(\''+pid+'\')">✓ Confirmar pago</button></div>'+
+  '</div></div>';
+}
+
+function closeModal(){
+  document.getElementById('modalContainer').innerHTML='';
+}
+
+function confirmarPago(pid){
+  var metodo = document.getElementById('vpMetodo').value;
+  var nroOp = document.getElementById('vpNroOp').value;
+  fetch('/api/distribuidor/admin/verificar-pago/'+pid, {
+    method:'POST', headers:{'X-Admin-Token':TOKEN,'Content-Type':'application/json'},
+    body: JSON.stringify({metodo:metodo, nro_operacion:nroOp})
+  }).then(function(r){return r.json()}).then(function(d){
+    closeModal();
+    showToast('Pago verificado. Línea restaurada.','success');
+    refreshAll();
+    loadCobranzas();
+  }).catch(function(e){showToast('Error: '+e.message,'error')});
+}
+
+function enviarRecordatorio(pid){
+  if(!confirm('¿Enviar recordatorio de pago por WhatsApp?')) return;
+  fetch('/api/distribuidor/admin/cobranza/'+pid, {
+    method:'POST', headers:{'X-Admin-Token':TOKEN}
+  }).then(function(r){return r.json()}).then(function(d){
+    showToast('Recordatorio enviado','success');
+  }).catch(function(e){showToast('Error: '+e.message,'error')});
+}
+
+function exportPagosCSV(){
+  if(!allPagos.length){showToast('No hay datos','error');return}
+  var rows = [['Distribuidor','RUC Dist.','Pedido','Bodega','RUC Bodega','Total Pedido','Monto a Transferir','Estado','Fecha']];
+  allPagos.forEach(function(g){
+    var dist = g.distribuidor || {};
+    g.pedidos.forEach(function(p){
+      var b = p.bodega || {};
+      rows.push([dist.nombre_comercial||'',dist.ruc||'',p.numero||'',b.nombre_comercial||'',b.ruc||'',p.monto_productos||0,p.monto_financiado||0,p.estado||'',p.created_at?new Date(p.created_at).toLocaleDateString('es-PE'):'']);
+    });
+  });
+  downloadCSV(rows,'pagos_distribuidores');
+}
+
+function exportCobranzasCSV(){
+  if(!allCobranzas.length){showToast('No hay datos','error');return}
+  var rows = [['Pedido','Bodega','RUC','Teléfono','Distribuidor','Entregado','Vence','Días','Monto','Estado']];
+  allCobranzas.forEach(function(c){
+    var b = c.bodega || {};
+    var d = c.distribuidor || {};
+    rows.push([c.numero||'',b.nombre_comercial||'',b.ruc||'',b.telefono_whatsapp||'',d.nombre_comercial||'',c.fecha_entregado||'',c.fecha_vencimiento||'',c.dias_restantes||'',c.total_pagar||0,c.status_cobranza||'']);
+  });
+  downloadCSV(rows,'cobranzas');
+}
+
+function exportPedidosCSV(){
+  if(!allPedidos.length){showToast('No hay datos','error');return}
+  var rows = [['Fecha','Pedido','Bodega','RUC','Distribuidor','Total','Financiado','Contado','Estado']];
+  allPedidos.forEach(function(p){
+    var b = p.bodega || {};
+    var d = p.distribuidor || {};
+    var fecha = p.created_at ? new Date(p.created_at).toLocaleDateString('es-PE') : '';
+    rows.push([fecha,p.numero||'',b.nombre_comercial||'',b.ruc||'',d.nombre_comercial||'',p.monto_productos||0,p.monto_financiado||0,p.monto_contado||0,p.estado||'']);
+  });
+  downloadCSV(rows,'pedidos');
+}
+
+function downloadCSV(rows,name){
+  var csv = '\uFEFF'+rows.map(function(r){return r.map(function(c){return '"'+String(c).replace(/"/g,'""')+'"'}).join(',')}).join('\n');
+  var blob = new Blob([csv],{type:'text/csv;charset=utf-8'});
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name+'_'+new Date().toISOString().slice(0,10)+'.csv';
+  a.click();
+  showToast('CSV descargado','success');
+}
+
+function showToast(msg,type){
+  var el = document.createElement('div');
+  el.className = 'toast '+(type||'');
+  el.textContent = msg;
+  document.getElementById('toastContainer').appendChild(el);
+  setTimeout(function(){el.remove()},3000);
+}
+
+// Auto login
+var savedToken = localStorage.getItem('circa_admin_token');
+if(savedToken){
+  document.getElementById('tokenInput').value = savedToken;
+  login();
+}
+</script>
+</body>
+</html>

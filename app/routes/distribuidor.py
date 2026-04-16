@@ -358,3 +358,227 @@ async def admin_send_cobranza(pedido_id: str, admin: bool = Depends(verify_admin
     _send_wa_text(tel, reminder)
     return {"ok": True, "enviado_a": tel, "pedido": num}
 
+# ===================== COBRANZAS =====================
+
+@router.get("/admin/cobranzas")
+async def admin_cobranzas(
+    distribuidor: Optional[str] = None,
+    bodega: Optional[str] = None,
+    estado: Optional[str] = None,
+    fecha_desde: Optional[str] = None,
+    fecha_hasta: Optional[str] = None,
+    admin: bool = Depends(verify_admin),
+):
+    """List all orders with delivery status + payment tracking."""
+    from datetime import datetime, timedelta
+    
+    params = {
+        "select": "*",
+        "estado": "in.(entregado,pagado)",
+        "order": "created_at.desc",
+        "limit": "500"
+    }
+    pedidos = _sb_get("pedidos", params)
+    
+    # Bodegas
+    bodega_ids = list(set(p.get("bodega_id","") for p in pedidos if p.get("bodega_id")))
+    bodegas_map = {}
+    for bid in bodega_ids:
+        try:
+            rows = _sb_get("bodegas", {"select":"id,nombre_comercial,telefono_whatsapp,ruc,direccion_fiscal","id":f"eq.{bid}"})
+            if rows: bodegas_map[bid] = rows[0]
+        except: pass
+    
+    # Distribuidores
+    dist_ids = list(set(p.get("distribuidor_id","") for p in pedidos if p.get("distribuidor_id")))
+    dist_map = {}
+    for did in dist_ids:
+        try:
+            rows = _sb_get("distribuidores", {"select":"id,nombre_comercial,ruc","id":f"eq.{did}"})
+            if rows: dist_map[did] = rows[0]
+        except: pass
+    
+    hoy = datetime.utcnow().date()
+    resultado = []
+    for p in pedidos:
+        plazo = p.get("plazo_dias") or 0
+        fecha_entregado = p.get("fecha_entregado") or p.get("created_at")
+        
+        if fecha_entregado and plazo > 0:
+            try:
+                fe = datetime.fromisoformat(fecha_entregado.replace("Z","+00:00")).date()
+                venc = fe + timedelta(days=plazo)
+                dias_restantes = (venc - hoy).days
+            except:
+                venc = None
+                dias_restantes = None
+        else:
+            venc = None
+            dias_restantes = None
+        
+        # Status
+        if p.get("estado") == "pagado":
+            status_cobranza = "pagado"
+        elif dias_restantes is None:
+            status_cobranza = "pendiente"
+        elif dias_restantes < 0:
+            status_cobranza = "vencido"
+        elif dias_restantes <= 3:
+            status_cobranza = "por_vencer"
+        else:
+            status_cobranza = "al_dia"
+        
+        item = {
+            "pedido_id": p["id"],
+            "numero": p.get("numero", ""),
+            "bodega": bodegas_map.get(p.get("bodega_id"), {}),
+            "distribuidor": dist_map.get(p.get("distribuidor_id"), {}),
+            "monto_financiado": float(p.get("monto_financiado") or 0),
+            "fee": float(p.get("fee_monto") or 0),
+            "total_pagar": float(p.get("total") or 0),
+            "plazo_dias": plazo,
+            "fecha_entregado": fecha_entregado,
+            "fecha_vencimiento": venc.isoformat() if venc else None,
+            "dias_restantes": dias_restantes,
+            "status_cobranza": status_cobranza,
+            "estado": p.get("estado"),
+            "fecha_pagado": p.get("fecha_pagado"),
+        }
+        
+        # Filters
+        if distribuidor:
+            dl = distribuidor.lower()
+            if dl not in (item["distribuidor"].get("nombre_comercial","") or "").lower():
+                continue
+        if bodega:
+            bl = bodega.lower()
+            if bl not in (item["bodega"].get("nombre_comercial","") or "").lower():
+                continue
+        if estado and estado != "todos":
+            if estado != status_cobranza:
+                continue
+        if fecha_desde:
+            try:
+                if fecha_entregado and datetime.fromisoformat(fecha_entregado.replace("Z","+00:00")).date() < datetime.fromisoformat(fecha_desde).date():
+                    continue
+            except: pass
+        if fecha_hasta:
+            try:
+                if fecha_entregado and datetime.fromisoformat(fecha_entregado.replace("Z","+00:00")).date() > datetime.fromisoformat(fecha_hasta).date():
+                    continue
+            except: pass
+        
+        resultado.append(item)
+    
+    # Stats por distribuidor
+    stats_dist = {}
+    for r in resultado:
+        dname = r["distribuidor"].get("nombre_comercial", "?") or "?"
+        if dname not in stats_dist:
+            stats_dist[dname] = {"nombre": dname, "total": 0, "al_dia": 0, "por_vencer": 0, "vencido": 0, "pagado": 0, "monto_vencido": 0}
+        s = stats_dist[dname]
+        s["total"] += 1
+        s[r["status_cobranza"]] = s.get(r["status_cobranza"], 0) + 1
+        if r["status_cobranza"] == "vencido":
+            s["monto_vencido"] += r["total_pagar"]
+    
+    # Tasa de pago puntual
+    for s in stats_dist.values():
+        total_vencidos_o_pagados = s.get("pagado", 0) + s.get("vencido", 0)
+        if total_vencidos_o_pagados > 0:
+            s["tasa_puntual"] = round(100 * s.get("pagado", 0) / total_vencidos_o_pagados, 1)
+        else:
+            s["tasa_puntual"] = 100
+    
+    return {"cobranzas": resultado, "total": len(resultado), "stats_distribuidor": list(stats_dist.values())}
+
+
+@router.post("/admin/verificar-pago/{pedido_id}")
+async def admin_verificar_pago(pedido_id: str, payload: dict, admin: bool = Depends(verify_admin)):
+    """Mark order as paid + restore bodega line."""
+    from datetime import datetime
+    
+    rows = _sb_get("pedidos", {"select":"*","id":f"eq.{pedido_id}"})
+    if not rows:
+        raise HTTPException(status_code=404, detail="Pedido no encontrado")
+    ped = rows[0]
+    
+    monto_financiado = float(ped.get("monto_financiado") or 0)
+    bodega_id = ped.get("bodega_id")
+    
+    # Update pedido
+    patch = {
+        "estado": "pagado",
+        "fecha_pagado": datetime.utcnow().isoformat(),
+        "metodo_pago": payload.get("metodo", "yape"),
+        "nro_operacion": payload.get("nro_operacion", ""),
+    }
+    _sb_patch("pedidos", {"id": f"eq.{pedido_id}"}, patch)
+    
+    # Restore bodega line
+    if bodega_id and monto_financiado > 0:
+        bod = _sb_get("bodegas", {"select":"linea_disponible,telefono_whatsapp,nombre_comercial","id":f"eq.{bodega_id}"})
+        if bod:
+            nueva_linea = float(bod[0].get("linea_disponible") or 0) + monto_financiado
+            _sb_patch("bodegas", {"id": f"eq.{bodega_id}"}, {"linea_disponible": nueva_linea})
+            
+            # Notify bodega
+            tel = bod[0].get("telefono_whatsapp", "")
+            if tel:
+                msg = (
+                    f"\u2705 *Pago verificado*\n\n"
+                    f"Pedido: *{ped.get('numero','')}*\n"
+                    f"Monto: S/{ped.get('total',0)}\n\n"
+                    f"\U0001f4b0 Tu linea disponible ahora es: *S/{nueva_linea:.2f}*\n\n"
+                    f"Escribe *MENU* para hacer otro pedido."
+                )
+                _send_wa_text(tel, msg)
+    
+    return {"ok": True, "pedido": ped.get("numero"), "linea_restaurada": monto_financiado}
+
+
+@router.get("/admin/export-pagos-distribuidor")
+async def admin_export_pagos(
+    fecha_desde: Optional[str] = None,
+    fecha_hasta: Optional[str] = None,
+    admin: bool = Depends(verify_admin),
+):
+    """Resumen consolidado de pagos a distribuidores por rango de fechas."""
+    params = {"select":"*","estado":"in.(entregado,pagado,despachado,en_camino)","order":"created_at.desc","limit":"1000"}
+    pedidos = _sb_get("pedidos", params)
+    
+    # Filter by date
+    from datetime import datetime
+    filtered = []
+    for p in pedidos:
+        if not p.get("created_at"): continue
+        try:
+            fp = datetime.fromisoformat(p["created_at"].replace("Z","+00:00")).date()
+            if fecha_desde and fp < datetime.fromisoformat(fecha_desde).date(): continue
+            if fecha_hasta and fp > datetime.fromisoformat(fecha_hasta).date(): continue
+            filtered.append(p)
+        except: continue
+    
+    # Group by distribuidor
+    grupos = {}
+    for p in filtered:
+        did = p.get("distribuidor_id", "")
+        if did not in grupos:
+            grupos[did] = {"pedidos": [], "total_financiado": 0}
+        grupos[did]["pedidos"].append(p)
+        grupos[did]["total_financiado"] += float(p.get("monto_financiado") or 0)
+    
+    # Enrich with distribuidor + bodega info
+    for did, g in grupos.items():
+        try:
+            d = _sb_get("distribuidores", {"select":"*","id":f"eq.{did}"})
+            g["distribuidor"] = d[0] if d else {}
+        except: g["distribuidor"] = {}
+        for p in g["pedidos"]:
+            try:
+                b = _sb_get("bodegas", {"select":"nombre_comercial,ruc,telefono_whatsapp","id":f"eq.{p.get('bodega_id','')}"})
+                p["bodega"] = b[0] if b else {}
+            except: p["bodega"] = {}
+    
+    return {"grupos": list(grupos.values()), "total_pedidos": len(filtered)}
+
