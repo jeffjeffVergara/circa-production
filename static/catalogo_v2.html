@@ -102,6 +102,10 @@ async function init(){
    fetch(API+'/api/bodegas/'+BID).then(function(r){return r.json()}).catch(function(){return null})]);
   P=r[0].filter(function(p){return p.activo});
   if(r[1]){linea=r[1].linea_disponible||0;$('bN').textContent=r[1].nombre_comercial||'';$('hL').textContent='S/'+linea.toFixed(2)}
+  try{var sc=await fetch(API+'/api/carrito/'+BID).then(function(r){return r.json()}).catch(function(){return null});
+  if(sc&&sc.items){var si=typeof sc.items==='string'?JSON.parse(sc.items):sc.items;
+  si.forEach(function(i){cart.push({id:i.catalogo_id,unit:i.pack_size,precio:i.precio||i.precio_unitario||0,nombre:i.nombre||i.producto||'',marca:i.marca||'',qty:i.cantidad||1})});
+  if(cart.length){uC();toast(cart.length+' producto(s) del pedido anterior')}}}catch(e){console.log('No saved cart')}
   bldC();rend();
  }catch(e){$('mA').innerHTML='<div class="empty">Error cargando</div>'}
 }
