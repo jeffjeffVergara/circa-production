@@ -147,6 +147,31 @@ async def update_status(pedido_id: str, body: StatusUpdate, dist: dict = Depends
                     f"Despues de pagar, escribe *YA PAGUE* en este chat."
                 )
                 _send_wa_text(tel, reminder)
+                # Send payment reminder card
+                try:
+                    from app.services.cards import generate_payment_reminder_card
+                    import tempfile
+                    venc_str = venc if isinstance(venc, str) else str(venc)
+                    card_bytes = generate_payment_reminder_card(num, monto_fin, fee, total_credito, plazo, venc_str)
+                    tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+                    tmp.write(card_bytes)
+                    tmp.close()
+                    upload_r = httpx.post(
+                        f"https://graph.facebook.com/v23.0/{PHONE_NUMBER_ID}/media",
+                        headers={"Authorization": f"Bearer {META_TOKEN}"},
+                        files={"file": ("reminder.png", open(tmp.name, "rb"), "image/png")},
+                        data={"messaging_product": "whatsapp", "type": "image/png"},
+                        timeout=30)
+                    media_id = upload_r.json().get("id")
+                    if media_id:
+                        httpx.post(f"https://graph.facebook.com/v23.0/{PHONE_NUMBER_ID}/messages",
+                            headers={"Authorization": f"Bearer {META_TOKEN}", "Content-Type": "application/json"},
+                            json={"messaging_product": "whatsapp", "to": tel, "type": "image",
+                                  "image": {"id": media_id}}, timeout=15)
+                    import os; os.unlink(tmp.name)
+                except Exception as card_e:
+                    import logging
+                    logging.getLogger("circa").error(f"Reminder card error: {card_e}")
         except Exception as e:
             import logging
             logging.getLogger("circa").error(f"Payment reminder error: {e}")
