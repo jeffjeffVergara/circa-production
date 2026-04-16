@@ -120,7 +120,7 @@ def create_pedido(bodega_id: str, distribuidor_id: str, items: list,
                   fee_tasa: float, fee_monto: float, plazo_dias: int):
     # Generate order number
     numero = sb.rpc("gen_numero_pedido").execute().data
-    fecha_venc = (date.today() + timedelta(days=plazo_dias)).isoformat()
+    fecha_venc = None  # Se calcula al marcar entregado
     
     pedido = sb.table("pedidos").insert({
         "numero": numero,

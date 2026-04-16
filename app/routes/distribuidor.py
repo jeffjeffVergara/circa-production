@@ -107,6 +107,17 @@ async def update_status(pedido_id: str, body: StatusUpdate, dist: dict = Depends
         _send_wa_text(tel, WA_MESSAGES[nuevo].format(numero=pedido.get("numero",pedido_id[:8]), distribuidor=dist["nombre_comercial"]))
     # If entregado, send payment reminder
     if nuevo == "entregado":
+        # Calcular fecha_vencimiento desde entrega
+        try:
+            ped_fv = _sb_get("pedidos", {"select":"plazo_dias","id":f"eq.{pedido_id}"})[0]
+            plazo_d = ped_fv.get("plazo_dias") or 7
+            from datetime import timedelta as td
+            fv = (datetime.now(timezone.utc) + td(days=plazo_d)).strftime("%Y-%m-%d")
+            _sb_patch("pedidos", {"fecha_vencimiento": fv}, {"id": f"eq.{pedido_id}"})
+            _sb_patch("pagos", {"fecha_vencimiento": fv}, {"pedido_id": f"eq.{pedido_id}"})
+        except Exception as efv:
+            import logging
+            logging.getLogger("circa").error(f"fecha_vencimiento calc error: {efv}")
         try:
             ped = _sb_get("pedidos", {"select":"*","id":f"eq.{pedido_id}"})[0]
             monto_fin = ped.get("monto_financiado") or 0
