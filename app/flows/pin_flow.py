@@ -314,10 +314,11 @@ def _verify_pin_for_payment(pin: str, bodega_id: str) -> dict:
                     items_str += f" (+{len(items_raw)-3} mas)"
                 if not items_str:
                     items_str = "Ver detalle en WhatsApp"
+                monto_prod = float(datos.get("monto_productos", 0) or datos.get("cart_total", 0) or 0)
                 card_bytes = generate_order_confirmed_card(
                     numero=num, items_summary=items_str,
                     monto=monto, fee=fee, total=monto+fee if dias > 0 else monto,
-                    dias=dias, vencimiento=venc,
+                    dias=dias, vencimiento=venc, monto_productos=monto_prod,
                 )
                 import tempfile
                 tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
