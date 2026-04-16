@@ -8,37 +8,37 @@ import imgkit
 logger = logging.getLogger("circa.cards")
 
 IMGKIT_CONFIG = imgkit.config(wkhtmltoimage="/usr/bin/wkhtmltoimage")
-IMGKIT_OPTIONS = {"format": "png", "width": 760, "quality": 95, "enable-local-file-access": "", "xvfb": ""}
+IMGKIT_OPTIONS = {"format": "png", "width": 1080, "quality": 95, "enable-local-file-access": "", "xvfb": ""}
 
 BASE_CSS = """
 :root { --circa-blue:#5B8AF5; --circa-green:#16a34a; --circa-red:#DC2626; --text:#0D0D10; --muted:#6E6E80; --line:#e5e7eb; --card:#fff; }
 * { box-sizing:border-box; margin:0; padding:0; }
-body { font-family:'DejaVu Sans',Arial,sans-serif; background:{frame_color}; display:flex; align-items:center; justify-content:center; min-height:100vh; padding:28px; }
-.frame { width:760px; background:{frame_color}; border-radius:28px; padding:28px; }
-.ticket { background:var(--card); border-radius:28px; position:relative; overflow:hidden; box-shadow:0 18px 40px rgba(0,0,0,0.12); }
-.ticket::before,.ticket::after { content:""; position:absolute; width:34px; height:34px; border-radius:50%; background:{frame_color}; top:{hole_pct}%; transform:translateY(-50%); z-index:2; }
-.ticket::before {{ left:-17px; }}
-.ticket::after {{ right:-17px; }}
-.top { padding:36px 36px 24px; text-align:center; }
-.logo { display:inline-flex; align-items:center; gap:14px; margin-bottom:18px; }
-.logo svg { height:56px; }
-.check-wrap { width:96px; height:96px; margin:10px auto 18px; border-radius:50%; background:{icon_color}; display:flex; align-items:center; justify-content:center; color:#fff; font-size:54px; font-weight:700; }
-.status { color:{status_color}; font-weight:800; font-size:28px; margin:0 0 14px; }
-.store-name { color:var(--text); font-weight:800; font-size:34px; line-height:1.1; margin:0 0 26px; }
-.divider { height:1px; background:var(--line); }
-.amount-section { padding:28px 36px 24px; text-align:center; }
-.amount-label { color:{amount_label_color}; font-size:20px; font-weight:800; letter-spacing:0.5px; margin-bottom:16px; text-transform:uppercase; }
-.amount { color:{amount_color}; font-weight:900; font-size:84px; line-height:1; }
-.amount small { font-size:44px; font-weight:700; vertical-align:middle; margin-right:8px; }
-.details { padding:14px 36px 24px; }
-.detail-row { display:flex; align-items:center; gap:14px; padding:18px 0; border-top:1px dashed #d1d5db; font-size:19px; color:var(--text); }
-.detail-row:first-child { border-top:1px solid var(--line); }
-.label { font-weight:700; min-width:160px; color:var(--muted); }
+body { font-family:'DejaVu Sans',Arial,sans-serif; background:{frame_color}; display:flex; align-items:center; justify-content:center; padding:36px; }
+.frame { width:1080px; background:{frame_color}; border-radius:36px; padding:36px; }
+.ticket { background:var(--card); border-radius:36px; position:relative; overflow:hidden; box-shadow:0 24px 50px rgba(0,0,0,0.15); }
+.ticket::before,.ticket::after { content:""; position:absolute; width:44px; height:44px; border-radius:50%; background:{frame_color}; top:{hole_pct}%; transform:translateY(-50%); z-index:2; }
+.ticket::before {{ left:-22px; }}
+.ticket::after {{ right:-22px; }}
+.top { padding:48px 48px 32px; text-align:center; }
+.logo { display:inline-flex; align-items:center; gap:18px; margin-bottom:24px; }
+.logo svg { height:80px; }
+.check-wrap { width:130px; height:130px; margin:14px auto 24px; border-radius:50%; background:{icon_color}; display:flex; align-items:center; justify-content:center; color:#fff; font-size:72px; font-weight:700; }
+.status { color:{status_color}; font-weight:800; font-size:40px; margin:0 0 18px; }
+.store-name { color:var(--text); font-weight:800; font-size:48px; line-height:1.1; margin:0 0 32px; }
+.divider { height:2px; background:var(--line); }
+.amount-section { padding:36px 48px 32px; text-align:center; }
+.amount-label { color:{amount_label_color}; font-size:28px; font-weight:800; letter-spacing:1px; margin-bottom:20px; text-transform:uppercase; }
+.amount { color:{amount_color}; font-weight:900; font-size:120px; line-height:1; }
+.amount small { font-size:64px; font-weight:700; vertical-align:middle; margin-right:10px; }
+.details { padding:18px 48px 32px; }
+.detail-row { display:flex; align-items:center; gap:18px; padding:22px 0; border-top:2px dashed #d1d5db; font-size:28px; color:var(--text); }
+.detail-row:first-child { border-top:2px solid var(--line); }
+.label { font-weight:700; min-width:220px; color:var(--muted); }
 .value { font-weight:500; flex:1; }
-.bottom { border-top:2px dashed {bottom_dash_color}; padding:22px 36px 28px; }
-.bottom strong { display:block; color:{bottom_strong_color}; font-size:18px; margin-bottom:4px; }
-.bottom span { color:var(--muted); font-size:16px; line-height:1.4; }
-.footer-ts { text-align:center; color:var(--muted); font-size:14px; padding:0 36px 24px; }
+.bottom { border-top:3px dashed {bottom_dash_color}; padding:28px 48px 36px; }
+.bottom strong { display:block; color:{bottom_strong_color}; font-size:26px; margin-bottom:6px; }
+.bottom span { color:var(--muted); font-size:22px; line-height:1.5; }
+.footer-ts { text-align:center; color:var(--muted); font-size:20px; padding:0 48px 32px; }
 """
 
 def _render(html):
@@ -52,7 +52,7 @@ def _render(html):
         if os.path.exists(tmp_path):
             os.unlink(tmp_path)
 
-LOGO = '<svg viewBox="0 0 240 80" fill="none" xmlns="http://www.w3.org/2000/svg"><ellipse cx="32" cy="40" rx="28" ry="28" stroke="#5B8AF5" stroke-width="5" fill="none"/><ellipse cx="56" cy="40" rx="28" ry="28" stroke="#5B8AF5" stroke-width="5" fill="none"/><text x="96" y="52" font-family="DejaVu Sans,Arial,sans-serif" font-weight="800" font-size="36" fill="#0D0D10" letter-spacing="2">CIRCA</text></svg>'
+LOGO = '<svg viewBox="0 0 340 110" fill="none" xmlns="http://www.w3.org/2000/svg"><ellipse cx="44" cy="55" rx="38" ry="38" stroke="#5B8AF5" stroke-width="6" fill="none"/><ellipse cx="76" cy="55" rx="38" ry="38" stroke="#5B8AF5" stroke-width="6" fill="none"/><text x="130" y="72" font-family="DejaVu Sans,Arial,sans-serif" font-weight="800" font-size="50" fill="#0D0D10" letter-spacing="2">CIRCA</text></svg>'
 
 def _css(**kw):
     return BASE_CSS.format(**kw)
