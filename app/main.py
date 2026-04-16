@@ -437,7 +437,8 @@ async def meta_webhook_incoming(request: Request):
                     }).execute()
                     await meta_client.send_text(telefono,
                         f"💵 *Pago al contado — S/{monto:.2f}*\n\n"
-                        f"🔐 Ingresa tu clave Circa de 4 dígitos para confirmar:")
+                        f"Ingresa tu clave Circa de 4 digitos para confirmar:")
+                    await meta_client.send_pin_request(telefono, mode="verify", bodega_id=bod_id)
                 else:
                     await meta_client.send_text(telefono, "No encontre el pedido.")
             except Exception as e:
