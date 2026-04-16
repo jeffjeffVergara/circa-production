@@ -1,4 +1,4 @@
-"""Cards temporarily disabled — placeholder stubs."""
+"""Cards temporarily disabled."""
 
 def generate_account_activated_card(*args, **kwargs):
     return None
