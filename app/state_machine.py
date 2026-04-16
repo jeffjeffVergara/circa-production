@@ -45,17 +45,25 @@ def get_pin_url(bodega_id: str, mode: str = "confirm") -> str:
 
 def _find_product_by_sku(bodega: dict, sku: str) -> dict | None:
     """Find a catalog item by SKU for the bodega's distributor."""
-    items = (
-        db.sb.table("catalogo")
-        .select("*")
+    rows = (
+        db.sb.table("catalogo_distribuidor")
+        .select("*, productos_circa(*)")
         .eq("activo", True)
         .eq("distribuidor_id", bodega["distribuidor_id"])
-        .eq("sku", sku)
+        .eq("sku_distribuidor", sku)
         .limit(1)
         .execute()
         .data
     )
-    return items[0] if items else None
+    if not rows:
+        return None
+    row = rows[0]
+    pc = row.get("productos_circa") or {}
+    return {
+        "id": pc.get("id"), "nombre": pc.get("nombre", ""), "marca": pc.get("marca", ""),
+        "categoria": pc.get("categoria", ""), "unidades": row.get("unidades") or {},
+        "sku": row.get("sku_distribuidor", ""), "activo": row.get("activo", True),
+    }
 
 
 def _cart_total(cart: list) -> float:

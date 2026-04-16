@@ -53,26 +53,49 @@ def sign_contract(bodega_id: str, contract_hash: str):
 
 # ── CATÁLOGO ──────────────────────────────────
 def get_catalogo(distribuidor_id: str, marca: str = None, categoria: str = None):
-    q = sb.table("catalogo").select("*").eq("distribuidor_id", distribuidor_id).eq("activo", True)
-    if marca:
-        q = q.eq("marca", marca)
-    if categoria:
-        q = q.eq("categoria", categoria)
-    return q.execute().data
+    """Returns flat dict format compatible with legacy catalogo.py code."""
+    q = sb.table("catalogo_distribuidor").select("*, productos_circa(*)").eq("distribuidor_id", distribuidor_id).eq("activo", True)
+    rows = q.execute().data
+    # Flatten: move productos_circa fields to top level
+    result = []
+    for row in rows:
+        pc = row.get("productos_circa") or {}
+        if marca and pc.get("marca") != marca:
+            continue
+        if categoria and pc.get("categoria") != categoria:
+            continue
+        # Compatible structure: id = producto_circa_id (for cart lookups)
+        item = {
+            "id": pc.get("id"),
+            "nombre": pc.get("nombre", ""),
+            "marca": pc.get("marca", ""),
+            "categoria": pc.get("categoria", ""),
+            "descripcion": pc.get("descripcion", ""),
+            "presentacion": pc.get("presentacion", ""),
+            "imagen_url": pc.get("imagen_url", ""),
+            "unidades": row.get("unidades") or {},
+            "codigo": row.get("codigo") or pc.get("codigo", ""),
+            "sku": row.get("sku_distribuidor", ""),
+            "activo": row.get("activo", True),
+        }
+        result.append(item)
+    return result
 
 def get_catalogo_all_for_bodega(bodega_id: str):
     """Get catalog from bodega's default distribuidor."""
     bodega = sb.table("bodegas").select("distribuidor_id").eq("id", bodega_id).single().execute().data
     if not bodega:
         return []
-    return sb.table("catalogo").select("*").eq("distribuidor_id", bodega["distribuidor_id"]).eq("activo", True).execute().data
+    return sb.table("catalogo_distribuidor").select("*, productos_circa(*)").eq("distribuidor_id", bodega["distribuidor_id"]).eq("activo", True).execute().data
 
 def get_marcas(distribuidor_id: str):
-    items = sb.table("catalogo").select("marca").eq("distribuidor_id", distribuidor_id).eq("activo", True).execute().data
+    items = sb.table("catalogo_distribuidor").select("productos_circa(marca)").eq("distribuidor_id", distribuidor_id).eq("activo", True).execute().data
+    items = [{"marca": i["productos_circa"]["marca"]} for i in items if i.get("productos_circa")]
     return sorted(set(i["marca"] for i in items))
 
 def get_categorias(distribuidor_id: str):
-    items = sb.table("catalogo").select("categoria").eq("distribuidor_id", distribuidor_id).eq("activo", True).execute().data
+    items = sb.table("catalogo_distribuidor").select("productos_circa(categoria)").eq("distribuidor_id", distribuidor_id).eq("activo", True).execute().data
+    items = [{"categoria": i["productos_circa"]["categoria"]} for i in items if i.get("productos_circa")]
     return sorted(set(i["categoria"] for i in items))
 
 # ── CARRITOS ──────────────────────────────────

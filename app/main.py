@@ -871,11 +871,20 @@ async def get_bodega(bodega_id: str):
 
 @app.get("/api/catalogo")
 async def list_catalogo(distribuidor_id: str = None, marca: str = None, categoria: str = None):
-    q = db.sb.table("catalogo").select("*").eq("activo", True)
+    q = db.sb.table("catalogo_distribuidor").select("*, productos_circa(*)").eq("activo", True)
     if distribuidor_id: q = q.eq("distribuidor_id", distribuidor_id)
-    if marca: q = q.eq("marca", marca)
-    if categoria: q = q.eq("categoria", categoria)
-    return q.execute().data
+    rows = q.execute().data
+    result = []
+    for row in rows:
+        pc = row.get("productos_circa") or {}
+        if marca and pc.get("marca") != marca: continue
+        if categoria and pc.get("categoria") != categoria: continue
+        result.append({
+            "id": pc.get("id"), "nombre": pc.get("nombre", ""), "marca": pc.get("marca", ""),
+            "categoria": pc.get("categoria", ""), "unidades": row.get("unidades") or {},
+            "sku": row.get("sku_distribuidor", ""), "activo": row.get("activo", True),
+        })
+    return result
 
 # ── PIN (web page) ──
 

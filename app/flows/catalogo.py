@@ -274,7 +274,17 @@ async def _build_products(bodega_id, session, category):
 
 async def _build_product_detail(bodega_id, session, product_id):
     try:
-        p = db.sb.table("catalogo").select("*").eq("id", product_id).single().execute().data
+        # Get bodega's distribuidor
+        bod = db.sb.table("bodegas").select("distribuidor_id").eq("id", bodega_id).limit(1).execute()
+        dist_id = bod.data[0]["distribuidor_id"] if bod.data else None
+        # Query from catalogo_distribuidor joined with productos_circa
+        cd = db.sb.table("catalogo_distribuidor").select("*, productos_circa(*)").eq("producto_circa_id", product_id).eq("distribuidor_id", dist_id).limit(1).execute()
+        if not cd.data:
+            p = None
+        else:
+            row = cd.data[0]
+            pc = row.get("productos_circa") or {}
+            p = {"id": pc.get("id"), "nombre": pc.get("nombre", "Producto"), "marca": pc.get("marca", ""), "unidades": row.get("unidades") or {}}
     except Exception as e:
         logger.error(f"Product load error: {e}")
         p = None
@@ -348,7 +358,15 @@ async def _do_add_to_cart(bodega_id, session, selected):
         unit_key_safe = f"PK{rest[pk_pos+3:]}" if pk_pos > 0 else "UNDx1"
 
     try:
-        p = db.sb.table("catalogo").select("nombre, marca, unidades").eq("id", product_id).single().execute().data
+        bod = db.sb.table("bodegas").select("distribuidor_id").eq("id", bodega_id).limit(1).execute()
+        dist_id = bod.data[0]["distribuidor_id"] if bod.data else None
+        cd = db.sb.table("catalogo_distribuidor").select("unidades, productos_circa(nombre, marca)").eq("producto_circa_id", product_id).eq("distribuidor_id", dist_id).limit(1).execute()
+        if cd.data:
+            row = cd.data[0]
+            pc = row.get("productos_circa") or {}
+            p = {"nombre": pc.get("nombre", "Producto"), "marca": pc.get("marca", ""), "unidades": row.get("unidades") or {}}
+        else:
+            p = None
     except Exception:
         p = None
 
