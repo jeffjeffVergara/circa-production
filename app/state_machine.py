@@ -422,8 +422,9 @@ def handle_message(telefono: str, body: str, media_url: str = None) -> list:
     # ═══════════════════════════════════════════════
     if fase == "menu":
         if body_n in ("PEDIDO", "PEDIR", "COMPRAR", "1", "pedido"):
+            db.clear_carrito(bodega["id"])  # Fresh order = empty cart
             url = get_catalog_url(bodega["id"])
-            db.upsert_session(telefono, "catalogo", {"cart": datos.get("cart", [])}, bodega["id"])
+            db.upsert_session(telefono, "catalogo", {"cart": []}, bodega["id"])
             return [
                 f"📦 *Catálogo de productos*\n\nAbre el catálogo, arma tu pedido y confirma:\n👉 {url}\n\nFiltra por *categoría* o *marca*.\nPrecios por pack (6, 12 o 24u).\nEl tag indica el vendedor.\n\nCuando termines, presiona *Financiar con Circa* en la web."
             ]
