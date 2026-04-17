@@ -1051,7 +1051,16 @@ async def submit_cart(data: CartSubmission):
 @app.get("/api/carrito/{bodega_id}")
 async def get_carrito(bodega_id: str):
     cart = db.get_carrito(bodega_id)
-    return cart if cart else {"items": []}
+    if not cart:
+        return {"items": []}
+    items = cart.get("items", [])
+    if isinstance(items, str):
+        import json as _json
+        try:
+            cart["items"] = _json.loads(items)
+        except Exception:
+            cart["items"] = []
+    return cart
 
 @app.get("/catalogo")
 async def catalogo_page():
