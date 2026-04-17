@@ -430,6 +430,8 @@ async def send_pin_request(to: str, mode: str = "create", bodega_id: str = ""):
             flow_cta="Crear clave 🔐",
             body="Crea tu clave Circa de 4 dígitos. La necesitarás para confirmar cada pedido financiado.",
             mode="published",
+            screen="PIN_CREATE",
+            data={"bodega_id": bodega_id, "mode": "create"},
         )
     
     # Verify mode — send Flow with pedido data
@@ -440,6 +442,8 @@ async def send_pin_request(to: str, mode: str = "create", bodega_id: str = ""):
             flow_cta="Confirmar con clave",
             body="Ingresa tu clave Circa de 4 digitos para confirmar tu pedido.",
             mode="published",
+            screen="PIN_CREATE",
+            data={"bodega_id": bodega_id, "mode": "verify"},
         )
     
     # Fallback to text if flow not configured
