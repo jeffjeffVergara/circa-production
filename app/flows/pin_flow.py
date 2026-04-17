@@ -272,13 +272,12 @@ def _verify_pin_for_payment(pin: str, bodega_id: str) -> dict:
         
         # Generate order number
         existing = db.sb.table("pedidos").select("numero").eq("bodega_id", bodega_id).not_.is_("numero", "null").order("created_at", desc=True).limit(1).execute()
-        n = 1
-        if existing.data and existing.data[0].get("numero"):
-            try:
-                n = int(existing.data[0]["numero"].split("-")[1]) + 1
-            except:
-                n = 1
-        num = f"CRC-{n:03d}"
+        try:
+            num = db.sb.rpc("gen_numero_pedido").execute().data
+        except Exception as e:
+            logger.error(f"gen_numero_pedido error: {e}")
+            import random
+            num = f"CRC-{random.randint(100,999)}"
         
         if dias > 0:
             db.sb.table("pedidos").update({
