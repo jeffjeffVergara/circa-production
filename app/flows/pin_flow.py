@@ -94,13 +94,19 @@ def _handle_pin_create(data: dict) -> dict:
     # Check for pending session to get bodega_id
     if not bodega_id or bodega_id == "test":
         try:
-            ses = db.sb.table("sesiones").select("bodega_id, fase").in_("fase", ["pin_pago", "reg_pin"]).limit(1).execute()
-            if ses.data:
-                bodega_id = ses.data[0].get("bodega_id", bodega_id)
-                found_fase = ses.data[0].get("fase", "")
-                if found_fase == "pin_pago":
+            # Search by bodega_id from flow, not random sessions
+            logger.warning(f"PIN: no bodega_id in flow data, cannot route")
+        except Exception as e:
+            logger.error(f"Session lookup: {e}")
+    else:
+        # Determine mode from session for THIS bodega
+        try:
+            bodega_check = db.sb.table("bodegas").select("pin_hash").eq("id", bodega_id).limit(1).execute()
+            if bodega_check.data and bodega_check.data[0].get("pin_hash"):
+                ses = db.sb.table("sesiones").select("fase").eq("bodega_id", bodega_id).in_("fase", ["pin_pago"]).limit(1).execute()
+                if ses.data:
                     mode = "verify"
-                logger.info(f"PIN: found session fase={found_fase}, bodega={bodega_id}")
+                    logger.info(f"PIN: bodega has pin + pin_pago session -> verify mode")
         except Exception as e:
             logger.error(f"Session lookup: {e}")
     
