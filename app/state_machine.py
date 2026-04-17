@@ -21,6 +21,9 @@ from datetime import datetime, date, timedelta
 from app.services import db, messages as msg, fees
 from app.services.pin import check_pin
 from app.services.identity import consultar_ruc_sync, consultar_dni_sync, validate_ruc_format, validate_dni_format, is_ruc_eligible
+
+# Test phones — bypass SUNAT/RENIEC/Vision validation
+TEST_PHONES = {"+51954712581", "+51977652871", "+56991291415", "+51955755308"}
 from app.config import TWILIO_FROM
 
 
@@ -148,8 +151,11 @@ def handle_message(telefono: str, body: str, media_url: str = None) -> list:
         if bodega["telefono_whatsapp"] != telefono and bodega["telefono_whatsapp"] != f"+{telefono.lstrip('+')}":
             return ["\u274c Este RUC no est\u00e1 asociado a tu n\u00famero de WhatsApp."]
 
-        # Verify with SUNAT via ApiInti
-        sunat = consultar_ruc_sync(ruc)
+        # Verify with SUNAT via ApiInti (bypass for test phones)
+        if telefono in TEST_PHONES:
+            sunat = None  # Skip SUNAT for test
+        else:
+            sunat = consultar_ruc_sync(ruc)
         if sunat:
             eligible, reason = is_ruc_eligible(sunat)
             if not eligible:
@@ -199,11 +205,14 @@ def handle_message(telefono: str, body: str, media_url: str = None) -> list:
                     from app.services.vision import download_whatsapp_media_sync, verify_dni_photo
                     image_bytes = download_whatsapp_media_sync(media_url)
                     if image_bytes:
-                        check = verify_dni_photo(
-                            image_bytes,
-                            datos.get("dni_number", ""),
-                            datos.get("dni_nombre", ""),
-                        )
+                        if telefono in TEST_PHONES:
+                            check = {"valid": True, "matches_expected": True}  # Bypass for test
+                        else:
+                            check = verify_dni_photo(
+                                image_bytes,
+                                datos.get("dni_number", ""),
+                                datos.get("dni_nombre", ""),
+                            )
                         if not check.get("valid", False) or check.get("matches_expected") == False:
                             reason = check.get("reason", "No se pudo verificar el DNI.")
                             return [f"\u274c {reason}\n\nEnv\u00eda una foto clara del *anverso de tu DNI f\u00edsico*."]
@@ -236,8 +245,11 @@ def handle_message(telefono: str, body: str, media_url: str = None) -> list:
                 return ["Escribe el DNI del representante legal (8 d\u00edgitos):"]
             return [{"signal": "DNI_ASK"}]
 
-        # Verify with RENIEC via ApiInti
-        reniec = consultar_dni_sync(dni)
+        # Verify with RENIEC via ApiInti (bypass for test phones)
+        if telefono in TEST_PHONES:
+            reniec = None  # Skip RENIEC for test
+        else:
+            reniec = consultar_dni_sync(dni)
         if reniec:
             nombre_reniec = reniec.get("nombre_completo", "")
             
@@ -305,7 +317,10 @@ def handle_message(telefono: str, body: str, media_url: str = None) -> list:
                 from app.services.vision import download_whatsapp_media_sync, verify_selfie
                 image_bytes = download_whatsapp_media_sync(media_url)
                 if image_bytes:
-                    check = verify_selfie(image_bytes)
+                    if telefono in TEST_PHONES:
+                        check = {"valid": True}  # Bypass for test
+                    else:
+                        check = verify_selfie(image_bytes)
                     if not check.get("valid", False):
                         reason = check.get("reason", "La imagen no es una selfie valida.")
                         return [f"\u274c {reason}\n\nPor favor, toma una *selfie mirando a la camara*."]
