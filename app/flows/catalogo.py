@@ -535,7 +535,7 @@ async def _send_payment_options(phone, pedido_id, total, items_text, bodega_id=N
             f"Credito disponible: *S/{linea:.2f}*")
         await meta_client.send_list(
             to=phone,
-            body="Cuanto deseas financiar con Circa?",
+            body="Cuanto de tu linea Circa deseas usar para financiar?",
             button_text="Elegir opcion",
             sections=[{"title": "Financiamiento", "rows": [
                 {"id": f"CONTADO_{pid}", "title": "Pagar todo al contado", "description": "No financiar"},
@@ -552,7 +552,7 @@ async def _send_payment_options(phone, pedido_id, total, items_text, bodega_id=N
             f"Minimo al contado: S/{contado_min:.2f}")
         await meta_client.send_list(
             to=phone,
-            body="Cuanto deseas financiar con Circa?",
+            body="Cuanto de tu linea Circa deseas usar para financiar?",
             button_text="Elegir opcion",
             sections=[{"title": "Financiamiento", "rows": [
                 {"id": f"CONTADO_{pid}", "title": "Pagar todo al contado", "description": "Sin financiamiento"},
