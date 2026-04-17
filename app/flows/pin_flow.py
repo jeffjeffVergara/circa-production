@@ -222,7 +222,20 @@ def _verify_pin_for_payment(pin: str, bodega_id: str) -> dict:
             return {"screen": "PIN_CREATE", "data": {"bodega_id": bodega_id, "mode": "verify", "error_msg": "Bodega no encontrada."}}
         
         pin_hash = bodega.data[0].get("pin_hash", "")
-        if not pin_hash or not bcrypt.checkpw(pin.encode(), pin_hash.encode()):
+        if not pin_hash:
+            # No PIN set yet — create it now
+            from app.services.pin import hash_pin
+            pin_hashed = hash_pin(pin)
+            db.update_bodega(bodega_id, {
+                "estado": "activo",
+                "pin_hash": pin_hashed,
+                "pin_intentos": 0,
+            })
+            telefono_c = bodega.data[0].get("telefono_whatsapp", "")
+            if telefono_c:
+                db.upsert_session(telefono_c, "menu", {}, bodega_id)
+            return {"screen": "SUCCESS", "data": {"message": "Clave creada con exito"}}
+        if not bcrypt.checkpw(pin.encode(), pin_hash.encode()):
             return {"screen": "PIN_CREATE", "data": {"bodega_id": bodega_id, "mode": "verify", "error_msg": "Clave incorrecta."}}
         
         telefono = bodega.data[0].get("telefono_whatsapp", "")
