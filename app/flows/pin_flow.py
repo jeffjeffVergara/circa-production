@@ -159,6 +159,9 @@ def _handle_pin_create(data: dict) -> dict:
                             if d_r.data:
                                 dist_name = d_r.data[0]["nombre_comercial"]
                     card_bytes = generate_account_activated_card(b_name, linea, dist_name)
+                    if not card_bytes:
+                        logger.warning("Card returned None — skipping")
+                        raise Exception("Card render returned None")
                     
                     # Upload and send card image
                     import tempfile
