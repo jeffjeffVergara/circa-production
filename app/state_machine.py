@@ -247,9 +247,17 @@ def handle_message(telefono: str, body: str, media_url: str = None) -> list:
 
         # Verify with RENIEC via ApiInti (bypass for test phones)
         if telefono in TEST_PHONES:
-            reniec = None  # Skip RENIEC for test
-        else:
-            reniec = consultar_dni_sync(dni)
+            # Skip RENIEC — auto-approve for test
+            db.update_bodega(bodega_id, {"dni_representante": dni})
+            datos["dni_verified"] = True
+            datos["dni_number"] = dni
+            datos["dni_nombre"] = bodega_data.get("nombre_comercial", "Test User")
+            db.upsert_session(telefono, "reg_dni", datos, bodega_id)
+            return [
+                f"\u2705 *DNI verificado*\n{datos['dni_nombre']}\n\n"
+                f"\U0001f4f8 Ahora envia una *foto* (cualquier imagen sirve para test).\n"
+            ]
+        reniec = consultar_dni_sync(dni)
         if reniec:
             nombre_reniec = reniec.get("nombre_completo", "")
             
