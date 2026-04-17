@@ -106,19 +106,18 @@ def _handle_pin_create(data: dict) -> dict:
     # Check for pending session to get bodega_id
     if not bodega_id or bodega_id == "test":
         try:
-            # Search by bodega_id from flow, not random sessions
-            logger.warning(f"PIN: no bodega_id in flow data, cannot route")
-        except Exception as e:
-            logger.error(f"Session lookup: {e}")
-    else:
-        # Determine mode from session for THIS bodega
-        try:
-            bodega_check = db.sb.table("bodegas").select("pin_hash").eq("id", bodega_id).limit(1).execute()
-            if bodega_check.data and bodega_check.data[0].get("pin_hash"):
-                ses = db.sb.table("sesiones").select("fase").eq("bodega_id", bodega_id).in_("fase", ["pin_pago"]).limit(1).execute()
-                if ses.data:
+            # Find bodega from most recent session (reg_pin or pin_pago)
+            ses = db.sb.table("sesiones").select("bodega_id, fase").in_("fase", ["reg_pin", "pin_pago"]).order("last_activity", desc=True).limit(1).execute()
+            if ses.data:
+                bodega_id = ses.data[0].get("bodega_id", "")
+                found_fase = ses.data[0].get("fase", "")
+                if found_fase == "pin_pago":
                     mode = "verify"
-                    logger.info(f"PIN: bodega has pin + pin_pago session -> verify mode")
+                else:
+                    mode = "create"
+                logger.info(f"PIN: recovered bodega={bodega_id} from session fase={found_fase}, mode={mode}")
+            else:
+                logger.warning(f"PIN: no bodega_id and no session found")
         except Exception as e:
             logger.error(f"Session lookup: {e}")
     
