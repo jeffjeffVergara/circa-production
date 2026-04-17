@@ -79,6 +79,18 @@ def _handle_pin_create(data: dict) -> dict:
     bodega_id = data.get("bodega_id", "")
     mode = data.get("mode", "create")
     
+    # Override mode based on actual pin_hash — ignore what Flow sends
+    if bodega_id and bodega_id != "test":
+        try:
+            b_check = db.sb.table("bodegas").select("pin_hash").eq("id", bodega_id).limit(1).execute()
+            if b_check.data:
+                has_pin = bool(b_check.data[0].get("pin_hash"))
+                if not has_pin:
+                    mode = "create"
+                    logger.info(f"PIN: no pin_hash found, forcing mode=create")
+        except Exception as e:
+            logger.error(f"PIN mode check: {e}")
+    
     logger.info(f"PIN create: mode={mode}, bodega_id={bodega_id}, pin_len={len(pin)}")
     
     if len(pin) != 4 or not pin.isdigit():
