@@ -210,7 +210,8 @@ def registrar_pago(pedido_id: str, monto: float, metodo: str = "yape"):
         activos = sb.table("pedidos").select("monto_financiado").eq("bodega_id", pedido["bodega_id"]).not_.in_("estado", ["pagado", "rechazado"]).execute().data
         total_activo = sum(p["monto_financiado"] for p in activos)
         new_line = bodega["linea_aprobada"] - total_activo
-        sb.table("bodegas").update({"linea_disponible": new_line}).eq("id", pedido["bodega_id"]).execute()
+        new_line = min(new_line, bodega["linea_aprobada"])  # Cap: never exceed approved
+        sb.table("bodegas").update({"linea_disponible": max(0, new_line)}).eq("id", pedido["bodega_id"]).execute()
     
     update_pedido_estado(pedido_id, "pagado", "bodeguero")
 

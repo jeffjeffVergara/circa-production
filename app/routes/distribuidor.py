@@ -556,6 +556,7 @@ async def admin_verificar_pago(pedido_id: str, payload: dict, admin: bool = Depe
         bod = _sb_get("bodegas", {"select":"linea_disponible,telefono_whatsapp,nombre_comercial","id":f"eq.{bodega_id}"})
         if bod:
             nueva_linea = float(bod[0].get("linea_disponible") or 0) + monto_financiado
+            nueva_linea = min(nueva_linea, bod[0].get('linea_aprobada', nueva_linea))  # Cap
             _sb_patch("bodegas", {"linea_disponible": nueva_linea}, {"id": f"eq.{bodega_id}"})
             
             # Notify bodega

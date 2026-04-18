@@ -290,6 +290,8 @@ def _verify_pin_for_payment(pin: str, bodega_id: str) -> dict:
             try:
                 bod = db.sb.table("bodegas").select("linea_disponible").eq("id", bodega_id).limit(1).execute()
                 new_linea = max((bod.data[0]["linea_disponible"] or 0) - monto, 0) if bod.data else 0
+                linea_aprobada = bod.data[0].get("linea_aprobada", 500) if bod.data else 500
+                new_linea = min(new_linea, float(linea_aprobada))  # Cap
                 db.sb.table("bodegas").update({"linea_disponible": new_linea}).eq("id", bodega_id).execute()
             except Exception as e:
                 logger.error(f"Linea deduct: {e}")
