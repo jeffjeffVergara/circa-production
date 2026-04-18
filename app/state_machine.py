@@ -433,10 +433,9 @@ def handle_message(telefono: str, body: str, media_url: str = None) -> list:
             if bodega.get("ultimo_pedido_items"):
                 items = json.loads(bodega["ultimo_pedido_items"]) if isinstance(bodega["ultimo_pedido_items"], str) else bodega["ultimo_pedido_items"]
                 db.save_carrito(bodega["id"], items)
-                db.upsert_session(telefono, "cart_review", {"cart": items}, bodega["id"])
-                total = _cart_total(items)
-                financiable = min(bodega["linea_disponible"], total)
-                return [{"signal": "CARRITO", "items_text": _cart_items_text(items), "total": total, "financiable": financiable}]
+                url = get_catalog_url(bodega["id"]) + "&repeat=1"
+                db.upsert_session(telefono, "catalogo", {"cart": items}, bodega["id"])
+                return [f"\U0001f4cb *Tu ultimo pedido esta listo.*\nAbre el catalogo para revisarlo y confirmar:\n\n\U0001f449 {url}"]
             return ["No tienes un pedido anterior. Escribe *PEDIDO* para empezar."]
 
         if body_n in ("LINEA", "2", "linea"):

@@ -75,7 +75,7 @@ html,body{height:100%;font-family:'Plus Jakarta Sans',sans-serif;background:var(
 </head>
 <body>
 <div id="app">
-<div class="hdr"><div class="hdr-logo">C</div><div class="hdr-info"><div class="hdr-t">Catalogo Circa</div><div class="hdr-s" id="bN">Cargando...</div></div><div class="hdr-line" id="hL">S/---</div></div>
+<div class="hdr"><a id="backBtn" href="https://wa.me/51986311567?text=MENU" style="display:none;color:#5B8AF5;font-size:22px;text-decoration:none;margin-right:10px">&#8592;</a><div class="hdr-logo">C</div><div class="hdr-info"><div class="hdr-t">Catalogo Circa</div><div class="hdr-s" id="bN">Cargando...</div></div><div class="hdr-line" id="hL">S/---</div></div>
 <div class="filt"><div class="fbtn on" id="fC" onclick="setF('cat')">Categoria</div><div class="fbtn" id="fM" onclick="setF('marca')">Marca</div></div>
 <div class="chips" id="cW"></div>
 <div class="sumbar hide" id="sB"><div class="sumbar-l" id="sL">0 items</div><button class="sumbar-r" onclick="openD()">Ver pedido</button><button class="btn-clear" onclick="clearCart()" style="background:transparent;border:1px solid #ff4444;color:#ff4444;padding:6px 14px;border-radius:20px;font-size:13px;cursor:pointer;margin-left:8px">Limpiar</button></div>
@@ -101,11 +101,12 @@ async function init(){
    fetch(API+'/api/catalogo?bodega_id='+BID).then(function(r){return r.json()}).catch(function(){return[]}),
    fetch(API+'/api/bodegas/'+BID).then(function(r){return r.json()}).catch(function(){return null})]);
   P=r[0].filter(function(p){return p.activo});
-  if(r[1]){linea=r[1].linea_disponible||0;$('bN').textContent=r[1].nombre_comercial||'';$('hL').textContent='S/'+linea.toFixed(2)}
-  try{var sc=await fetch(API+'/api/carrito/'+BID).then(function(r){return r.json()}).catch(function(){return null});
+  if(r[1]){linea=r[1].linea_disponible||0;$('bN').textContent=r[1].nombre_comercial||'';$('hL').textContent='S/'+linea.toFixed(2);document.getElementById('backBtn').style.display='inline-block'}
+  var shouldLoadCart=new URLSearchParams(location.search).get('repeat')==='1';
+  if(shouldLoadCart){try{var sc=await fetch(API+'/api/carrito/'+BID).then(function(r){return r.json()}).catch(function(){return null});
   if(sc&&sc.items){var si=typeof sc.items==='string'?JSON.parse(sc.items):sc.items;
   si.forEach(function(i){cart.push({id:i.catalogo_id,unit:i.pack_size,precio:i.precio||i.precio_unitario||0,nombre:i.nombre||i.producto||'',marca:i.marca||'',qty:i.cantidad||1})});
-  if(cart.length){uC();toast(cart.length+' producto(s) del pedido anterior')}}}catch(e){console.log('No saved cart')}
+  if(cart.length){uC();toast(cart.length+' producto(s) del pedido anterior')}}}catch(e){console.log('No saved cart')}}
   bldC();rend();
  }catch(e){$('mA').innerHTML='<div class="empty">Error cargando</div>'}
 }
