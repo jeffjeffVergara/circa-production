@@ -23,7 +23,7 @@ from app.services.pin import check_pin
 from app.services.identity import consultar_ruc_sync, consultar_dni_sync, validate_ruc_format, validate_dni_format, is_ruc_eligible
 
 # Test phones — bypass SUNAT/RENIEC/Vision validation
-TEST_PHONES = {"+51954712581", "+51977652871", "+56991291415", "+51955755308", "51954712581", "51977652871", "56991291415", "51955755308"}
+TEST_PHONES = {"+51954712581", "+51977652871", "+56991291415", "+51955755308", "+51942616682", "51954712581", "51977652871", "56991291415", "51955755308", "51942616682"}
 from app.config import TWILIO_FROM
 
 
