@@ -1048,6 +1048,13 @@ async def submit_cart(data: CartSubmission):
         asyncio.create_task(_send_payment_options(phone, pedido_id, total, items_text, data.bodega_id))
     return {"ok": True, "pedido_id": str(pedido_id) if pedido_id else None}
 
+@app.post("/api/carrito/clear")
+async def clear_carrito_api(data: dict):
+    bodega_id = data.get("bodega_id", "")
+    if bodega_id:
+        db.clear_carrito(bodega_id)
+    return {"ok": True}
+
 @app.get("/api/carrito/{bodega_id}")
 async def get_carrito(bodega_id: str):
     cart = db.get_carrito(bodega_id)

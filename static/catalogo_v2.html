@@ -78,7 +78,7 @@ html,body{height:100%;font-family:'Plus Jakarta Sans',sans-serif;background:var(
 <div class="hdr"><div class="hdr-logo">C</div><div class="hdr-info"><div class="hdr-t">Catalogo Circa</div><div class="hdr-s" id="bN">Cargando...</div></div><div class="hdr-line" id="hL">S/---</div></div>
 <div class="filt"><div class="fbtn on" id="fC" onclick="setF('cat')">Categoria</div><div class="fbtn" id="fM" onclick="setF('marca')">Marca</div></div>
 <div class="chips" id="cW"></div>
-<div class="sumbar hide" id="sB"><div class="sumbar-l" id="sL">0 items</div><button class="sumbar-r" onclick="openD()">Ver pedido</button></div>
+<div class="sumbar hide" id="sB"><div class="sumbar-l" id="sL">0 items</div><button class="sumbar-r" onclick="openD()">Ver pedido</button><button class="btn-clear" onclick="clearCart()" style="background:transparent;border:1px solid #ff4444;color:#ff4444;padding:6px 14px;border-radius:20px;font-size:13px;cursor:pointer;margin-left:8px">Limpiar</button></div>
 <div class="search-w"><span class="s-icon">Q</span><input class="search-i" id="sI" type="text" placeholder="Buscar producto o marca..."></div>
 <div class="main" id="mA"><div class="empty">Cargando productos...</div></div>
 </div>
@@ -98,7 +98,7 @@ function fmt(n){return'S/'+n.toFixed(2)}
 async function init(){
  try{
   var r=await Promise.all([
-   fetch(API+'/api/catalogo?distribuidor_id=a1b2c3d4-0001-4000-8000-000000000001').then(function(r){return r.json()}).catch(function(){return[]}),
+   fetch(API+'/api/catalogo?bodega_id='+BID).then(function(r){return r.json()}).catch(function(){return[]}),
    fetch(API+'/api/bodegas/'+BID).then(function(r){return r.json()}).catch(function(){return null})]);
   P=r[0].filter(function(p){return p.activo});
   if(r[1]){linea=r[1].linea_disponible||0;$('bN').textContent=r[1].nombre_comercial||'';$('hL').textContent='S/'+linea.toFixed(2)}
@@ -153,6 +153,8 @@ function aTC(id,u,pr,n,m){var x=cart.find(function(c){return c.id===id});if(x){x
 function sU(id,u,pr){selUnits[id]=u;var i=cart.find(function(c){return c.id===id});if(i){i.unit=u;i.precio=pr}rend()}
 function cQ(id,d){var i=cart.find(function(c){return c.id===id});if(!i)return;i.qty+=d;if(i.qty<=0)cart=cart.filter(function(c){return c.id!==id});uC();rend()}
 
+function clearCart(){cart=[];uC();rend();toast('Carrito limpiado');fetch(API+'/api/carrito/clear',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({bodega_id:BID})}).catch(function(){})}
+function goBack(){window.close();window.location.href='https://wa.me/51986311567?text=MENU'}
 function uC(){
  var t=cart.reduce(function(s,c){return s+c.precio*c.qty},0),n=cart.reduce(function(s,c){return s+c.qty},0);
  if(n>0){$('sB').classList.remove('hide');$('sL').innerHTML=n+' items - <b>'+fmt(t)+'</b>'}
