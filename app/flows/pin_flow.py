@@ -134,7 +134,8 @@ def _handle_pin_create(data: dict) -> dict:
             "screen": "PIN_CREATE",
             "data": {
                 "bodega_id": bodega_id,
-                "error_msg": "Elige una clave más segura. Evita secuencias.",
+                "mode": mode,
+                "error_msg": "No puedes usar " + pin + ". Evita numeros repetidos (0000) o consecutivos (1234). Elige otra clave.",
             }
         }
     
