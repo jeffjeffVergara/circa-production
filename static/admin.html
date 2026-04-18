@@ -90,7 +90,33 @@ tr:hover td{background:var(--card-hover)}
   .pedido-row{grid-template-columns:1fr 1fr;gap:8px}
   .container{padding:12px}
   .kpi-grid{grid-template-columns:1fr 1fr}
-  th:nth-child(n+5),td:nth-child(n+5){display:none}
+  /* Cobranzas (9 cols): solo ocultar Entregado, Vence, Días — NO ocultar Monto, Estado ni Acciones */
+  .table-cobranzas th:nth-child(4),
+  .table-cobranzas td:nth-child(4),
+  .table-cobranzas th:nth-child(5),
+  .table-cobranzas td:nth-child(5),
+  .table-cobranzas th:nth-child(6),
+  .table-cobranzas td:nth-child(6){
+    display:none
+  }
+  .table-cobranzas td:last-child{
+    display:table-cell;
+    white-space:normal;
+    vertical-align:top
+  }
+  .table-cobranzas td:last-child .btn{
+    display:block;
+    width:100%;
+    margin-bottom:6px;
+    text-align:center
+  }
+  /* Pedidos (7 cols): ocultar montos; dejar Fecha, Pedido, Bodega, Dist, Estado */
+  .table-pedidos th:nth-child(5),
+  .table-pedidos td:nth-child(5),
+  .table-pedidos th:nth-child(6),
+  .table-pedidos td:nth-child(6){
+    display:none
+  }
 }
 </style>
 </head>
@@ -176,7 +202,7 @@ tr:hover td{background:var(--card-hover)}
 <div id="statsDistribuidorGrid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;margin-bottom:20px"></div>
 
 <div class="table-wrap">
-<table>
+<table class="table-cobranzas">
 <thead><tr><th>Pedido</th><th>Bodega</th><th>Distribuidor</th><th>Entregado</th><th>Vence</th><th>Días</th><th>Monto</th><th>Estado</th><th>Acciones</th></tr></thead>
 <tbody id="cobranzasBody"></tbody>
 </table>
@@ -204,7 +230,7 @@ tr:hover td{background:var(--card-hover)}
 <button class="btn btn-green btn-small" onclick="exportPedidosCSV()">📥 Descargar CSV</button>
 </div>
 <div class="table-wrap">
-<table>
+<table class="table-pedidos">
 <thead><tr><th>Fecha</th><th>Pedido</th><th>Bodega</th><th>Distribuidor</th><th>Total</th><th>Circa paga</th><th>Estado</th></tr></thead>
 <tbody id="pedidosBody"></tbody>
 </table>
