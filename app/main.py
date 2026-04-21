@@ -419,6 +419,16 @@ async def meta_webhook_incoming(request: Request):
         
         # ── Handle payment replies (buttons or list) ──
         btn = msg.get("button_id", "") or msg.get("list_id", "") or ""
+        if btn.startswith("EDITAR_"):
+            try:
+                bod = db.sb.table("bodegas").select("id").eq("telefono_whatsapp", telefono).limit(1).execute()
+                bod_id = bod.data[0]["id"] if bod.data else None
+                if bod_id:
+                    await meta_client.send_catalogo_flow(telefono, bod_id)
+            except Exception as e:
+                print(f"EDITAR error: {e}")
+            return {"status": "ok"}
+
         if btn.startswith("CONTADO_"):
             try:
                 bod = db.sb.table("bodegas").select("id").eq("telefono_whatsapp", telefono).limit(1).execute()
