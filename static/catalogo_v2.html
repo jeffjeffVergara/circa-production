@@ -138,14 +138,14 @@ function rend(){
  $('mA').innerHTML=l.map(function(p){
   var un=p.unidades||{};if(typeof un==='string')try{un=JSON.parse(un)}catch(e){un={}}
   var us=Object.entries(un);if(!us.length)return'';
-  var ci=cart.find(function(c){return c.id===p.id});
+  var ci=cart.find(function(c){return c.id===p.id&&c.unit===su});
   var defU=us[0][0];
   us.forEach(function(u){if(u[0].toUpperCase().indexOf('UND')===0)defU=u[0]});
   var su=ci?ci.unit:(selUnits[p.id]||defU),sp=un[su]||us[0][1],q=ci?ci.qty:0;
   return'<div class="pc"><div class="pc-brand">'+esc(p.marca||'')+'</div><div class="pc-name">'+esc(p.nombre||'')+'</div>'+
    '<div class="pc-row"><div class="pc-units">'+us.map(function(u){return'<button class="ub '+(u[0]===su?'sel':'')+'" onclick="sU(\''+p.id+'\',\''+esc(u[0])+'\','+u[1]+')"><span class="ub-lbl">'+esc(u[0])+'</span><span class="ub-pr">'+fmt(u[1])+'</span></button>'}).join('')+'</div>'+
    '<div class="pc-qty">'+(q>0?
-    '<button class="qb rm" onclick="cQ(\''+p.id+'\',-1)">'+(q===1?'X':'-')+'</button><span class="qv">'+q+'</span><button class="qb" onclick="cQ(\''+p.id+'\',1)">+</button>':
+    '<button class="qb rm" onclick="cQ(\''+p.id+'\',-1)">'+(q===1?'X':'-')+'</button><span class="qv">'+q+'</span><button class="qb" onclick="cQ(\''+p.id+'\',1,\''+su+'\')">+</button>':
     '<button class="qb add" onclick="aTC(\''+p.id+'\',\''+esc(su)+'\','+sp+',\''+esc(p.nombre)+'\',\''+esc(p.marca)+'\')">+</button>'
    )+'</div></div></div>';
  }).join('');
@@ -153,9 +153,9 @@ function rend(){
 
 $('sI').addEventListener('input',function(){rend()});
 
-function aTC(id,u,pr,n,m){var x=cart.find(function(c){return c.id===id});if(x){x.qty++;x.precio=pr;x.unit=u}else cart.push({id:id,unit:u,precio:pr,nombre:n,marca:m,qty:1});toast(n.slice(0,20)+' agregado');uC();rend()}
+function aTC(id,u,pr,n,m){var key=id+'_'+u;var x=cart.find(function(c){return(c.id+'_'+c.unit)===key});if(x){x.qty++;x.precio=pr}else cart.push({id:id,unit:u,precio:pr,nombre:n,marca:m,qty:1});toast(n.slice(0,20)+' agregado');uC();rend()}
 function sU(id,u,pr){selUnits[id]=u;var i=cart.find(function(c){return c.id===id});if(i){i.unit=u;i.precio=pr}rend()}
-function cQ(id,d){var i=cart.find(function(c){return c.id===id});if(!i)return;i.qty+=d;if(i.qty<=0)cart=cart.filter(function(c){return c.id!==id});uC();rend()}
+function cQ(id,d,u){var key=id+'_'+(u||'');var i=cart.find(function(c){return(c.id+'_'+c.unit)===key});if(!i)return;i.qty+=d;if(i.qty<=0)cart=cart.filter(function(c){return(c.id+'_'+c.unit)!==key});uC();rend()}
 
 function clearCart(){cart=[];uC();rend();toast('Carrito limpiado');fetch(API+'/api/carrito/clear',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({bodega_id:BID})}).catch(function(){})}
 function goBack(){window.close();window.location.href='https://wa.me/51986311567?text=MENU'}
@@ -174,7 +174,7 @@ function rD(){
   $('dTl').textContent='Tu pedido';
   $('dI').innerHTML=cart.map(function(c){
    return'<div class="di"><div class="din"><div class="dinn">'+esc(c.nombre)+'</div><div class="dinu">'+esc(c.unit)+' - '+fmt(c.precio)+'</div></div>'+
-   '<div class="pc-qty"><button class="qb rm" onclick="dQ(\''+c.id+'\',-1)" style="width:26px;height:26px;font-size:12px">'+(c.qty===1?'X':'-')+'</button><span class="qv" style="width:26px;font-size:13px">'+c.qty+'</span><button class="qb" onclick="dQ(\''+c.id+'\',1)" style="width:26px;height:26px;font-size:12px">+</button></div>'+
+   '<div class="pc-qty"><button class="qb rm" onclick="dQ(\''+c.id+'\',-1,\''+c.unit+'\')" style="width:26px;height:26px;font-size:12px">'+(c.qty===1?'X':'-')+'</button><span class="qv" style="width:26px;font-size:13px">'+c.qty+'</span><span style="font-size:10px;color:#9ca3af;margin-left:4px">'+c.unit+'</span><button class="qb" onclick="dQ(\''+c.id+'\',1,\''+c.unit+'\')" style="width:26px;height:26px;font-size:12px">+</button></div>'+
    '<div class="dis">'+fmt(c.precio*c.qty)+'</div></div>'}).join('');
   var dl=t<=linea?'<div class="dfli ok">Todo financiable - Linea: '+fmt(linea)+'</div>':
    linea>0?'<div class="dfli warn">Financiable hasta '+fmt(linea)+'</div>':'<div class="dfli bad">Sin linea disponible</div>';
@@ -189,7 +189,7 @@ function rD(){
   $('dF').innerHTML='<div class="btn-row"><button class="btn-sec" onclick="step=\'cart\';rD()">Editar pedido</button><button class="btn-pri" id="cfB" onclick="cfmOrder()">Continuar pedido</button></div>';
  }
 }
-function dQ(id,d){cQ(id,d);if(!cart.length)closeD();else rD()}
+function dQ(id,d,u){cQ(id,d,u);if(!cart.length)closeD();else rD()}
 function goFin(){step='summary';rD()}
 
 async function cfmOrder(){
