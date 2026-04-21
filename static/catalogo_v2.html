@@ -106,10 +106,11 @@ async function init(){
   if(shouldLoadCart){try{var sc=await fetch(API+'/api/carrito/'+BID).then(function(r){return r.json()}).catch(function(){return null});
   if(sc&&sc.items){var si=typeof sc.items==='string'?JSON.parse(sc.items):sc.items;
   si.forEach(function(i){cart.push({id:i.catalogo_id,unit:i.pack_size,precio:i.precio||i.precio_unitario||0,nombre:i.nombre||i.producto||'',marca:i.marca||'',qty:i.cantidad||1})});
-  if(cart.length){uC();toast(cart.length+' producto(s) del pedido anterior')}}}catch(e){console.log('No saved cart')}}
+  if(cart.length){uC();toast(cart.length+' producto(s) del pedido anterior');setTimeout(function(){openD()},500)}}}catch(e){console.log('No saved cart')}}
   // Build categories from actual data
   var catSet={};P.forEach(function(p){var c=p.categoria||'Otros';catSet[c]=(catSet[c]||0)+1});
   CATS=['Todos'].concat(Object.keys(catSet).sort(function(a,b){return catSet[b]-catSet[a]}));
+  P.sort(function(a,b){return(a.nombre||'').localeCompare(b.nombre||'')});
   bldC();rend();
  }catch(e){$('mA').innerHTML='<div class="empty">Error cargando</div>'}
 }
@@ -137,7 +138,11 @@ function rend(){
  if(!l.length){$('mA').innerHTML='<div class="empty">No hay productos</div>';return}
  $('mA').innerHTML=l.map(function(p){
   var un=p.unidades||{};if(typeof un==='string')try{un=JSON.parse(un)}catch(e){un={}}
-  var us=Object.entries(un);if(!us.length)return'';
+  var us=Object.entries(un).sort(function(a,b){
+    var o={'UND':0,'TIRA':1,'CJA':2,'DSP':3,'PACK':4};
+    var ga=Object.keys(o).find(function(k){return a[0].toUpperCase().indexOf(k)>=0});
+    var gb=Object.keys(o).find(function(k){return b[0].toUpperCase().indexOf(k)>=0});
+    return(o[ga]===undefined?9:o[ga])-(o[gb]===undefined?9:o[gb])});if(!us.length)return'';
   var ci=cart.find(function(c){return c.id===p.id&&c.unit===su});
   var defU=us[0][0];
   us.forEach(function(u){if(u[0].toUpperCase().indexOf('UND')===0)defU=u[0]});
