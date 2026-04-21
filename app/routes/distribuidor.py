@@ -410,7 +410,7 @@ async def admin_cobranzas(
     
     params = {
         "select": "*",
-        "estado": "in.(entregado,pagado)",
+        "estado": "in.(entregado,pago_reportado,pagado)",
         "order": "created_at.desc",
         "limit": "500"
     }
@@ -455,6 +455,8 @@ async def admin_cobranzas(
         # Status
         if p.get("estado") == "pagado":
             status_cobranza = "pagado"
+        elif p.get("estado") == "pago_reportado":
+            status_cobranza = "pago_reportado"
         elif dias_restantes is None:
             status_cobranza = "pendiente"
         elif dias_restantes < 0:
@@ -471,7 +473,7 @@ async def admin_cobranzas(
             "distribuidor": dist_map.get(p.get("distribuidor_id"), {}),
             "monto_financiado": float(p.get("monto_financiado") or 0),
             "fee": float(p.get("fee_monto") or 0),
-            "total_pagar": float(p.get("total") or 0),
+            "total_pagar": float(p.get("monto_total_credito") or p.get("total") or (float(p.get("monto_financiado") or 0) + float(p.get("fee_monto") or 0))),
             "plazo_dias": plazo,
             "fecha_entregado": fecha_entregado,
             "fecha_vencimiento": venc.isoformat() if venc else None,
@@ -511,7 +513,7 @@ async def admin_cobranzas(
     for r in resultado:
         dname = r["distribuidor"].get("nombre_comercial", "?") or "?"
         if dname not in stats_dist:
-            stats_dist[dname] = {"nombre": dname, "total": 0, "al_dia": 0, "por_vencer": 0, "vencido": 0, "pagado": 0, "monto_vencido": 0}
+            stats_dist[dname] = {"nombre": dname, "total": 0, "al_dia": 0, "por_vencer": 0, "vencido": 0, "pagado": 0, "pago_reportado": 0, "monto_vencido": 0}
         s = stats_dist[dname]
         s["total"] += 1
         s[r["status_cobranza"]] = s.get(r["status_cobranza"], 0) + 1

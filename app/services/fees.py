@@ -1,12 +1,12 @@
 """
-Circa fee calculation — flat rates by term, minimum S/5.00.
+Circa fee calculation — flat rates by term, minimum S/3.00.
 
 Rates (per contract Contrato_Circa_vsrev.docx):
   7 días  → 3%
   15 días → 5%
   30 días → 7%
 
-Minimum fee: S/5.00
+Minimum fee: S/3.00
 """
 
 FEE_TABLE = {
@@ -15,7 +15,7 @@ FEE_TABLE = {
     30: 0.07,   # 7%
 }
 
-MIN_FEE = 5.00
+MIN_FEE = 3.00
 
 
 def get_fee_rate(amount: float, days: int) -> float:
@@ -24,7 +24,7 @@ def get_fee_rate(amount: float, days: int) -> float:
 
 
 def calculate_fee(amount: float, days: int) -> dict:
-    """Calculate fee for a given amount and term, enforcing minimum S/5."""
+    """Calculate fee for a given amount and term, enforcing minimum S/3."""
     rate = get_fee_rate(amount, days)
     fee = round(amount * rate, 2)
     fee = max(fee, MIN_FEE)

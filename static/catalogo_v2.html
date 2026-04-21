@@ -89,7 +89,7 @@ html,body{height:100%;font-family:'Plus Jakarta Sans',sans-serif;background:var(
 <script>
 var API=location.origin,BID=new URLSearchParams(location.search).get('b')||'b1b2c3d4-0001-4000-8000-000000000001';
 var P=[],cart=[],linea=0,fm='cat',sel='Todos',step='cart',selUnits={};
-var CATS=['Todos','Abarrotes','Bebidas Calientes','Bebidas','Cereales','Confiteria','Lacteos','Nutricion Infantil'];
+var CATS=['Todos'];
 function $(id){return document.getElementById(id)}
 function esc(s){return(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')}
 function toast(m){var t=$('tt');t.textContent=m;t.classList.add('show');setTimeout(function(){t.classList.remove('show')},1500)}
@@ -107,6 +107,9 @@ async function init(){
   if(sc&&sc.items){var si=typeof sc.items==='string'?JSON.parse(sc.items):sc.items;
   si.forEach(function(i){cart.push({id:i.catalogo_id,unit:i.pack_size,precio:i.precio||i.precio_unitario||0,nombre:i.nombre||i.producto||'',marca:i.marca||'',qty:i.cantidad||1})});
   if(cart.length){uC();toast(cart.length+' producto(s) del pedido anterior')}}}catch(e){console.log('No saved cart')}}
+  // Build categories from actual data
+  var catSet={};P.forEach(function(p){var c=p.categoria||'Otros';catSet[c]=(catSet[c]||0)+1});
+  CATS=['Todos'].concat(Object.keys(catSet).sort(function(a,b){return catSet[b]-catSet[a]}));
   bldC();rend();
  }catch(e){$('mA').innerHTML='<div class="empty">Error cargando</div>'}
 }
@@ -124,7 +127,7 @@ function pick(v){sel=v;bldC();rend()}
 function filt(){
  var q=$('sI').value.toLowerCase().trim();
  return P.filter(function(p){
-  var mc=sel==='Todos'||(fm==='cat'?p.categoria===sel:p.marca===sel);
+  var mc=sel==='Todos'||(fm==='cat'?(p.categoria||'').toLowerCase()===sel.toLowerCase():(p.marca||'').toLowerCase()===sel.toLowerCase());
   var mq=!q||(p.nombre||'').toLowerCase().indexOf(q)>=0||(p.marca||'').toLowerCase().indexOf(q)>=0;
   return mc&&mq});
 }

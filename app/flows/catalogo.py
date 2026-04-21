@@ -17,7 +17,7 @@ def _sanitize(text, max_len=30):
     return t[:max_len]
 
 FEE_RATE = 0.03
-MIN_FEE = 5.0
+MIN_FEE = 3.0
 
 CATEGORIES = [
     {"id": "Abarrotes",           "emoji": "🛒"},
