@@ -10,6 +10,11 @@ from app.services import db
 logger = logging.getLogger("circa.flows.catalogo")
 
 
+def _normalize_unit_key(s: str) -> str:
+    """Alphanumeric uppercase key for fuzzy match (UND x 1 vs UNDX1)."""
+    return "".join(c for c in (s or "").upper() if c.isalnum())
+
+
 def _sanitize(text, max_len=30):
     """Remove chars that break WhatsApp Flows and truncate."""
     t = text.replace("&", "y").replace("'", "").replace('"', "").replace("\n", " ")
@@ -383,8 +388,33 @@ async def _do_add_to_cart(bodega_id, session, selected):
                 precio = up
                 unit_label = uk
                 break
+        # Second pass: normalized alphanumeric (handles subtle key mismatches)
         if not precio and unidades:
-            unit_label, precio = next(iter(unidades.items()))
+            want = _normalize_unit_key(unit_key_safe)
+            for uk, up in unidades.items():
+                if _normalize_unit_key(uk) == want:
+                    precio = up
+                    unit_label = uk
+                    break
+        # Never silently pick "first unit" — avoids 1 UND + 1 CAJA -> 2x wrong unit
+        if not precio and unidades:
+            logger.warning(
+                "Cart add: no unit match for product=%s unit_key_safe=%s keys=%s",
+                product_id,
+                unit_key_safe,
+                list(unidades.keys()),
+            )
+            return await _build_product_detail(bodega_id, session, product_id)
+
+    if precio <= 0:
+        logger.warning(
+            "Cart add: precio<=0 product=%s bodega=%s (sin unidad válida o catálogo incompleto)",
+            product_id,
+            bodega_id,
+        )
+        if p:
+            return await _build_product_detail(bodega_id, session, product_id)
+        return _build_categories(bodega_id, session)
 
     nombre = p.get("nombre", "Producto") if p else "Producto"
     sub    = round(precio * qty, 2)
@@ -532,35 +562,35 @@ async def _send_payment_options(phone, pedido_id, total, items_text, bodega_id=N
         await meta_client.send_text(phone,
             f"\U0001f6d2 *TU PEDIDO*\n━━━━━━━━━━━━━━━━━━\n{items_text}\n━━━━━━━━━━━━━━━━━━\n"
             f"*TOTAL: S/{total:.2f}*\n"
-            f"Credito disponible: *S/{linea:.2f}*")
+            f"Crédito disponible: *S/{linea:.2f}*")
         await meta_client.send_list(
             to=phone,
-            body="Cuanto de tu linea Circa deseas usar para financiar?",
-            button_text="Elegir opcion",
+            body="¿Cuánto de tu tope Circa quieres usar para financiar esta compra?",
+            button_text="Elegir opción",
             sections=[{"title": "Financiamiento", "rows": [
-                {"id": f"EDITAR_{pid}", "title": "Editar carrito", "description": "Volver al catalogo"},
+                {"id": f"EDITAR_{pid}", "title": "Editar carrito", "description": "Volver al catálogo"},
                 {"id": f"CONTADO_{pid}", "title": "Pagar todo al contado", "description": "No financiar"},
-                {"id": f"FIN25_{pid}", "title": f"25% linea — S/{fin25:.2f}", "description": f"Contado: S/{round(total-fin25,2):.2f}"},
-                {"id": f"FIN50_{pid}", "title": f"50% linea — S/{fin50:.2f}", "description": f"Contado: S/{round(total-fin50,2):.2f}"},
-                {"id": f"FIN100_{pid}", "title": "Usar toda mi linea", "description": f"S/{min(total,linea):.2f} con Circa"},
+                {"id": f"FIN25_{pid}", "title": f"25% tope — S/{fin25:.2f}", "description": f"Al contado: S/{round(total-fin25,2):.2f}"},
+                {"id": f"FIN50_{pid}", "title": f"50% tope — S/{fin50:.2f}", "description": f"Al contado: S/{round(total-fin50,2):.2f}"},
+                {"id": f"FIN100_{pid}", "title": "Usar todo mi tope", "description": f"S/{min(total,linea):.2f} con Circa"},
             ]}])
     elif linea > 0:
         contado_min = total - linea
         await meta_client.send_text(phone,
             f"\U0001f6d2 *TU PEDIDO*\n━━━━━━━━━━━━━━━━━━\n{items_text}\n━━━━━━━━━━━━━━━━━━\n"
             f"*TOTAL: S/{total:.2f}*\n"
-            f"Credito disponible: *S/{linea:.2f}*\n"
-            f"Minimo al contado: S/{contado_min:.2f}")
+            f"Crédito disponible: *S/{linea:.2f}*\n"
+            f"Mínimo al contado: S/{contado_min:.2f}")
         await meta_client.send_list(
             to=phone,
-            body="Cuanto de tu linea Circa deseas usar para financiar?",
-            button_text="Elegir opcion",
+            body="¿Cuánto de tu tope Circa quieres usar para financiar esta compra?",
+            button_text="Elegir opción",
             sections=[{"title": "Financiamiento", "rows": [
-                {"id": f"EDITAR_{pid}", "title": "Editar carrito", "description": "Volver al catalogo"},
+                {"id": f"EDITAR_{pid}", "title": "Editar carrito", "description": "Volver al catálogo"},
                 {"id": f"CONTADO_{pid}", "title": "Pagar todo al contado", "description": "Sin financiamiento"},
-                {"id": f"FIN25_{pid}", "title": f"25% linea — S/{fin25:.2f}", "description": f"Contado: S/{round(total-fin25,2):.2f}"},
-                {"id": f"FIN50_{pid}", "title": f"50% linea — S/{fin50:.2f}", "description": f"Contado: S/{round(total-fin50,2):.2f}"},
-                {"id": f"FIN100_{pid}", "title": "Usar todo mi credito", "description": f"S/{linea:.2f} con Circa"},
+                {"id": f"FIN25_{pid}", "title": f"25% tope — S/{fin25:.2f}", "description": f"Al contado: S/{round(total-fin25,2):.2f}"},
+                {"id": f"FIN50_{pid}", "title": f"50% tope — S/{fin50:.2f}", "description": f"Al contado: S/{round(total-fin50,2):.2f}"},
+                {"id": f"FIN100_{pid}", "title": "Usar todo mi crédito", "description": f"S/{linea:.2f} con Circa"},
             ]}])
     else:
         tel_fmt = f"+{phone}" if not phone.startswith("+") else phone
@@ -573,7 +603,7 @@ async def _send_payment_options(phone, pedido_id, total, items_text, bodega_id=N
         await meta_client.send_text(phone,
             f"\U0001f6d2 *TU PEDIDO*\n━━━━━━━━━━━━━━━━━━\n{items_text}\n━━━━━━━━━━━━━━━━━━\n"
             f"TOTAL: S/{total:.2f}\n"
-            f"Sin linea disponible. Solo contado.\n\n"
+            f"Sin tope disponible. Solo contado.\n\n"
             f"Ingresa tu clave Circa para confirmar:")
 
     logger.info(f"Payment options sent to {phone}, linea={linea}")
@@ -583,7 +613,7 @@ async def _send_payment_options(phone, pedido_id, total, items_text, bodega_id=N
 def _build_payment(bodega_id, session):
     total = sum(i.get("sub", 0) for i in session.get("cart", []))
     items = [
-        {"id": "PAY_CIRCA", "main-content": {"title": "Pagar con Circa", "description": "Credito 7-30 dias"}},
+        {"id": "PAY_CIRCA", "main-content": {"title": "Pagar con Circa", "description": "Plazos 7 a 30 días"}},
         {"id": "PAY_CASH", "main-content": {"title": "Pagar al contado", "description": "Sin fee adicional"}},
         {"id": "BACK_CART", "main-content": {"title": "Volver al carrito", "description": f"Total: S/{total:.2f}"}},
     ]
@@ -591,11 +621,13 @@ def _build_payment(bodega_id, session):
 
 def _build_plazos(bodega_id, session):
     total = sum(i.get("sub", 0) for i in session.get("cart", []))
-    f7 = max(total * 0.03, 5); f15 = max(total * 0.05, 5); f30 = max(total * 0.07, 5)
+    f7 = max(total * 0.03, MIN_FEE)
+    f15 = max(total * 0.05, MIN_FEE)
+    f30 = max(total * 0.07, MIN_FEE)
     items = [
-        {"id": "PLAZO_7", "main-content": {"title": "7 dias", "description": f"Fee S/{f7:.2f} - Total S/{total+f7:.2f}"}},
-        {"id": "PLAZO_15", "main-content": {"title": "15 dias", "description": f"Fee S/{f15:.2f} - Total S/{total+f15:.2f}"}},
-        {"id": "PLAZO_30", "main-content": {"title": "30 dias", "description": f"Fee S/{f30:.2f} - Total S/{total+f30:.2f}"}},
+        {"id": "PLAZO_7", "main-content": {"title": "7 días", "description": f"Cargo Circa S/{f7:.2f} · Total S/{total+f7:.2f}"}},
+        {"id": "PLAZO_15", "main-content": {"title": "15 días", "description": f"Cargo Circa S/{f15:.2f} · Total S/{total+f15:.2f}"}},
+        {"id": "PLAZO_30", "main-content": {"title": "30 días", "description": f"Cargo Circa S/{f30:.2f} · Total S/{total+f30:.2f}"}},
         {"id": "BACK_PAY", "main-content": {"title": "Opciones de pago", "description": ""}},
     ]
     return _make_response(items, bodega_id)

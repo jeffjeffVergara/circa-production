@@ -181,8 +181,8 @@ function rD(){
    return'<div class="di"><div class="din"><div class="dinn">'+esc(c.nombre)+'</div><div class="dinu">'+esc(c.unit)+' - '+fmt(c.precio)+'</div></div>'+
    '<div class="pc-qty"><button class="qb rm" onclick="dQ(\''+c.id+'\',-1,\''+c.unit+'\')" style="width:26px;height:26px;font-size:12px">'+(c.qty===1?'X':'-')+'</button><span class="qv" style="width:26px;font-size:13px">'+c.qty+'</span><span style="font-size:10px;color:#9ca3af;margin-left:4px">'+c.unit+'</span><button class="qb" onclick="dQ(\''+c.id+'\',1,\''+c.unit+'\')" style="width:26px;height:26px;font-size:12px">+</button></div>'+
    '<div class="dis">'+fmt(c.precio*c.qty)+'</div></div>'}).join('');
-  var dl=t<=linea?'<div class="dfli ok">Todo financiable - Linea: '+fmt(linea)+'</div>':
-   linea>0?'<div class="dfli warn">Financiable hasta '+fmt(linea)+'</div>':'<div class="dfli bad">Sin linea disponible</div>';
+  var dl=t<=linea?'<div class="dfli ok">Todo financiable — tope Circa: '+fmt(linea)+'</div>':
+   linea>0?'<div class="dfli warn">Financiable hasta '+fmt(linea)+'</div>':'<div class="dfli bad">Sin tope disponible</div>';
   $('dF').innerHTML='<div class="dfr"><span class="dfl">Total ('+n+' uds)</span><span class="dfv">'+fmt(t)+'</span></div>'+dl+
    '<div class="btn-row"><button class="btn-sec" onclick="closeD()">Seguir comprando</button><button class="btn-pri" onclick="goFin()">Continuar</button></div>';
  }else if(step==='summary'){

@@ -28,6 +28,7 @@ from app.services.twilio_client import (
     CATEGORY_SENDERS,
 )
 from app.services import db
+from app.services.fees import calculate_fee
 from pydantic import BaseModel
 from app.config import TWILIO_FROM
 from datetime import date, timedelta
@@ -426,8 +427,10 @@ async def meta_webhook_incoming(request: Request):
                 if bod_id:
                     await meta_client.send_catalogo_flow(telefono, bod_id)
             except Exception as e:
-                print(f"EDITAR error: {e}")
-            return {"status": "ok"}
+                logger.error(f"EDITAR error: {e}", exc_info=True)
+            if msg.get("message_id"):
+                await meta_client.mark_as_read(msg["message_id"])
+            continue
 
         if btn.startswith("CONTADO_"):
             try:
@@ -447,10 +450,10 @@ async def meta_webhook_incoming(request: Request):
                     }).execute()
                     await meta_client.send_text(telefono,
                         f"💵 *Pago al contado — S/{monto:.2f}*\n\n"
-                        f"Ingresa tu clave Circa de 4 digitos para confirmar:")
+                        f"Ingresa tu clave Circa de 4 dígitos para confirmar:")
                     await meta_client.send_pin_request(telefono, mode="verify", bodega_id=bod_id)
                 else:
-                    await meta_client.send_text(telefono, "No encontre el pedido.")
+                    await meta_client.send_text(telefono, "No encontré el pedido.")
             except Exception as e:
                 logger.error(f"Contado handler error: {e}", exc_info=True)
                 await meta_client.send_text(telefono, "Error al confirmar.")
@@ -461,9 +464,9 @@ async def meta_webhook_incoming(request: Request):
             try:
                 await meta_client.send_text(telefono,
                     "🎉 *¡Pago registrado!*\n\n"
-                    "Verificacion en las proximas horas.\n"
-                    "Tu linea sera renovada una vez confirmado el pago.\n\n"
-                    "Escribe *MENU* para volver al menu principal.")
+                    "Verificación en las próximas horas.\n"
+                    "Tu tope se renueva cuando Circa confirme el pago.\n\n"
+                    "Escribe *MENU* para volver al menú principal.")
             except Exception as e:
                 logger.error(f"YA_PAGUE error: {e}")
             if msg["message_id"]:
@@ -485,7 +488,9 @@ async def meta_webhook_incoming(request: Request):
                     else:
                         fin_amt = min(round(linea * 0.25, 2), total)
                     contado = round(total - fin_amt, 2)
-                    fee7 = max(fin_amt * 0.03, 5); fee15 = max(fin_amt * 0.05, 5); fee30 = max(fin_amt * 0.07, 5)
+                    fee7 = calculate_fee(fin_amt, 7)["fee"]
+                    fee15 = calculate_fee(fin_amt, 15)["fee"]
+                    fee30 = calculate_fee(fin_amt, 30)["fee"]
                     pid = str(pedido["id"])[:8]
                     db.sb.table("sesiones").delete().eq("telefono", telefono).execute()
                     db.sb.table("sesiones").insert({
@@ -495,16 +500,16 @@ async def meta_webhook_incoming(request: Request):
                     }).execute()
                     await meta_client.send_list(
                         to=telefono,
-                        body=f"Financiar: *S/{fin_amt:.2f}*\nContado: S/{contado:.2f}\n\nElige plazo:",
+                        body=f"Financiar: *S/{fin_amt:.2f}*\nAl contado: S/{contado:.2f}\n\nElige plazo:",
                         button_text="Ver plazos",
                         sections=[{"title": "Plazo de pago", "rows": [
-                            {"id": f"PAY7_{pid}", "title": "7 dias (3%)", "description": f"Fee S/{fee7:.2f} Total S/{fin_amt+fee7:.2f}"},
-                            {"id": f"PAY15_{pid}", "title": "15 dias (5%)", "description": f"Fee S/{fee15:.2f} Total S/{fin_amt+fee15:.2f}"},
-                            {"id": f"PAY30_{pid}", "title": "30 dias (7%)", "description": f"Fee S/{fee30:.2f} Total S/{fin_amt+fee30:.2f}"},
+                            {"id": f"PAY7_{pid}", "title": "7 días (3%)", "description": f"Cargo Circa S/{fee7:.2f} · Total S/{fin_amt+fee7:.2f}"},
+                            {"id": f"PAY15_{pid}", "title": "15 días (5%)", "description": f"Cargo Circa S/{fee15:.2f} · Total S/{fin_amt+fee15:.2f}"},
+                            {"id": f"PAY30_{pid}", "title": "30 días (7%)", "description": f"Cargo Circa S/{fee30:.2f} · Total S/{fin_amt+fee30:.2f}"},
                         ]}],
                     )
                 else:
-                    await meta_client.send_text(telefono, "No encontre el pedido.")
+                    await meta_client.send_text(telefono, "No encontré el pedido.")
             except Exception as e:
                 logger.error(f"FIN handler error: {e}", exc_info=True)
                 await meta_client.send_text(telefono, "Error. Intenta de nuevo.")
@@ -613,7 +618,9 @@ async def meta_webhook_incoming(request: Request):
                             fin_amt = sd["fin_amt"]
                             contado = sd.get("contado", 0)
                     monto = fin_amt
-                    fee = max(monto * rate, 5.0)
+                    _qfee = calculate_fee(float(monto), int(dias))
+                    fee = _qfee["fee"]
+                    rate = _qfee["rate"]
                     from datetime import datetime, timedelta
                     venc = (datetime.now() + timedelta(days=dias)).strftime("%d/%m/%Y")
                     # Store intent in session, ask PIN
@@ -656,49 +663,90 @@ async def meta_webhook_incoming(request: Request):
                         import bcrypt
                         pin_hash = bodega.data[0].get("pin_hash", "")
                         if pin_hash and bcrypt.checkpw(body_text.encode(), pin_hash.encode()):
-                            # PIN correct → confirm order
+                            # PIN correct → confirm order (idempotente + tope disponible)
                             pedido_id = datos["pedido_id"]
-                            dias = datos.get("dias", 0)
-                            rate = datos.get("rate", 0)
-                            monto = datos["monto"]
-                            fee = datos.get("fee", 0)
+                            dias = int(datos.get("dias", 0) or 0)
+                            monto = float(datos["monto"])
+                            contado = float(datos.get("contado", 0) or 0)
                             venc = datos.get("venc", "")
-                            contado = datos.get("contado", 0)
-                            if dias > 0:
-                                num = await _gen_order_number(bod_id)
-                                db.sb.table("pedidos").update({
-                                    "numero": num,
-                                    "fee_tasa": rate, "fee_monto": fee,
-                                    "monto_financiado": round(monto, 2), "plazo_dias": dias,
-                                    "monto_contado": round(contado, 2),
-                                    "total": round(monto + fee, 2), "estado": "confirmado",
-                                }).eq("id", pedido_id).execute()
-                                await meta_client.send_text(telefono,
-                                    f"✅ *Pedido {num} confirmado*\n"
-                                    f"Financiado con Circa\n\n"
-                                    f"Nro: *#{num}*\n"
-                                    f"Financiado: *S/{monto:.2f}*\n"
-                                    f"Fee ({int(rate*100)}%): S/{fee:.2f}\n"
-                                    f"Total credito: *S/{monto+fee:.2f}*\n"
-                                    f"Contado al distribuidor: S/{contado:.2f}\n"
-                                    f"Plazo: {dias} dias\n"
-                                    f"Vence: {venc}\n\n"
-                                    f"Recibiras actualizaciones por WhatsApp.")
+
+                            pe = db.sb.table("pedidos").select("id, estado").eq("id", pedido_id).limit(1).execute()
+                            if not pe.data:
+                                await meta_client.send_text(
+                                    telefono, "No encontramos ese pedido. Escribe MENU.")
+                                db.sb.table("sesiones").update(
+                                    {"fase": "menu", "datos": "{}"}).eq("telefono", telefono).execute()
+                            elif pe.data[0].get("estado") != "borrador":
+                                await meta_client.send_text(
+                                    telefono,
+                                    "Este pedido ya estaba confirmado. Escribe MENU si necesitas otra cosa.",
+                                )
+                                db.sb.table("sesiones").update(
+                                    {"fase": "menu", "datos": "{}"}).eq("telefono", telefono).execute()
                             else:
-                                num = await _gen_order_number(bod_id)
-                                db.sb.table("pedidos").update({
-                                    "numero": num,
-                                    "fee_tasa": 0, "fee_monto": 0,
-                                    "monto_financiado": 0, "monto_contado": round(monto, 2),
-                                    "total": round(monto, 2), "estado": "confirmado",
-                                }).eq("id", pedido_id).execute()
-                                await meta_client.send_text(telefono,
-                                    f"✅ *Pedido {num} confirmado — Contado*\n\n"
-                                    f"Total: S/{monto:.2f}\nPago al recibir, sin fee.\n\n"
-                                    f"Tu distribuidor preparara tu pedido.")
-                            # Clear session
-                            db.sb.table("sesiones").update({"fase": "menu", "datos": "{}"}).eq("telefono", telefono).execute()
-                            logger.info(f"Order {pedido_id} confirmed via PIN")
+                                if dias > 0:
+                                    bod_line = db.sb.table("bodegas").select(
+                                        "linea_disponible, linea_aprobada").eq("id", bod_id).limit(1).execute()
+                                    ld = float(bod_line.data[0].get("linea_disponible") or 0) if bod_line.data else 0.0
+                                    if monto > ld + 1e-6:
+                                        await meta_client.send_text(
+                                            telefono,
+                                            f"⚠️ Tu tope disponible ya no alcanza (tienes S/{ld:.2f}). "
+                                            "Escribe MENU, arma el pedido de nuevo o elige menos financiamiento.",
+                                        )
+                                        db.sb.table("sesiones").update(
+                                            {"fase": "menu", "datos": "{}"}).eq("telefono", telefono).execute()
+                                    else:
+                                        qfee = calculate_fee(monto, dias)
+                                        fee = qfee["fee"]
+                                        rate = qfee["rate"]
+                                        num = await _gen_order_number(bod_id)
+                                        db.sb.table("pedidos").update({
+                                            "numero": num,
+                                            "fee_tasa": rate, "fee_monto": fee,
+                                            "monto_financiado": round(monto, 2), "plazo_dias": dias,
+                                            "monto_contado": round(contado, 2),
+                                            "total": round(monto + fee, 2), "estado": "confirmado",
+                                        }).eq("id", pedido_id).execute()
+                                        lap = float(bod_line.data[0].get("linea_aprobada") or ld)
+                                        new_ld = max(0.0, ld - monto)
+                                        new_ld = min(new_ld, lap)
+                                        db.sb.table("bodegas").update(
+                                            {"linea_disponible": new_ld}).eq("id", bod_id).execute()
+                                        await meta_client.send_text(
+                                            telefono,
+                                            f"✅ *Pedido {num} confirmado*\n"
+                                            f"Financiado con Circa\n\n"
+                                            f"Nro: *#{num}*\n"
+                                            f"Financiado: *S/{monto:.2f}*\n"
+                                            f"Cargo Circa ({int(rate * 100)}%): S/{fee:.2f}\n"
+                                            f"Total a pagar a Circa: *S/{monto + fee:.2f}*\n"
+                                            f"Al distribuidor (contado): S/{contado:.2f}\n"
+                                            f"Plazo: {dias} días\n"
+                                            f"Vence: {venc}\n\n"
+                                            "Recibirás novedades por WhatsApp.",
+                                        )
+                                        db.sb.table("sesiones").update(
+                                            {"fase": "menu", "datos": "{}"}).eq("telefono", telefono).execute()
+                                        logger.info(f"Order {pedido_id} confirmed via PIN (financiado)")
+                                else:
+                                    num = await _gen_order_number(bod_id)
+                                    db.sb.table("pedidos").update({
+                                        "numero": num,
+                                        "fee_tasa": 0, "fee_monto": 0,
+                                        "monto_financiado": 0, "monto_contado": round(monto, 2),
+                                        "total": round(monto, 2), "estado": "confirmado",
+                                    }).eq("id", pedido_id).execute()
+                                    await meta_client.send_text(
+                                        telefono,
+                                        f"✅ *Pedido {num} confirmado — Contado*\n\n"
+                                        f"Total: S/{monto:.2f}\n"
+                                        "Pagas al recibir tu pedido, sin cargo extra de plazo.\n\n"
+                                        "Tu distribuidor preparará tu pedido.",
+                                    )
+                                    db.sb.table("sesiones").update(
+                                        {"fase": "menu", "datos": "{}"}).eq("telefono", telefono).execute()
+                                    logger.info(f"Order {pedido_id} confirmed via PIN (contado)")
                         else:
                             intentos = bodega.data[0].get("pin_intentos", 0) + 1
                             db.sb.table("bodegas").update({"pin_intentos": intentos}).eq("id", bod_id).execute()

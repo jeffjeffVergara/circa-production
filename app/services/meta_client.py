@@ -277,14 +277,14 @@ async def send_menu(to: str, linea_disponible: float):
     """Main menu."""
     return await send_list(
         to=to,
-        body=f"Credito disponible: *S/{linea_disponible:.2f}*\n\nQue deseas hacer?",
+        body=f"Tope para comprar con Circa: *S/{linea_disponible:.2f}*\n\n¿Qué quieres hacer?",
         button_text="Ver opciones",
         sections=[{
-            "title": "Menu",
+            "title": "Menú",
             "rows": [
-                {"id": "PEDIDO", "title": "Hacer un nuevo pedido", "description": "Arma tu pedido del catalogo"},
+                {"id": "PEDIDO", "title": "Hacer un nuevo pedido", "description": "Arma tu pedido del catálogo"},
                 {"id": "REPETIR", "title": "Repetir pedido anterior", "description": "Pide lo mismo de antes"},
-                {"id": "LINEA", "title": "Ver mi credito", "description": "Cuanto tienes disponible"},
+                {"id": "LINEA", "title": "Ver mi tope Circa", "description": "Cuánto te queda para pedir"},
                 {"id": "ESTADO", "title": "Estado de mis pedidos", "description": "Seguimiento y pagos"},
             ],
         }]
@@ -300,7 +300,7 @@ async def send_welcome(to: str, nombre: str, linea: float, distribuidor: str):
             f"\u00a1Hola, *{nombre}*! \U0001f44b\n\n"
             f"\U0001f389 *\u00a1Felicitaciones!* Por tu buen historial con *{distribuidor}*, "
             f"puedes comprar hasta:\n\n"
-            f"\U0001f4b0 *S/{linea:.2f}* en mercader\u00eda con financiamiento\n\n"
+            f"\U0001f4b0 *S/{linea:.2f}* para comprar mercader\u00eda y pagarla en cuotas con Circa\n\n"
             f"\u00bfC\u00f3mo funciona?\n\n"
             f"1. Pide lo que necesites a *{distribuidor}*\n"
             f"2. Circa le paga directo al distribuidor\n"
@@ -350,9 +350,9 @@ async def send_dni_request(to: str):
         to=to,
         text=(
             "*Paso 2 de 4: Verificar identidad*\n\n"
-            "Este paso debe completarlo el *representante legal* personalmente. Se le pedira:\n\n"
-            "1. Escribir su numero de DNI\n"
-            "2. Enviar foto de su DNI fisico\n"
+            "Este paso debe completarlo el *representante legal* personalmente. Se le pedirá:\n\n"
+            "1. Escribir su número de DNI\n"
+            "2. Enviar foto de su DNI físico\n"
             "3. Tomarse una selfie en vivo\n\n"
             "Empecemos. Escribe el *DNI del representante legal* (8 digitos):"
         ),
@@ -364,7 +364,7 @@ async def send_biometria_request(to: str, nombre_rep: str):
     return await send_text(
         to=to,
         text=(
-            f"Ahora necesito una *selfie en vivo* para verificacion biometrica.\n\n"
+            f"Ahora necesito una *selfie en vivo* para verificación biométrica.\n\n"
             f"\U0001f933 {nombre_rep}, toma una foto de tu rostro mirando a la camara "
             f"y enviala como imagen en este chat.\n\n"
             f"\U0001f512 Tip: enviala como *Vista unica* (\u2460) para mayor seguridad."
@@ -378,13 +378,13 @@ async def send_linea_oferta(to: str, nombre: str, linea: float, distribuidor: st
         to=to,
         body=(
             f"━━━━━━━━━━━━━━━━━━\n"
-            f"📋 *Tu crédito con Circa*\n\n"
+            f"📋 *Tu tope con Circa*\n\n"
             f"Bodega: *{nombre}*\n"
-            f"Monto: *S/{linea:.2f}*\n"
+            f"Hasta: *S/{linea:.2f}* para pedir al distribuidor\n"
             f"Distribuidor: {distribuidor}\n"
             f"━━━━━━━━━━━━━━━━━━\n\n"
-            f"Al aceptar, podrás financiar tus compras con pago diferido a 7, 15 o 30 días.\n\n"
-            f"¿Aceptas esta línea de crédito?"
+            f"Al aceptar, podrás pedir mercadería y pagarla a Circa en 7, 15 o 30 días.\n\n"
+            f"¿Te parece bien este tope?"
         ),
         buttons=[
             {"id": "ACEPTO_LINEA", "title": "Sí, acepto ✅"},
@@ -401,7 +401,7 @@ async def send_contrato(to: str, linea: float):
             f"📋 *Contrato de Facilidad de Financiamiento Circa*\n\n"
             f"*Resumen de términos:*\n"
             f"• Línea de crédito revolving (se renueva al pagar)\n"
-            f"• Tasas: 3% (7d), 5% (15d), 7% (30d) — mín. S/5\n"
+            f"• Cargos por plazo: 3% (7d), 5% (15d), 7% (30d) — mín. S/3\n"
             f"• Plazos: 7, 15 o 30 días\n"
             f"• El dinero va directo al proveedor\n"
             f"• Sin costo de apertura ni mantenimiento\n"
@@ -471,7 +471,7 @@ async def send_cuenta_activa(to: str, linea: float):
         text=(
             f"🎉 *¡Tu cuenta Circa está activa!*\n\n"
             f"Tu clave fue creada correctamente.\n"
-            f"Línea disponible: *S/{linea:.2f}*"
+            f"Tope disponible para comprar: *S/{linea:.2f}*"
         )
     )
     # Follow with menu
@@ -484,11 +484,11 @@ async def send_linea_info(to: str, aprobada: float, disponible: float, scoring: 
     return await send_buttons(
         to=to,
         body=(
-            f"💰 *Tu línea de crédito*\n\n"
-            f"Aprobada: S/{aprobada:.2f}\n"
-            f"Disponible: *S/{disponible:.2f}*\n"
+            f"💰 *Tu tope Circa*\n\n"
+            f"Tope máximo: S/{aprobada:.2f}\n"
+            f"Te queda para pedir: *S/{disponible:.2f}*\n"
             f"[{barra}]\n"
-            f"Scoring: {scoring}/100"
+            f"Confianza Circa: {scoring:.0f}/100 (según tu historial con el distribuidor)"
         ),
         buttons=[
             {"id": "PEDIDO", "title": "🛍 Hacer pedido"},

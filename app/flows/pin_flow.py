@@ -13,6 +13,7 @@ Each request from WhatsApp contains encrypted:
 import logging
 import hashlib
 from app.services import db
+from app.services.fees import calculate_fee
 
 logger = logging.getLogger("circa.flows.pin")
 
@@ -213,13 +214,13 @@ def _handle_pin_create(data: dict) -> dict:
                         f"https://graph.facebook.com/v23.0/{phone_id}/messages",
                         headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
                         json={"messaging_product": "whatsapp", "to": phone, "type": "text",
-                              "text": {"body": f"\U0001f512 *Clave creada con exito*\n\n\u2705 *Cuenta activada*\nCredito disponible: *S/{linea:.2f}*\n\nEscribe MENU para empezar a pedir."}},
+                              "text": {"body": f"\U0001f512 *Clave creada con éxito*\n\n\u2705 *Cuenta activada*\nTope disponible para comprar: *S/{linea:.2f}*\n\nEscribe MENU para empezar a pedir."}},
                         timeout=10,
                     )
             except Exception as e:
                 logger.error(f"Activation msg error: {e}")
             logger.info(f"Bodega {bodega_id} activated via PIN Flow (single step)")
-            return {"screen": "SUCCESS", "data": {"message": f"Clave creada. Linea: S/{linea:.2f}"}}
+            return {"screen": "SUCCESS", "data": {"message": f"Clave creada. Tope disponible: S/{linea:.2f}"}}
         except Exception as e:
             logger.error(f"PIN activate error: {e}", exc_info=True)
             return {"screen": "PIN_CREATE", "data": {"bodega_id": bodega_id, "error_msg": "Error al activar. Intenta de nuevo."}}
@@ -255,7 +256,7 @@ def _verify_pin_for_payment(pin: str, bodega_id: str) -> dict:
             telefono_c = bodega.data[0].get("telefono_whatsapp", "")
             if telefono_c:
                 db.upsert_session(telefono_c, "menu", {}, bodega_id)
-            return {"screen": "SUCCESS", "data": {"message": "Clave creada con exito"}}
+            return {"screen": "SUCCESS", "data": {"message": "Clave creada con éxito"}}
         if not bcrypt.checkpw(pin.encode(), pin_hash.encode()):
             return {"screen": "PIN_CREATE", "data": {"bodega_id": bodega_id, "mode": "verify", "error_msg": "Clave incorrecta."}}
         
@@ -266,36 +267,57 @@ def _verify_pin_for_payment(pin: str, bodega_id: str) -> dict:
         
         datos = json.loads(ses.data[0]["datos"]) if isinstance(ses.data[0]["datos"], str) else ses.data[0]["datos"]
         pedido_id = datos["pedido_id"]
-        dias = datos.get("dias", 0)
-        rate = datos.get("rate", 0)
-        monto = datos["monto"]
-        fee = datos.get("fee", 0)
-        
+        dias = int(datos.get("dias", 0) or 0)
+        monto = float(datos["monto"])
+        fee = 0.0
+        rate = 0.0
+
+        pe_st = db.sb.table("pedidos").select("id, estado").eq("id", pedido_id).limit(1).execute()
+        if not pe_st.data:
+            db.sb.table("sesiones").update({"fase": "menu", "datos": "{}"}).eq("telefono", telefono).execute()
+            return {"screen": "SUCCESS", "data": {"message": "No encontramos ese pedido."}}
+        if pe_st.data[0].get("estado") != "borrador":
+            db.sb.table("sesiones").update({"fase": "menu", "datos": "{}"}).eq("telefono", telefono).execute()
+            return {"screen": "SUCCESS", "data": {"message": "Este pedido ya estaba confirmado."}}
+
         # Generate order number
-        existing = db.sb.table("pedidos").select("numero").eq("bodega_id", bodega_id).not_.is_("numero", "null").order("created_at", desc=True).limit(1).execute()
         try:
             num = db.sb.rpc("gen_numero_pedido").execute().data
         except Exception as e:
             logger.error(f"gen_numero_pedido error: {e}")
             import random
             num = f"CRC-{random.randint(100,999)}"
-        
+
         if dias > 0:
+            bod_line = db.sb.table("bodegas").select("linea_disponible, linea_aprobada").eq("id", bodega_id).limit(1).execute()
+            ld = float(bod_line.data[0].get("linea_disponible") or 0) if bod_line.data else 0.0
+            if monto > ld + 1e-6:
+                db.sb.table("sesiones").update({"fase": "menu", "datos": "{}"}).eq("telefono", telefono).execute()
+                return {
+                    "screen": "SUCCESS",
+                    "data": {
+                        "message": (
+                            f"Tu tope disponible (S/{ld:.2f}) ya no alcanza para este financiamiento. "
+                            "Cierra el flujo y arma el pedido de nuevo desde el menú."
+                        ),
+                    },
+                }
+            qfee = calculate_fee(monto, dias)
+            fee = qfee["fee"]
+            rate = qfee["rate"]
             db.sb.table("pedidos").update({
                 "numero": num, "fee_tasa": rate, "fee_monto": fee,
                 "monto_financiado": round(monto, 2), "plazo_dias": dias,
                 "total": round(monto + fee, 2), "estado": "confirmado",
             }).eq("id", pedido_id).execute()
-            # Deduct line
             try:
-                bod = db.sb.table("bodegas").select("linea_disponible").eq("id", bodega_id).limit(1).execute()
-                new_linea = max((bod.data[0]["linea_disponible"] or 0) - monto, 0) if bod.data else 0
-                linea_aprobada = bod.data[0].get("linea_aprobada", 500) if bod.data else 500
-                new_linea = min(new_linea, float(linea_aprobada))  # Cap
+                lap = float(bod_line.data[0].get("linea_aprobada") or ld) if bod_line.data else ld
+                new_linea = max(ld - monto, 0.0)
+                new_linea = min(new_linea, lap)
                 db.sb.table("bodegas").update({"linea_disponible": new_linea}).eq("id", bodega_id).execute()
             except Exception as e:
                 logger.error(f"Linea deduct: {e}")
-            msg = f"Pedido #{num} confirmado\nFinanciado: S/{monto:.2f}\nFee: S/{fee:.2f}\nTotal: S/{monto+fee:.2f}\nPlazo: {dias} dias"
+            msg = f"Pedido #{num} confirmado\nFinanciado: S/{monto:.2f}\nCargo Circa: S/{fee:.2f}\nTotal: S/{monto+fee:.2f}\nPlazo: {dias} días"
         else:
             db.sb.table("pedidos").update({
                 "numero": num, "fee_tasa": 0, "fee_monto": 0,
@@ -320,16 +342,16 @@ def _verify_pin_for_payment(pin: str, bodega_id: str) -> dict:
                     f"\u2705 *Pedido #{num} confirmado*\n"
                     f"Financiado con Circa\n\n"
                     f"Financiado: *S/{monto:.2f}*\n"
-                    f"Fee ({int(rate*100)}%): S/{fee:.2f}\n"
-                    f"Total credito: *S/{monto+fee:.2f}*\n"
-                    f"Plazo: {dias} dias\n\n"
-                    f"Recibiras actualizaciones por WhatsApp."
+                    f"Cargo Circa ({int(rate*100)}%): S/{fee:.2f}\n"
+                    f"Total a pagar a Circa: *S/{monto+fee:.2f}*\n"
+                    f"Plazo: {dias} días\n\n"
+                    "Recibirás novedades por WhatsApp."
                 )
             else:
                 conf_msg = (
                     f"\u2705 *Pedido #{num} confirmado — Contado*\n\n"
                     f"Total: S/{monto:.2f}\n"
-                    f"Tu distribuidor preparara tu pedido."
+                    "Tu distribuidor preparará tu pedido."
                 )
             req.post(
                 f"https://graph.facebook.com/v23.0/{phone_id}/messages",
@@ -346,7 +368,7 @@ def _verify_pin_for_payment(pin: str, bodega_id: str) -> dict:
                 items_raw = datos.get("items", [])
                 items_str = ", ".join([i.get("nombre", i.get("producto", "?"))[:20] for i in items_raw][:3])
                 if len(items_raw) > 3:
-                    items_str += f" (+{len(items_raw)-3} mas)"
+                    items_str += f" (+{len(items_raw)-3} más)"
                 if not items_str:
                     items_str = "Ver detalle en WhatsApp"
                 monto_prod = float(datos.get("monto_productos", 0) or datos.get("cart_total", 0) or 0)
