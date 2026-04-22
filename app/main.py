@@ -930,7 +930,13 @@ async def get_bodega(bodega_id: str):
     return db.sb.table("bodegas").select("*").eq("id", bodega_id).single().execute().data
 
 @app.get("/api/catalogo")
-async def list_catalogo(distribuidor_id: str = None, marca: str = None, categoria: str = None):
+async def list_catalogo(distribuidor_id: str = None, bodega_id: str = None, marca: str = None, categoria: str = None):
+    # Si viene bodega_id, resolver su distribuidor automáticamente (modular)
+    if bodega_id and not distribuidor_id:
+        try:
+            distribuidor_id = db.get_distribuidor_de_bodega(bodega_id)
+        except Exception:
+            pass
     q = db.sb.table("catalogo_distribuidor").select("*, productos_circa(*)").eq("activo", True)
     if distribuidor_id: q = q.eq("distribuidor_id", distribuidor_id)
     rows = q.execute().data
