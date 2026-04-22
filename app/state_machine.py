@@ -461,7 +461,14 @@ def handle_message(telefono: str, body: str, media_url: str = None) -> list:
             if entregados:
                 p = entregados[0]
                 db.update_pedido_estado(p["id"], "pago_reportado", "bodeguero")
-                return [f"\u2705 *Pago reportado*\n\nTu pago del pedido *{p['numero']}* por S/{p['monto_total_credito']:.2f} fue reportado.\n\n\u23f3 Circa verificara tu pago y te confirmaremos por este chat.\n\nGracias por tu puntualidad! \U0001f64c"]
+                total_pagar = (
+                    p.get("monto_total_credito")
+                    or p.get("total")
+                    or ((p.get("monto_financiado") or 0) + (p.get("fee_monto") or 0))
+                    or p.get("monto_contado")
+                    or 0
+                )
+                return [f"\u2705 *Pago reportado*\n\nTu pago del pedido *{p['numero']}* por S/{total_pagar:.2f} fue reportado.\n\n\u23f3 Circa verificara tu pago y te confirmaremos por este chat.\n\nGracias por tu puntualidad! \U0001f64c"]
             reportados = [p for p in pedidos if p["estado"] == "pago_reportado"]
             if reportados:
                 return ["\u23f3 Tu pago ya fue reportado. Estamos verificandolo. Te avisamos pronto!"]
