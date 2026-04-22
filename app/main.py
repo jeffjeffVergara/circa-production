@@ -1236,7 +1236,8 @@ from app.services.promociones import evaluar_promociones as _evaluar_promociones
 
 
 class _CartItem(BaseModel):
-    sku_distribuidor: str
+    sku_distribuidor: str | None = None  # Opcional: si no viene, se resuelve desde catalogo_id
+    catalogo_id: str | None = None       # UUID de productos_circa (alternativa)
     cantidad: int
     formato: str  # "UND x 1", "TIRA x 10", "CJA x 24"
     precio_unitario_formato: float
@@ -1271,14 +1272,23 @@ async def api_evaluar_promociones(req: _EvaluarPromocionesReq):
         subtotal = sum(it["subtotal"] for it in items)
         return {"items": items, "ahorro_total": 0, "subtotal_total": subtotal, "total_final": subtotal}
 
-    skus = [i.sku_distribuidor for i in req.cart]
-    info = db.get_catalogo_info_for_skus(distribuidor_id, skus)
+    # Resolver catalogo_id (UUID) → sku_distribuidor si el frontend solo manda UUIDs
+    cat_ids_to_resolve = [i.catalogo_id for i in req.cart if i.catalogo_id and not i.sku_distribuidor]
+    sku_map = db.get_skus_for_catalogo_ids(distribuidor_id, cat_ids_to_resolve) if cat_ids_to_resolve else {}
+
+    # Construir lista de SKUs efectivos
+    skus_efectivos = []
+    for i in req.cart:
+        sku = i.sku_distribuidor or sku_map.get(i.catalogo_id, "")
+        skus_efectivos.append(sku)
+
+    info = db.get_catalogo_info_for_skus(distribuidor_id, [s for s in skus_efectivos if s])
 
     cart_enriched = []
-    for i in req.cart:
-        ci = info.get(i.sku_distribuidor, {})
+    for i, sku in zip(req.cart, skus_efectivos):
+        ci = info.get(sku, {})
         cart_enriched.append({
-            "sku_distribuidor": i.sku_distribuidor,
+            "sku_distribuidor": sku,
             "cantidad": i.cantidad,
             "formato": i.formato,
             "precio_unitario_formato": i.precio_unitario_formato,

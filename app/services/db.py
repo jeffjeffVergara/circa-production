@@ -285,3 +285,22 @@ def get_catalogo_info_for_skus(distribuidor_id: str, skus: list) -> dict:
         import logging
         logging.error(f"get_catalogo_info_for_skus error: {e}")
         return {}
+
+
+def get_skus_for_catalogo_ids(distribuidor_id: str, catalogo_ids: list) -> dict:
+    """
+    Mapea UUIDs de productos_circa a sku_distribuidor del distribuidor dado.
+    Útil para el frontend que solo conoce catalogo_id (UUID).
+    Retorna: { catalogo_id_uuid: sku_distribuidor_string }
+    """
+    if not catalogo_ids:
+        return {}
+    try:
+        r = sb.table("catalogo_distribuidor").select(
+            "producto_circa_id, sku_distribuidor"
+        ).eq("distribuidor_id", distribuidor_id).in_("producto_circa_id", catalogo_ids).execute()
+        return {row["producto_circa_id"]: row["sku_distribuidor"] for row in r.data or []}
+    except Exception as e:
+        import logging
+        logging.error(f"get_skus_for_catalogo_ids error: {e}")
+        return {}
