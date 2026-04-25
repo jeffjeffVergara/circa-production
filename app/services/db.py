@@ -1,6 +1,6 @@
 """Supabase client wrapper for all DB operations."""
 from supabase import create_client
-from app.config import SUPABASE_URL, SUPABASE_KEY
+from app.config import SUPABASE_URL, SUPABASE_KEY, now_peru
 from datetime import datetime, timedelta, date
 import json
 
@@ -48,7 +48,7 @@ def activate_bodega(bodega_id: str, pin_hash: str):
 def sign_contract(bodega_id: str, contract_hash: str):
     sb.table("bodegas").update({
         "contrato_hash": contract_hash,
-        "contrato_firmado_at": datetime.utcnow().isoformat(),
+        "contrato_firmado_at": now_peru().isoformat(),
     }).eq("id", bodega_id).execute()
 
 # ── CATÁLOGO ──────────────────────────────────

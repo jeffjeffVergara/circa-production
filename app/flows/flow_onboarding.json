@@ -266,7 +266,9 @@
                 "input-type": "passcode",
                 "required": true,
                 "min-chars": 4,
-                "max-chars": 4
+                "max-chars": 4,
+                "helper-text": "Solo n\u00fameros (0-9), exactamente 4 d\u00edgitos.",
+                "pattern": "^[0-9]{4}$"
               },
               {
                 "type": "Footer",
@@ -320,7 +322,9 @@
                 "input-type": "passcode",
                 "required": true,
                 "min-chars": 4,
-                "max-chars": 4
+                "max-chars": 4,
+                "helper-text": "Solo n\u00fameros (0-9), exactamente 4 d\u00edgitos.",
+                "pattern": "^[0-9]{4}$"
               },
               {
                 "type": "Footer",

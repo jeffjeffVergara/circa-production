@@ -1,4 +1,8 @@
 .env
+# MCP Supabase y Agent Skills locales (configuración personal / máquina)
+.cursor/mcp.json
+.agents/
+
 __pycache__/
 *.pyc
 .DS_Store

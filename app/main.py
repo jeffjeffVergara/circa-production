@@ -518,7 +518,7 @@ async def meta_webhook_incoming(request: Request):
             continue
         if btn == "ACEPTO":
             try:
-                from datetime import datetime
+                from app.config import now_peru
                 from app.services.contract_generator import generate_contract
                 bodega_ac = db.get_bodega_by_phone(telefono)
                 if bodega_ac:
@@ -528,7 +528,7 @@ async def meta_webhook_incoming(request: Request):
                         dist_r = db.sb.table("distribuidores").select("nombre_comercial").eq("id", bodega_ac["distribuidor_id"]).limit(1).execute()
                         if dist_r.data:
                             dist_nombre = dist_r.data[0]["nombre_comercial"]
-                    now = datetime.now()
+                    now = now_peru()
                     contract_path, contract_hash = generate_contract({
                         "razon_social": bodega_ac.get("razon_social", ""),
                         "ruc": bodega_ac.get("ruc", ""),

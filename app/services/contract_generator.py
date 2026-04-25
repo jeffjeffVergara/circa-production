@@ -10,6 +10,8 @@ SETUP: colocar Logo_3.png en app/static/circa_logo.png
 import os
 import hashlib
 from datetime import datetime
+
+from app.config import now_peru
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.units import inch, mm
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -242,7 +244,7 @@ def generate_contract(bodega_data: dict, output_dir: str = "/tmp") -> str:
     linea = bodega_data.get("linea_aprobada", 500)
     telefono = bodega_data.get("telefono", "")
     
-    now = datetime.now()
+    now = now_peru()
     fecha_firma = bodega_data.get("fecha_firma", now.strftime("%d/%m/%Y"))
     hora_firma = bodega_data.get("hora_firma", now.strftime("%H:%M:%S"))
     

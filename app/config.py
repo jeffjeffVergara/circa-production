@@ -1,7 +1,19 @@
 """Circa configuration — all settings from environment variables."""
 import os
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
 from dotenv import load_dotenv
+
 load_dotenv()
+
+# Hora mostrada en documentos y operación comercial (Perú = GMT-5, sin DST).
+APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Lima"))
+
+
+def now_peru() -> datetime:
+    """Fecha y hora actual en zona Perú (p. ej. contratos, firmas)."""
+    return datetime.now(APP_TZ)
 
 # ── Supabase ──
 SUPABASE_URL = os.getenv("SUPABASE_URL", "")

@@ -1,1 +1,72 @@
-<html><body><h1>Circa PIN</h1><p>Use WhatsApp Flow.</p></body></html>
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Circa — Clave</title>
+  <style>
+    body { font-family: system-ui, sans-serif; padding: 1.5rem; max-width: 22rem; margin: 0 auto; }
+    label { display: block; margin-bottom: 0.5rem; font-weight: 600; }
+    input {
+      font-size: 1.25rem; letter-spacing: 0.35em; width: 100%; padding: 0.65rem;
+      box-sizing: border-box; border: 1px solid #ccc; border-radius: 8px;
+    }
+    button { margin-top: 1rem; width: 100%; padding: 0.75rem; font-size: 1rem; border-radius: 8px; border: 0; background: #4A90D9; color: #fff; cursor: pointer; }
+    #msg { margin-top: 1rem; font-size: 0.9rem; color: #333; }
+    .hint { font-size: 0.85rem; color: #555; margin-top: 0.35rem; }
+  </style>
+</head>
+<body>
+  <h1>Circa</h1>
+  <p>Crea tu clave Circa de 4 dígitos. La necesitarás para confirmar cada pedido financiado.</p>
+  <p class="hint">En el celular suele abrirse el teclado numérico.</p>
+  <form id="f">
+    <label for="pin">Clave</label>
+    <!-- inputmode=numeric + pattern: teclado numérico en iOS/Android; type=password oculta dígitos -->
+    <input
+      id="pin"
+      name="pin"
+      type="password"
+      inputmode="numeric"
+      autocomplete="one-time-code"
+      pattern="[0-9]*"
+      maxlength="4"
+      minlength="4"
+      required
+      title="Solo 4 números"
+    />
+    <p class="hint">Solo números. Evita 0000 o 1234.</p>
+    <button type="submit">Guardar clave</button>
+    <p id="msg"></p>
+  </form>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const bodegaId = params.get("b");
+    const msg = document.getElementById("msg");
+    const form = document.getElementById("f");
+    if (!bodegaId) {
+      msg.textContent = "Enlace incompleto (falta bodega). Abre el enlace que te enviamos por WhatsApp.";
+      form.style.display = "none";
+    }
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const pin = document.getElementById("pin").value.trim();
+      if (!/^\d{4}$/.test(pin)) {
+        msg.textContent = "Escribe exactamente 4 números.";
+        return;
+      }
+      try {
+        const r = await fetch("/api/pin/create", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ bodega_id: bodegaId, pin }),
+        });
+        const j = await r.json();
+        msg.textContent = j.ok ? "Listo. Vuelve a WhatsApp." : (j.error || "No se pudo guardar.");
+      } catch (err) {
+        msg.textContent = "Error de conexión. Intenta de nuevo.";
+      }
+    });
+  </script>
+</body>
+</html>
