@@ -36,6 +36,12 @@ PIN_BLOCK_MINUTES = 30
 SESSION_TIMEOUT_MINUTES = 5
 CART_TTL_HOURS = 24
 
+# ── Biometrics ──
+# BIOMETRIA_MODE:
+# - strict: selfie valida + face match selfie vs DNI (v2)
+# - legacy: comportamiento anterior (sin face match y fallbacks permisivos)
+BIOMETRIA_MODE = os.getenv("BIOMETRIA_MODE", "strict").strip().lower()
+
 # ── SUNAT / RENIEC API ──
 # Supports: apiinti.dev, peruapi.com, apiperu.dev, apis.net.pe
 PERU_API_PROVIDER = os.getenv("PERU_API_PROVIDER", "apiinti")  # apiinti | peruapi | apiperu

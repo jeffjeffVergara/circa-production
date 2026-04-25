@@ -24,7 +24,7 @@ from app.services.identity import consultar_ruc_sync, consultar_dni_sync, valida
 
 # Test phones — bypass SUNAT/RENIEC/Vision validation
 TEST_PHONES = {"+51954712581", "+51977652871", "+56991291415", "+51955755308", "+51981254477", "+51961276835", "51954712581", "51977652871", "56991291415", "51955755308", "51981254477", "51961276835"}
-from app.config import TWILIO_FROM
+from app.config import TWILIO_FROM, BIOMETRIA_MODE
 
 
 def normalize(text: str) -> str:
@@ -213,10 +213,48 @@ def handle_message(telefono: str, body: str, media_url: str = None) -> list:
                                 datos.get("dni_number", ""),
                                 datos.get("dni_nombre", ""),
                             )
-                        if not check.get("valid", False) or check.get("matches_expected") == False:
+                        matches_ok = check.get("matches_expected_dni")
+                        if matches_ok is None:
+                            matches_ok = check.get("matches_expected")
+                        if not check.get("valid", False) or matches_ok is False:
                             reason = check.get("reason", "No se pudo verificar el DNI.")
+                            db.log_biometria_auditoria(
+                                bodega_id=bodega_id,
+                                telefono=telefono,
+                                etapa="dni_anverso",
+                                hit=False,
+                                reason=reason,
+                                reason_code=check.get("reason_code", ""),
+                                confidence=check.get("confidence", ""),
+                                provider="anthropic",
+                                model="claude-sonnet-4-20250514",
+                                metadata={
+                                    "dni_found": check.get("dni_found", ""),
+                                    "name_found": check.get("name_found", ""),
+                                    "matches_expected_dni": check.get("matches_expected_dni"),
+                                    "matches_expected_name": check.get("matches_expected_name"),
+                                },
+                            )
                             return [f"\u274c {reason}\n\nEnv\u00eda una foto clara del *anverso de tu DNI f\u00edsico*."]
+                        db.log_biometria_auditoria(
+                            bodega_id=bodega_id,
+                            telefono=telefono,
+                            etapa="dni_anverso",
+                            hit=True,
+                            reason=check.get("reason", "Documento valido."),
+                            reason_code=check.get("reason_code", "ok"),
+                            confidence=check.get("confidence", ""),
+                            provider="anthropic",
+                            model="claude-sonnet-4-20250514",
+                            metadata={
+                                "dni_found": check.get("dni_found", ""),
+                                "name_found": check.get("name_found", ""),
+                                "matches_expected_dni": check.get("matches_expected_dni"),
+                                "matches_expected_name": check.get("matches_expected_name"),
+                            },
+                        )
                         datos["dni_photo_verified"] = True
+                        datos["dni_photo_media_id"] = media_url
                         db.upsert_session(telefono, "reg_biometria", datos, bodega_id)
                         nombre = datos.get("dni_nombre", "")
                         return [
@@ -225,10 +263,34 @@ def handle_message(telefono: str, body: str, media_url: str = None) -> list:
                             {"signal": "BIOMETRIA_ASK", "representante": nombre},
                         ]
                     else:
+                        db.log_biometria_auditoria(
+                            bodega_id=bodega_id,
+                            telefono=telefono,
+                            etapa="dni_anverso",
+                            hit=False,
+                            reason="No se pudo descargar la imagen de WhatsApp.",
+                            reason_code="media_download_failed",
+                            confidence="low",
+                            provider="meta_whatsapp_cloud",
+                            model="",
+                            metadata={},
+                        )
                         return ["\u274c No pude descargar la imagen. Intenta enviarla de nuevo."]
                 except Exception as e:
                     import logging
                     logging.getLogger("circa").error(f"DNI photo check error: {e}", exc_info=True)
+                    db.log_biometria_auditoria(
+                        bodega_id=bodega_id,
+                        telefono=telefono,
+                        etapa="dni_anverso",
+                        hit=False,
+                        reason="Error interno en verificacion del DNI.",
+                        reason_code="dni_photo_exception",
+                        confidence="low",
+                        provider="anthropic",
+                        model="claude-sonnet-4-20250514",
+                        metadata={"error": str(e)[:200]},
+                    )
                     datos["dni_photo_verified"] = True
                     db.upsert_session(telefono, "reg_biometria", datos, bodega_id)
                     return [{"signal": "BIOMETRIA_ASK", "representante": datos.get("dni_nombre", "")}]
@@ -322,20 +384,144 @@ def handle_message(telefono: str, body: str, media_url: str = None) -> list:
             
             # Verify selfie with Claude Vision (fully sync)
             try:
-                from app.services.vision import download_whatsapp_media_sync, verify_selfie
+                from app.services.vision import (
+                    download_whatsapp_media_sync,
+                    verify_selfie,
+                    verify_selfie_vs_dni,
+                )
                 image_bytes = download_whatsapp_media_sync(media_url)
                 if image_bytes:
+                    face_cmp = {}
                     if telefono in TEST_PHONES:
-                        check = {"valid": True}  # Bypass for test
+                        check = {"valid": True, "reason_code": "test_bypass"}  # Bypass for test
                     else:
-                        check = verify_selfie(image_bytes)
+                        check = verify_selfie(image_bytes, strict=(BIOMETRIA_MODE == "strict"))
                     if not check.get("valid", False):
                         reason = check.get("reason", "La imagen no es una selfie valida.")
+                        db.log_biometria_auditoria(
+                            bodega_id=bodega_id,
+                            telefono=telefono,
+                            etapa="selfie",
+                            hit=False,
+                            reason=reason,
+                            reason_code=check.get("reason_code", ""),
+                            confidence=check.get("confidence", ""),
+                            provider="anthropic",
+                            model="claude-sonnet-4-20250514",
+                            metadata={
+                                "checks": check.get("checks", {}),
+                            },
+                        )
                         return [f"\u274c {reason}\n\nPor favor, toma una *selfie mirando a la camara*."]
+
+                    # 1:1 face comparison (strict mode only): selfie vs DNI front image
+                    if BIOMETRIA_MODE == "strict" and telefono not in TEST_PHONES:
+                        dni_media_id = datos.get("dni_photo_media_id")
+                        if not dni_media_id:
+                            db.log_biometria_auditoria(
+                                bodega_id=bodega_id,
+                                telefono=telefono,
+                                etapa="selfie",
+                                hit=False,
+                                reason="Falta referencia de foto DNI para comparar rostro.",
+                                reason_code="dni_reference_missing",
+                                confidence="low",
+                                provider="anthropic",
+                                model="claude-sonnet-4-20250514",
+                                metadata={"phase": "selfie_vs_dni"},
+                            )
+                            return ["\u274c No pude validar el rostro contra tu DNI. Reenvía el anverso del DNI."]
+
+                        dni_front_bytes = download_whatsapp_media_sync(dni_media_id)
+                        if not dni_front_bytes:
+                            db.log_biometria_auditoria(
+                                bodega_id=bodega_id,
+                                telefono=telefono,
+                                etapa="selfie",
+                                hit=False,
+                                reason="No se pudo descargar la referencia de foto DNI.",
+                                reason_code="dni_reference_download_failed",
+                                confidence="low",
+                                provider="meta_whatsapp_cloud",
+                                model="",
+                                metadata={"phase": "selfie_vs_dni"},
+                            )
+                            return ["\u274c No pude validar el rostro contra tu DNI. Reenvía el anverso del DNI."]
+
+                        face_cmp = verify_selfie_vs_dni(
+                            image_bytes,
+                            dni_front_bytes,
+                            expected_name=rep_name,
+                        )
+                        if not face_cmp.get("valid", False):
+                            db.log_biometria_auditoria(
+                                bodega_id=bodega_id,
+                                telefono=telefono,
+                                etapa="selfie",
+                                hit=False,
+                                reason=face_cmp.get("reason", "No coincide con el rostro del DNI."),
+                                reason_code=face_cmp.get("reason_code", "face_mismatch"),
+                                confidence=face_cmp.get("confidence", ""),
+                                provider="anthropic",
+                                model="claude-sonnet-4-20250514",
+                                metadata={
+                                    "phase": "selfie_vs_dni",
+                                    "face_match": face_cmp.get("face_match", False),
+                                    "face_match_score": face_cmp.get("face_match_score", 0.0),
+                                },
+                            )
+                            return [
+                                "\u274c No pudimos validar tu identidad con esta foto.\n\n"
+                                "Para continuar, env\u00eda una selfie frontal con buena luz y sin lentes oscuros. "
+                                "Estamos para ayudarte."
+                            ]
+                    db.log_biometria_auditoria(
+                        bodega_id=bodega_id,
+                        telefono=telefono,
+                        etapa="selfie",
+                        hit=True,
+                        reason=check.get("reason", "Selfie valida."),
+                        reason_code=check.get("reason_code", "ok"),
+                        confidence=check.get("confidence", ""),
+                        provider="anthropic",
+                        model="claude-sonnet-4-20250514",
+                        metadata={
+                            "phase": "selfie_liveness",
+                            "checks": check.get("checks", {}),
+                            "face_match": face_cmp.get("face_match"),
+                            "face_match_score": face_cmp.get("face_match_score"),
+                        },
+                    )
+                else:
+                    db.log_biometria_auditoria(
+                        bodega_id=bodega_id,
+                        telefono=telefono,
+                        etapa="selfie",
+                        hit=False,
+                        reason="No se pudo descargar la imagen de WhatsApp.",
+                        reason_code="media_download_failed",
+                        confidence="low",
+                        provider="meta_whatsapp_cloud",
+                        model="",
+                        metadata={},
+                    )
+                    return ["\u274c No pude descargar la imagen. Intenta enviarla de nuevo."]
                 datos["biometria_verified"] = True
             except Exception as e:
                 import logging
                 logging.getLogger("circa").error(f"Vision check error: {e}", exc_info=True)
+                db.log_biometria_auditoria(
+                    bodega_id=bodega_id,
+                    telefono=telefono,
+                    etapa="selfie",
+                    hit=False,
+                    reason="Error interno en verificacion biometrica.",
+                    reason_code="selfie_exception",
+                    confidence="low",
+                    provider="anthropic",
+                    model="claude-sonnet-4-20250514",
+                    metadata={"error": str(e)[:200]},
+                )
                 datos["biometria_verified"] = True
             
             dist_r = db.sb.table("distribuidores").select("nombre_comercial").eq("id", bodega_bio["distribuidor_id"]).execute()

@@ -228,6 +228,34 @@ def log_evento(pedido_id, bodega_id, accion, estado_anterior, estado_nuevo, acto
     }).execute()
 
 
+def log_biometria_auditoria(
+    bodega_id: str,
+    telefono: str,
+    etapa: str,
+    hit: bool,
+    reason: str = "",
+    reason_code: str = "",
+    confidence: str = "",
+    provider: str = "",
+    model: str = "",
+    metadata: dict = None,
+):
+    """Audit trail for biometric validations (DNI photo / selfie)."""
+    payload = {
+        "bodega_id": bodega_id,
+        "telefono": telefono,
+        "etapa": etapa,
+        "hit": hit,
+        "reason": reason or "",
+        "reason_code": reason_code or "",
+        "confidence": confidence or "",
+        "provider": provider or "",
+        "model": model or "",
+        "metadata": json.dumps(metadata or {}),
+    }
+    sb.table("biometria_auditoria").insert(payload).execute()
+
+
 # ============================================================
 # Helpers para motor de promociones (Sprint promociones DIMAX 22-abr-2026)
 # ============================================================
