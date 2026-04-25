@@ -41,6 +41,10 @@ CART_TTL_HOURS = 24
 # - strict: selfie valida + face match selfie vs DNI (v2)
 # - legacy: comportamiento anterior (sin face match y fallbacks permisivos)
 BIOMETRIA_MODE = os.getenv("BIOMETRIA_MODE", "strict").strip().lower()
+# Umbral selfie vs foto DNI (0–1). Más bajo = menos falsos negativos, más riesgo de falso positivo.
+FACE_MATCH_MIN_SCORE = float(os.getenv("FACE_MATCH_MIN_SCORE", "0.56"))
+# Si el modelo marca face_match=false pero el score es alto, aceptar (mitiga mismos rechazos por lentes/edad).
+FACE_MATCH_SCORE_OVERRIDE = float(os.getenv("FACE_MATCH_SCORE_OVERRIDE", "0.64"))
 
 # ── SUNAT / RENIEC API ──
 # Supports: apiinti.dev, peruapi.com, apiperu.dev, apis.net.pe

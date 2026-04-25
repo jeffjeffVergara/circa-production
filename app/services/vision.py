@@ -9,6 +9,8 @@ import logging
 import re
 import unicodedata
 
+from app.config import FACE_MATCH_MIN_SCORE, FACE_MATCH_SCORE_OVERRIDE
+
 logger = logging.getLogger("circa.vision")
 
 
@@ -315,7 +317,7 @@ def verify_selfie_vs_dni(selfie_bytes: bytes, dni_front_bytes: bytes, expected_n
             },
             json={
                 "model": "claude-sonnet-4-20250514",
-                "max_tokens": 250,
+                "max_tokens": 420,
                 "messages": [{
                     "role": "user",
                     "content": [
@@ -338,13 +340,24 @@ def verify_selfie_vs_dni(selfie_bytes: bytes, dni_front_bytes: bytes, expected_n
                         {
                             "type": "text",
                             "text": (
-                                "Compara biometria facial entre dos imagenes: "
-                                "imagen 1 = selfie del usuario, imagen 2 = anverso de DNI. "
-                                f"Nombre esperado (referencia): {expected_name}. "
-                                "Responde valid=true SOLO si se puede observar rostro en ambas imagenes "
-                                "y hay coincidencia facial clara de la misma persona. "
-                                "Si hay duda, baja calidad, o no se ve bien alguna cara, responde valid=false. "
-                                "Responde SOLO JSON valido (sin markdown): "
+                                "Eres un verificador de identidad peruano (KYC). Comparas si la MISMA persona aparece en dos imagenes.\n"
+                                "Imagen 1 = selfie reciente del usuario. Imagen 2 = anverso del DNI (foto oficial, suele ser mas antigua).\n"
+                                f"Nombre de referencia (opcional, no es prueba definitiva): {expected_name or '(no indicado)'}.\n\n"
+                                "CONTEXTO IMPORTANTE (reduce falsos negativos):\n"
+                                "- El DNI puede tener anos de antiguedad: envejecimiento, cambio de peso, barba/bigote, peinado, "
+                                "cejas o piel NO implican persona distinta si la estructura facial y rasgos clave coinciden.\n"
+                                "- Lentes: si solo una foto tiene lentes, o distinto tipo de montura, NO descartes por eso. "
+                                "Compara forma de cara, nariz, boca, distancia entre ojos, menton y arco cigomatico cuando sea visible.\n"
+                                "- Iluminacion, angulo, compresion JPEG, reflejos en el plastico del DNI y baja resolucion del carnet "
+                                "pueden alterar apariencia; ante duda razonable, favorece 'misma persona'.\n\n"
+                                "Cuando marcar face_match=false (personas distintas):\n"
+                                "- Solo si hay evidencia fuerte de dos identidades distintas (proporciones incompatibles, rasgos "
+                                "estructurales claramente diferentes), no por maquillaje leve, lentes, barba o foto vieja.\n\n"
+                                "face_match_score en [0,1]: 0.85+ casi seguro misma persona; 0.65-0.84 probable misma persona con variacion temporal/accesorios; "
+                                "0.45-0.64 duda; por debajo de 0.45 probable distinta.\n"
+                                "valid=true si rostros legibles en ambas y (misma persona con confianza media-alta). "
+                                "Si una cara es ilegible o el documento no muestra rostro usable, valid=false.\n\n"
+                                "Responde SOLO JSON valido (sin markdown):\n"
                                 '{"valid": true/false, "reason_code": "ok|face_mismatch|no_face_in_selfie|no_face_in_dni|low_quality|uncertain", '
                                 '"reason": "explicacion breve en espanol", "face_match": true/false, '
                                 '"face_match_score": 0.0, "confidence": "low|medium|high"}'
@@ -353,7 +366,7 @@ def verify_selfie_vs_dni(selfie_bytes: bytes, dni_front_bytes: bytes, expected_n
                     ],
                 }],
             },
-            timeout=25,
+            timeout=30,
         )
 
         if r.status_code != 200:
@@ -387,9 +400,13 @@ def verify_selfie_vs_dni(selfie_bytes: bytes, dni_front_bytes: bytes, expected_n
             result["face_match_score"] = float(result.get("face_match_score", 0.0))
         except Exception:
             result["face_match_score"] = 0.0
-        # Conservative local threshold for acceptance.
-        score_ok = result["face_match_score"] >= 0.70
-        result["valid"] = bool(result.get("valid", False)) and result["face_match"] and score_ok
+        score = result["face_match_score"]
+        min_s = FACE_MATCH_MIN_SCORE
+        override_s = FACE_MATCH_SCORE_OVERRIDE
+        # Decisión en backend: no depender solo del booleano "valid" del modelo (puede contradecir el score).
+        score_ok = score >= min_s
+        strong_score = score >= override_s
+        result["valid"] = score_ok and (result["face_match"] or strong_score)
         result.setdefault("reason_code", "ok" if result["valid"] else "uncertain")
         result.setdefault("reason", "Verificacion facial completada.")
         result.setdefault("confidence", "medium")
