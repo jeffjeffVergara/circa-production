@@ -275,9 +275,9 @@ def handle_message(telefono: str, body: str, media_url: str = None) -> list:
                 common = reniec_parts & rep_parts
                 if len(common) < 2:
                     return [
-                        f"\u274c El DNI {dni} pertenece a *{nombre_reniec}*, "
-                        f"pero el representante legal registrado es *{rep_legal}*.\n\n"
-                        f"Escribe el DNI correcto del representante legal:"
+                        "\u274c *Este DNI no coincide con el representante legal de tu negocio.*\n\n"
+                        f"En SUNAT figura como representante: *{rep_legal}*.\n\n"
+                        "Escribe el DNI correcto del representante legal:"
                     ]
             
             db.update_bodega(bodega_id, {
