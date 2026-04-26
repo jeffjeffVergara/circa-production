@@ -589,10 +589,11 @@ async def _send_payment_options(phone, pedido_id, total, items_text, bodega_id=N
     if linea > 0 and tiers:
         await meta_client.send_text(phone, header)
         
-        rows = [{"id": f"EDITAR_{pid}", "title": "\u270f\ufe0f Editar carrito", "description": "Volver al catalogo"}]
+        rows = []
         for t in reversed(tiers):
             rows.append({"id": t["id"], "title": t["title"], "description": t["description"]})
         rows.append({"id": f"CONTADO_{pid}", "title": f"\U0001f4b5 Pago todo hoy", "description": f"S/{total:.2f} al contado"})
+        rows.append({"id": f"EDITAR_{pid}", "title": "\u270f\ufe0f Editar carrito", "description": "Volver al catalogo"})
         
         await meta_client.send_list(
             to=phone,
