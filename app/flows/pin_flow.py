@@ -59,6 +59,11 @@ async def _route_pin(flow_data: dict) -> dict:
     if screen == "PIN_CREATE":
         return _handle_pin_create(data)
     
+    elif screen == "PIN_VERIFY":
+        # Dedicated verify flow screen: force verify mode and reuse PIN handler
+        data["mode"] = "verify"
+        return _handle_pin_create(data)
+    
     elif screen == "PIN_CONFIRM":
         return await _handle_pin_confirm(data, flow_token)
     
