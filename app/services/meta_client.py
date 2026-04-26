@@ -420,29 +420,36 @@ async def send_contrato(to: str, linea: float):
 
 async def send_pin_request(to: str, mode: str = "create", bodega_id: str = ""):
     """Ask to create or enter PIN via WhatsApp Flow (masked input)."""
-    flow_id = os.getenv("FLOW_PIN_ID", "")
-    
-    # If flow is configured, use it for hidden PIN input
-    if flow_id and mode == "create":
+    flow_create_id = os.getenv("FLOW_PIN_CREATE_ID", "")
+    flow_verify_id = os.getenv("FLOW_PIN_VERIFY_ID", "")
+    flow_legacy_id = os.getenv("FLOW_PIN_ID", "")
+
+    # Prefer split IDs; fallback to legacy single ID.
+    create_flow_id = flow_create_id or flow_legacy_id
+    verify_flow_id = flow_verify_id or flow_legacy_id
+
+    # Create mode (onboarding PIN setup)
+    if create_flow_id and mode == "create":
         return await send_flow(
             to=to,
-            flow_id=flow_id,
+            flow_id=create_flow_id,
             flow_cta="Crear clave 🔐",
-            body="Crea una clave Circa de 4 dígitos. La necesitarás para confirmar cada pedido financiado.",
+            body="Crea tu clave Circa de 4 dígitos. La necesitarás para confirmar cada pedido financiado.",
             mode="published",
             screen="PIN_CREATE",
             data={"bodega_id": bodega_id, "mode": "create"},
         )
     
-    # Verify mode — send Flow with pedido data
-    if flow_id and mode == "verify":
+    # Verify mode — confirm order/payment with PIN
+    if verify_flow_id and mode == "verify":
+        verify_screen = "PIN_VERIFY" if flow_verify_id else "PIN_CREATE"
         return await send_flow(
             to=to,
-            flow_id=flow_id,
+            flow_id=verify_flow_id,
             flow_cta="Confirmar con clave",
             body="Ingresa tu clave Circa de 4 digitos para confirmar tu pedido.",
             mode="published",
-            screen="PIN_CREATE",
+            screen=verify_screen,
             data={"bodega_id": bodega_id, "mode": "verify"},
         )
     
