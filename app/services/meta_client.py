@@ -128,16 +128,47 @@ async def send_buttons(to: str, body: str, buttons: list[dict], header: str = No
 # INTERACTIVE: LIST (max 10 rows, max 10 sections)
 # ══════════════════════════════════════════════
 
+# Límites API WhatsApp Cloud (lista interactiva)
+_WA_LIST_BODY_MAX = 1024
+_WA_LIST_SECTION_TITLE_MAX = 24
+_WA_LIST_ROW_TITLE_MAX = 24
+_WA_LIST_ROW_DESC_MAX = 72
+_WA_LIST_ROW_ID_MAX = 200
+
+
+def _normalize_list_sections(sections: list[dict]) -> list[dict]:
+    """Recorta títulos/descripciones; si exceden límites, Meta devuelve 400 y el mensaje no se envía."""
+    out: list[dict] = []
+    for sec in sections or []:
+        s = {
+            "title": (sec.get("title") or "")[:_WA_LIST_SECTION_TITLE_MAX],
+            "rows": [],
+        }
+        for r in sec.get("rows") or []:
+            row: dict = {
+                "id": (r.get("id") or "")[:_WA_LIST_ROW_ID_MAX],
+                "title": (r.get("title") or "")[:_WA_LIST_ROW_TITLE_MAX],
+            }
+            d = (r.get("description") or "").strip()
+            if d:
+                row["description"] = d[:_WA_LIST_ROW_DESC_MAX]
+            s["rows"].append(row)
+        out.append(s)
+    return out
+
+
 async def send_list(to: str, body: str, button_text: str, sections: list[dict], header: str = None, footer: str = None) -> dict | None:
     """
     Send interactive list message.
-    
+
     Args:
         sections: [{
             "title": "Bebidas",
             "rows": [{"id": "1", "title": "Coca-Cola", "description": "Pack 12 — S/18"}]
         }]
     """
+    body = (body or "")[:_WA_LIST_BODY_MAX]
+    sections = _normalize_list_sections(sections)
     interactive = {
         "type": "list",
         "body": {"text": body},

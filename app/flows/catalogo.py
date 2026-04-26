@@ -539,6 +539,13 @@ async def _do_checkout(bodega_id, session):
     }
 
 
+def _f_linea(v) -> float:
+    try:
+        return float(v if v is not None else 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
 async def _send_payment_options(phone, pedido_id, total, items_text, bodega_id=None):
     """Send financing options after Flow closes."""
     import asyncio
@@ -546,7 +553,7 @@ async def _send_payment_options(phone, pedido_id, total, items_text, bodega_id=N
     await asyncio.sleep(2)
     from app.services import meta_client
 
-    linea = 0
+    linea = 0.0
     bodega_row = None
     if bodega_id:
         try:
@@ -556,9 +563,9 @@ async def _send_payment_options(phone, pedido_id, total, items_text, bodega_id=N
             ).eq("id", bodega_id).limit(1).execute()
             if b.data:
                 bodega_row = b.data[0]
-                linea = bodega_row.get("linea_disponible", 0) or 0
-        except Exception:
-            pass
+                linea = _f_linea(bodega_row.get("linea_disponible"))
+        except Exception as e:
+            logger.error(f"bodega load for payment options: {e}", exc_info=True)
 
     nick_rep = nombre_para_comunicar_representante(bodega_row, None)
     saludo_pedido = f"{nick_rep}, tu" if nick_rep else "Tu"
@@ -624,7 +631,12 @@ async def _send_payment_options(phone, pedido_id, total, items_text, bodega_id=N
         if total <= linea:
             fee = max(round(total * fee_rate, 2), 3.0)
             paga_7d = round(total + fee, 2)
-            rows.append({"id": f"FIN100_{pid}", "title": f"Pago S/0 hoy + S/{paga_7d:.0f} el {fecha_pago}", "description": f"Financias todo (cargo Circa S/{fee:.0f})"})
+            desc7 = f"Hoy S/0, cuota S/{paga_7d:.2f} el {fecha_pago} (fee S/{fee:.2f})"
+            rows.append({
+                "id": f"FIN100_{pid}",
+                "title": "Pago total a 7 días",
+                "description": desc7[:72],
+            })
         await meta_client.send_list(
             to=phone,
             body=f"Como quieres pagar?",
