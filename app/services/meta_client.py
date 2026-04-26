@@ -428,7 +428,7 @@ async def send_pin_request(to: str, mode: str = "create", bodega_id: str = ""):
             to=to,
             flow_id=flow_id,
             flow_cta="Crear clave 🔐",
-            body="Crea tu clave Circa de 4 dígitos. La necesitarás para confirmar cada pedido financiado.",
+            body="Crea una clave Circa de 4 dígitos. La necesitarás para confirmar cada pedido financiado.",
             mode="published",
             screen="PIN_CREATE",
             data={"bodega_id": bodega_id, "mode": "create"},
