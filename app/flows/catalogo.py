@@ -571,8 +571,8 @@ async def _send_payment_options(phone, pedido_id, total, items_text, bodega_id=N
             tiers.append({
                 "id": f"FINFIJO{monto_fin}_{pid}",
                 "monto": monto_fin,
-                "title": f"\U0001f4b3 Financiar S/{monto_fin}",
-                "description": f"Hoy S/{paga_hoy:.2f} + cuota S/{paga_7d:.2f} ({fecha_pago})",
+                "title": f"Financiar S/{monto_fin}",
+                "description": f"\U0001f4b0Hoy S/{paga_hoy:.2f} | \U0001f4b3Cuota S/{paga_7d:.2f} en 7d",
             })
     
     # Get person name from razon_social (usually the person for RUC 10)
