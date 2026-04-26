@@ -541,58 +541,64 @@ async def _do_checkout(bodega_id, session):
 async def _send_payment_options(phone, pedido_id, total, items_text, bodega_id=None):
     """Send financing options after Flow closes."""
     import asyncio
+    from datetime import datetime, timedelta
     await asyncio.sleep(2)
     from app.services import meta_client
 
     linea = 0
+    nombre = ""
     if bodega_id:
         try:
-            b = db.sb.table("bodegas").select("linea_disponible").eq("id", bodega_id).limit(1).execute()
+            b = db.sb.table("bodegas").select("linea_disponible, nombre_comercial, razon_social").eq("id", bodega_id).limit(1).execute()
             if b.data:
                 linea = b.data[0].get("linea_disponible", 0)
+                nombre = b.data[0].get("nombre_comercial") or b.data[0].get("razon_social") or ""
         except Exception:
             pass
 
     pid = str(pedido_id)[:8]
-    fin100 = min(total, linea)
-    fin50 = min(round(linea * 0.5, 2), total)
-    fin25 = min(round(linea * 0.25, 2), total)
+    fecha_pago = (datetime.now() + timedelta(days=7)).strftime("%d/%m/%Y")
+    
+    # Fixed financing tiers: S/100, S/200, S/300
+    fee_rate = 0.03
+    tiers = []
+    for monto_fin in [100, 200, 300]:
+        if monto_fin <= linea and monto_fin <= total:
+            fee = round(monto_fin * fee_rate, 2)
+            if fee < 3: fee = 3.0
+            paga_hoy = round(total - monto_fin, 2)
+            paga_7d = round(monto_fin + fee, 2)
+            tiers.append({
+                "id": f"FINFIJO{monto_fin}_{pid}",
+                "monto": monto_fin,
+                "title": f"Pago S/{paga_hoy:.0f} hoy + S/{paga_7d:.0f} el {fecha_pago}",
+                "description": f"Financias S/{monto_fin} (cargo Circa S/{fee:.0f})",
+            })
+    
+    saludo = f"*{nombre}*, tu" if nombre else "Tu"
+    
+    header = (
+        f"\U0001f6d2 *{saludo} pedido*\n"
+        f"\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n"
+        f"{items_text}\n"
+        f"\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n"
+        f"*TOTAL: S/{total:.2f}*"
+    )
 
-    if linea >= total:
-        await meta_client.send_text(phone,
-            f"\U0001f6d2 *TU PEDIDO*\n━━━━━━━━━━━━━━━━━━\n{items_text}\n━━━━━━━━━━━━━━━━━━\n"
-            f"*TOTAL: S/{total:.2f}*\n"
-            f"Crédito disponible: *S/{linea:.2f}*")
+    if linea > 0 and tiers:
+        await meta_client.send_text(phone, header)
+        
+        rows = [{"id": f"EDITAR_{pid}", "title": "Editar carrito", "description": "Volver al catalogo"}]
+        rows.append({"id": f"CONTADO_{pid}", "title": f"Pago todo hoy S/{total:.0f}", "description": "Sin financiamiento"})
+        for t in tiers:
+            rows.append({"id": t["id"], "title": t["title"], "description": t["description"]})
+        
         await meta_client.send_list(
             to=phone,
-            body="¿Cuánto de tu tope Circa quieres usar para financiar esta compra?",
-            button_text="Elegir opción",
-            sections=[{"title": "Financiamiento", "rows": [
-                {"id": f"EDITAR_{pid}", "title": "Editar carrito", "description": "Volver al catálogo"},
-                {"id": f"CONTADO_{pid}", "title": "Pagar todo al contado", "description": "No financiar"},
-                {"id": f"FIN25_{pid}", "title": f"25% tope — S/{fin25:.2f}", "description": f"Al contado: S/{round(total-fin25,2):.2f}"},
-                {"id": f"FIN50_{pid}", "title": f"50% tope — S/{fin50:.2f}", "description": f"Al contado: S/{round(total-fin50,2):.2f}"},
-                {"id": f"FIN100_{pid}", "title": "Usar todo mi tope", "description": f"S/{min(total,linea):.2f} con Circa"},
-            ]}])
-    elif linea > 0:
-        contado_min = total - linea
-        await meta_client.send_text(phone,
-            f"\U0001f6d2 *TU PEDIDO*\n━━━━━━━━━━━━━━━━━━\n{items_text}\n━━━━━━━━━━━━━━━━━━\n"
-            f"*TOTAL: S/{total:.2f}*\n"
-            f"Crédito disponible: *S/{linea:.2f}*\n"
-            f"Mínimo al contado: S/{contado_min:.2f}")
-        await meta_client.send_list(
-            to=phone,
-            body="¿Cuánto de tu tope Circa quieres usar para financiar esta compra?",
-            button_text="Elegir opción",
-            sections=[{"title": "Financiamiento", "rows": [
-                {"id": f"EDITAR_{pid}", "title": "Editar carrito", "description": "Volver al catálogo"},
-                {"id": f"CONTADO_{pid}", "title": "Pagar todo al contado", "description": "Sin financiamiento"},
-                {"id": f"FIN25_{pid}", "title": f"25% tope — S/{fin25:.2f}", "description": f"Al contado: S/{round(total-fin25,2):.2f}"},
-                {"id": f"FIN50_{pid}", "title": f"50% tope — S/{fin50:.2f}", "description": f"Al contado: S/{round(total-fin50,2):.2f}"},
-                {"id": f"FIN100_{pid}", "title": "Usar todo mi crédito", "description": f"S/{linea:.2f} con Circa"},
-            ]}])
-    else:
+            body=f"Como quieres pagar?",
+            button_text="Ver opciones",
+            sections=[{"title": "Opciones de pago", "rows": rows}])
+    elif linea <= 0:
         tel_fmt = f"+{phone}" if not phone.startswith("+") else phone
         db.sb.table("sesiones").delete().eq("telefono", tel_fmt).execute()
         db.sb.table("sesiones").insert({
@@ -601,12 +607,26 @@ async def _send_payment_options(phone, pedido_id, total, items_text, bodega_id=N
             "bodega_id": bodega_id,
         }).execute()
         await meta_client.send_text(phone,
-            f"\U0001f6d2 *TU PEDIDO*\n━━━━━━━━━━━━━━━━━━\n{items_text}\n━━━━━━━━━━━━━━━━━━\n"
-            f"TOTAL: S/{total:.2f}\n"
-            f"Sin tope disponible. Solo contado.\n\n"
+            f"{header}\n"
+            f"Sin credito disponible. Solo contado.\n\n"
             f"Ingresa tu clave Circa para confirmar:")
+    else:
+        # Has linea but no tiers fit (total < 100)
+        await meta_client.send_text(phone, header)
+        rows = [{"id": f"EDITAR_{pid}", "title": "Editar carrito", "description": "Volver al catalogo"}]
+        rows.append({"id": f"CONTADO_{pid}", "title": f"Pago todo hoy S/{total:.0f}", "description": "Sin financiamiento"})
+        if total <= linea:
+            fee = max(round(total * fee_rate, 2), 3.0)
+            paga_7d = round(total + fee, 2)
+            rows.append({"id": f"FIN100_{pid}", "title": f"Pago S/0 hoy + S/{paga_7d:.0f} el {fecha_pago}", "description": f"Financias todo (cargo Circa S/{fee:.0f})"})
+        await meta_client.send_list(
+            to=phone,
+            body=f"Como quieres pagar?",
+            button_text="Ver opciones",
+            sections=[{"title": "Opciones de pago", "rows": rows}])
 
     logger.info(f"Payment options sent to {phone}, linea={linea}")
+
 
 # ── Payment & Confirmation ──
 
