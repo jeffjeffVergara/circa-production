@@ -2,6 +2,8 @@
 # MCP Supabase y Agent Skills locales (configuración personal / máquina)
 .cursor/mcp.json
 .agents/
+# SQL utilitario local (no versionar)
+scripts/db_utils_local/
 
 __pycache__/
 *.pyc

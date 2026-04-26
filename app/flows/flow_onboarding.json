@@ -298,6 +298,10 @@
         "pin_hash_temp": {
           "type": "string",
           "__example__": "a1b2c3d4e5f6..."
+        },
+        "error_msg": {
+          "type": "string",
+          "__example__": ""
         }
       },
       "layout": {
@@ -323,7 +327,7 @@
                 "required": true,
                 "min-chars": 4,
                 "max-chars": 4,
-                "helper-text": "Solo n\u00fameros (0-9), exactamente 4 d\u00edgitos.",
+                "helper-text": "${data.error_msg}",
                 "pattern": "^[0-9]{4}$"
               },
               {
