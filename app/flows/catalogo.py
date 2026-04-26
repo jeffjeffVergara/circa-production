@@ -571,8 +571,8 @@ async def _send_payment_options(phone, pedido_id, total, items_text, bodega_id=N
             tiers.append({
                 "id": f"FINFIJO{monto_fin}_{pid}",
                 "monto": monto_fin,
-                "title": f"Pago S/{paga_hoy:.0f} hoy + S/{paga_7d:.0f} el {fecha_pago}",
-                "description": f"Financias S/{monto_fin} (cargo Circa S/{fee:.0f})",
+                "title": f"Pago S/{paga_hoy:.2f} hoy + S/{paga_7d:.2f} el {fecha_pago}",
+                "description": f"Financias S/{monto_fin} (cargo Circa S/{fee:.2f})",
             })
     
     saludo = f"*{nombre}*, tu" if nombre else "Tu"
@@ -589,9 +589,9 @@ async def _send_payment_options(phone, pedido_id, total, items_text, bodega_id=N
         await meta_client.send_text(phone, header)
         
         rows = [{"id": f"EDITAR_{pid}", "title": "Editar carrito", "description": "Volver al catalogo"}]
-        rows.append({"id": f"CONTADO_{pid}", "title": f"Pago todo hoy S/{total:.0f}", "description": "Sin financiamiento"})
-        for t in tiers:
+        for t in reversed(tiers):
             rows.append({"id": t["id"], "title": t["title"], "description": t["description"]})
+        rows.append({"id": f"CONTADO_{pid}", "title": f"Pago todo hoy S/{total:.2f}", "description": "Sin financiamiento"})
         
         await meta_client.send_list(
             to=phone,
