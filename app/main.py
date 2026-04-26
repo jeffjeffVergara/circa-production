@@ -472,6 +472,42 @@ async def meta_webhook_incoming(request: Request):
             if msg["message_id"]:
                 await meta_client.mark_as_read(msg["message_id"])
             continue
+        if btn.startswith("FINFIJO"):
+            try:
+                import re as _re
+                from datetime import datetime, timedelta
+                monto_match = _re.search(r"FINFIJO(\d+)_", btn)
+                fin_amt = int(monto_match.group(1)) if monto_match else 0
+                bod = db.sb.table("bodegas").select("id, linea_disponible").eq("telefono_whatsapp", telefono).limit(1).execute()
+                bod_id = bod.data[0]["id"] if bod.data else None
+                r = db.sb.table("pedidos").select("id, monto_productos").eq("bodega_id", bod_id).eq("estado", "borrador").order("created_at", desc=True).limit(1).execute() if bod_id else type("X",(),{"data":[]})()
+                if r.data and fin_amt > 0:
+                    pedido = r.data[0]
+                    total = pedido["monto_productos"]
+                    contado = round(total - fin_amt, 2)
+                    dias = 7
+                    rate = 0.03
+                    fee = max(round(fin_amt * rate, 2), 3.0)
+                    fecha_venc = (datetime.now() + timedelta(days=dias)).strftime("%d/%m/%Y")
+                    db.sb.table("sesiones").delete().eq("telefono", telefono).execute()
+                    db.sb.table("sesiones").insert({
+                        "telefono": telefono, "fase": "pin_pago",
+                        "datos": json.dumps({"pedido_id": pedido["id"], "dias": dias, "rate": rate, "monto": fin_amt}),
+                        "bodega_id": bod_id,
+                    }).execute()
+                    await meta_client.send_text(telefono,
+                        f"\U0001f4b3 *Resumen de pago*\n\n"
+                        f"Pagas hoy: *S/{contado:.2f}*\n"
+                        f"Financias con Circa: *S/{fin_amt:.2f}*\n"
+                        f"Cargo Circa (3%): S/{fee:.2f}\n"
+                        f"*Total a pagar el {fecha_venc}: S/{fin_amt + fee:.2f}*\n\n"
+                        f"Ingresa tu clave Circa de 4 digitos para confirmar.")
+                    await meta_client.send_pin_request(telefono, mode="verify", bodega_id=bod_id)
+            except Exception as e:
+                logger.error(f"FINFIJO error: {e}")
+            if msg.get("message_id"):
+                await meta_client.mark_as_read(msg["message_id"])
+            continue
         if btn.startswith("FIN100_") or btn.startswith("FIN50_") or btn.startswith("FIN25_"):
             try:
                 bod = db.sb.table("bodegas").select("id, linea_disponible").eq("telefono_whatsapp", telefono).limit(1).execute()
