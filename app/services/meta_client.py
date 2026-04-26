@@ -428,8 +428,22 @@ async def send_pin_request(to: str, mode: str = "create", bodega_id: str = ""):
     create_flow_id = flow_create_id or flow_legacy_id
     verify_flow_id = flow_verify_id or flow_legacy_id
 
+    logger.info(
+        "PIN_FLOW_DEBUG mode=%s bodega_id=%s create_id=%s verify_id=%s legacy_id=%s",
+        mode,
+        bodega_id,
+        create_flow_id or "<empty>",
+        verify_flow_id or "<empty>",
+        flow_legacy_id or "<empty>",
+    )
+
     # Create mode (onboarding PIN setup)
     if create_flow_id and mode == "create":
+        logger.info(
+            "PIN_FLOW_DEBUG invoking flow mode=create flow_id=%s screen=%s",
+            create_flow_id,
+            "PIN_CREATE",
+        )
         return await send_flow(
             to=to,
             flow_id=create_flow_id,
@@ -443,6 +457,11 @@ async def send_pin_request(to: str, mode: str = "create", bodega_id: str = ""):
     # Verify mode — confirm order/payment with PIN
     if verify_flow_id and mode == "verify":
         verify_screen = "PIN_VERIFY" if flow_verify_id else "PIN_CREATE"
+        logger.info(
+            "PIN_FLOW_DEBUG invoking flow mode=verify flow_id=%s screen=%s",
+            verify_flow_id,
+            verify_screen,
+        )
         return await send_flow(
             to=to,
             flow_id=verify_flow_id,
