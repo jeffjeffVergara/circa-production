@@ -497,11 +497,9 @@ async def meta_webhook_incoming(request: Request):
                     }).execute()
                     await meta_client.send_text(telefono,
                         f"\U0001f4b3 *Resumen de pago*\n\n"
-                        f"Pagas hoy: *S/{contado:.2f}*\n"
-                        f"Financias con Circa: *S/{fin_amt:.2f}*\n"
-                        f"Cargo Circa (3%): S/{fee:.2f}\n"
-                        f"*Total a pagar el {fecha_venc}: S/{fin_amt + fee:.2f}*\n\n"
-                        f"Ingresa tu clave Circa de 4 digitos para confirmar.")
+                        f"Hoy al repartidor: *S/{contado:.2f}*\n"
+                        f"Cuota Circa antes del {fecha_venc}: *S/{fin_amt + fee:.2f}*\n\n"
+                        f"Confirma con tu clave de 4 digitos.")
                     await meta_client.send_pin_request(telefono, mode="verify", bodega_id=bod_id)
             except Exception as e:
                 logger.error(f"FINFIJO error: {e}")

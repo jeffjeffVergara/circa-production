@@ -572,10 +572,11 @@ async def _send_payment_options(phone, pedido_id, total, items_text, bodega_id=N
                 "id": f"FINFIJO{monto_fin}_{pid}",
                 "monto": monto_fin,
                 "title": f"Financiar S/{monto_fin}",
-                "description": f"Hoy S/{paga_hoy:.2f} + S/{paga_7d:.2f} el {fecha_pago}",
+                "description": f"Hoy S/{paga_hoy:.2f} + cuota S/{paga_7d:.2f}",
             })
     
-    saludo = f"*{nombre}*, tu" if nombre else "Tu"
+    # Get person name from razon_social (usually the person for RUC 10)
+    saludo = f"*{nombre.title()}*, tu" if nombre else "Tu"
     
     header = (
         f"\U0001f6d2 *{saludo} pedido*\n"
