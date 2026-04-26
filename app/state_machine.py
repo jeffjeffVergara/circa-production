@@ -19,6 +19,7 @@ Template signals use the format:
 import json, hashlib, unicodedata, os
 from datetime import datetime, date, timedelta
 from app.services import db, messages as msg, fees
+from app.services.representante_comms import nombre_para_comunicar_representante
 from app.services.pin import check_pin
 from app.services.identity import consultar_ruc_sync, consultar_dni_sync, validate_ruc_format, validate_dni_format, is_ruc_eligible
 
@@ -257,10 +258,11 @@ def handle_message(telefono: str, body: str, media_url: str = None) -> list:
                         datos["dni_photo_media_id"] = media_url
                         db.upsert_session(telefono, "reg_biometria", datos, bodega_id)
                         nombre = datos.get("dni_nombre", "")
+                        saludo_rep = nombre_para_comunicar_representante(bodega_data, nombre)
                         return [
                             f"\u2705 *Documento verificado*\nDNI {datos.get('dni_number', '')} \u2014 {nombre}\n\n"
                             f"\U0001f512 Por tu seguridad, ya puedes eliminar la foto de este chat.",
-                            {"signal": "BIOMETRIA_ASK", "representante": nombre},
+                            {"signal": "BIOMETRIA_ASK", "representante": saludo_rep},
                         ]
                     else:
                         db.log_biometria_auditoria(
@@ -293,7 +295,10 @@ def handle_message(telefono: str, body: str, media_url: str = None) -> list:
                     )
                     datos["dni_photo_verified"] = True
                     db.upsert_session(telefono, "reg_biometria", datos, bodega_id)
-                    return [{"signal": "BIOMETRIA_ASK", "representante": datos.get("dni_nombre", "")}]
+                    saludo_rep = nombre_para_comunicar_representante(
+                        bodega_data, datos.get("dni_nombre"),
+                    )
+                    return [{"signal": "BIOMETRIA_ASK", "representante": saludo_rep}]
             return [
                 "\U0001f4f8 Env\u00eda una *foto del anverso de tu DNI f\u00edsico* para verificar que lo tienes en tu poder.\n\n"
                 "\U0001f512 Tip: env\u00edala como *Vista \u00fanica* (\u2460) para mayor seguridad."
@@ -540,8 +545,14 @@ def handle_message(telefono: str, body: str, media_url: str = None) -> list:
         if body_n in ("SELFIE", "SIMULAR_SELFIE", "SIMULAR SELFIE", "SI", "LISTO", "TOMAR_SELFIE", "TOMAR SELFIE"):
             # Button press without image — remind to send photo
             return ["\U0001f933 Env\u00eda una *foto de tu rostro* como imagen en este chat."]
-        
-        return [{"signal": "BIOMETRIA_ASK", "representante": datos.get("dni_nombre", "")}]
+        bodega_id_bm = datos.get("bodega_id")
+        row_bm = None
+        if bodega_id_bm:
+            r_bm = db.sb.table("bodegas").select("*").eq("id", bodega_id_bm).limit(1).execute()
+            if r_bm.data:
+                row_bm = r_bm.data[0]
+        saludo_rep = nombre_para_comunicar_representante(row_bm, datos.get("dni_nombre"))
+        return [{"signal": "BIOMETRIA_ASK", "representante": saludo_rep}]
 
     # ═══ ACEPTAR LÍNEA ═══
     if fase == "reg_linea_acepta":

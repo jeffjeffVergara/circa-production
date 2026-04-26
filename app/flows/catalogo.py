@@ -6,6 +6,7 @@ Cart state stored in Supabase (no cart_state field needed in Flow).
 import logging
 import json
 from app.services import db
+from app.services.representante_comms import nombre_para_comunicar_representante
 
 logger = logging.getLogger("circa.flows.catalogo")
 
@@ -546,15 +547,21 @@ async def _send_payment_options(phone, pedido_id, total, items_text, bodega_id=N
     from app.services import meta_client
 
     linea = 0
-    nombre = ""
+    bodega_row = None
     if bodega_id:
         try:
-            b = db.sb.table("bodegas").select("linea_disponible, nombre_comercial, razon_social").eq("id", bodega_id).limit(1).execute()
+            b = db.sb.table("bodegas").select(
+                "linea_disponible, nombre_comercial, razon_social, "
+                "representante_legal, representante_nombre_corto"
+            ).eq("id", bodega_id).limit(1).execute()
             if b.data:
-                linea = b.data[0].get("linea_disponible", 0)
-                nombre = b.data[0].get("nombre_comercial") or b.data[0].get("razon_social") or ""
+                bodega_row = b.data[0]
+                linea = bodega_row.get("linea_disponible", 0) or 0
         except Exception:
             pass
+
+    nick_rep = nombre_para_comunicar_representante(bodega_row, None)
+    saludo_pedido = f"{nick_rep}, tu" if nick_rep else "Tu"
 
     pid = str(pedido_id)[:8]
     fecha_pago = (datetime.now() + timedelta(days=7)).strftime("%d/%m/%Y")
@@ -575,11 +582,8 @@ async def _send_payment_options(phone, pedido_id, total, items_text, bodega_id=N
                 "description": f"\U0001f4b0Hoy S/{paga_hoy:.2f} | \U0001f4b3Cuota S/{paga_7d:.2f} en 7d",
             })
     
-    # Get person name from razon_social (usually the person for RUC 10)
-    saludo = f"*{nombre.title()}*, tu" if nombre else "Tu"
-    
     header = (
-        f"\U0001f6d2 *{saludo} pedido*\n"
+        f"\U0001f6d2 *{saludo_pedido} pedido*\n"
         f"\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n"
         f"{items_text}\n"
         f"\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n"
@@ -588,13 +592,13 @@ async def _send_payment_options(phone, pedido_id, total, items_text, bodega_id=N
 
     if linea > 0 and tiers:
         await meta_client.send_text(phone, header)
-        
+
         rows = []
         for t in reversed(tiers):
             rows.append({"id": t["id"], "title": t["title"], "description": t["description"]})
         rows.append({"id": f"CONTADO_{pid}", "title": f"\U0001f4b5 Pago todo hoy", "description": f"S/{total:.2f} al contado"})
         rows.append({"id": f"EDITAR_{pid}", "title": "\u270f\ufe0f Editar carrito", "description": "Volver al catalogo"})
-        
+
         await meta_client.send_list(
             to=phone,
             body=f"Como quieres pagar?",

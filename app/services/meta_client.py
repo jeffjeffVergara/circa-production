@@ -361,15 +361,22 @@ async def send_dni_request(to: str):
 
 async def send_biometria_request(to: str, nombre_rep: str):
     """Ask for selfie photo for Claude Vision verification."""
-    return await send_text(
-        to=to,
-        text=(
+    nombre_rep = (nombre_rep or "").strip()
+    if nombre_rep:
+        cuerpo = (
             f"Ahora necesito una *selfie en vivo* para verificación biométrica.\n\n"
             f"\U0001f933 {nombre_rep}, toma una foto de tu rostro mirando a la camara "
             f"y enviala como imagen en este chat.\n\n"
             f"\U0001f512 Tip: enviala como *Vista unica* (\u2460) para mayor seguridad."
-        ),
-    )
+        )
+    else:
+        cuerpo = (
+            f"Ahora necesito una *selfie en vivo* para verificación biométrica.\n\n"
+            f"\U0001f933 Toma una foto de tu rostro mirando a la camara "
+            f"y enviala como imagen en este chat.\n\n"
+            f"\U0001f512 Tip: enviala como *Vista unica* (\u2460) para mayor seguridad."
+        )
+    return await send_text(to=to, text=cuerpo)
 
 
 async def send_linea_oferta(to: str, nombre: str, linea: float, distribuidor: str):
