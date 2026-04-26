@@ -571,8 +571,8 @@ async def _send_payment_options(phone, pedido_id, total, items_text, bodega_id=N
             tiers.append({
                 "id": f"FINFIJO{monto_fin}_{pid}",
                 "monto": monto_fin,
-                "title": f"Financiar S/{monto_fin}",
-                "description": f"Hoy S/{paga_hoy:.2f} + cuota S/{paga_7d:.2f}",
+                "title": f"\U0001f4b3 Financiar S/{monto_fin}",
+                "description": f"Hoy S/{paga_hoy:.2f} + cuota S/{paga_7d:.2f} ({fecha_pago})",
             })
     
     # Get person name from razon_social (usually the person for RUC 10)
@@ -589,10 +589,10 @@ async def _send_payment_options(phone, pedido_id, total, items_text, bodega_id=N
     if linea > 0 and tiers:
         await meta_client.send_text(phone, header)
         
-        rows = [{"id": f"EDITAR_{pid}", "title": "Editar carrito", "description": "Volver al catalogo"}]
+        rows = [{"id": f"EDITAR_{pid}", "title": "\u270f\ufe0f Editar carrito", "description": "Volver al catalogo"}]
         for t in reversed(tiers):
             rows.append({"id": t["id"], "title": t["title"], "description": t["description"]})
-        rows.append({"id": f"CONTADO_{pid}", "title": f"Pago todo hoy", "description": f"S/{total:.2f} sin financiamiento"})
+        rows.append({"id": f"CONTADO_{pid}", "title": f"\U0001f4b5 Pago todo hoy", "description": f"S/{total:.2f} al contado"})
         
         await meta_client.send_list(
             to=phone,
