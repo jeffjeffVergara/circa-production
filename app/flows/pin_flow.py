@@ -262,14 +262,16 @@ def _verify_pin_for_payment(pin: str, bodega_id: str) -> dict:
             phone_id = os.getenv("PHONE_NUMBER_ID", "1076586305533033")
             phone = telefono.replace("+", "")
             if dias > 0:
+                from datetime import datetime, timedelta
+                fecha_pago_conf = (datetime.now() + timedelta(days=dias)).strftime("%d/%m/%Y")
                 conf_msg = (
                     f"\u2705 *Pedido #{num} confirmado*\n"
                     f"Financiado con Circa\n\n"
                     f"Financiado: *S/{monto:.2f}*\n"
-                    f"Cargo Circa ({int(rate*100)}%): S/{fee:.2f}\n"
-                    f"Total a pagar a Circa: *S/{monto+fee:.2f}*\n"
-                    f"Plazo: {dias} días\n\n"
-                    "Recibirás novedades por WhatsApp."
+                    f"Cuota Circa: *S/{monto+fee:.2f}*\n"
+                    f"Plazo maximo: {dias} dias\n\n"
+                    f"\U0001f7e3Yape / \U0001f7e2Plin  *986311567*\n"
+                    f"Paga antes del {fecha_pago_conf} y escribe *YA PAGUE*"
                 )
             else:
                 conf_msg = (
