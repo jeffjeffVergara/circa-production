@@ -301,7 +301,7 @@ async def admin_list_pedidos(
     admin: bool = Depends(verify_admin),
 ):
     """List all orders with full details — admin view."""
-    params = {"select":"*","order":"created_at.desc","limit":"200"}
+    params = {"select":"*","order":"created_at.desc","limit":"1000"}
     if estado: params["estado"] = f"eq.{estado}"
     pedidos = _sb_get("pedidos", params)
     # Fetch all bodegas and distribuidores
@@ -310,7 +310,14 @@ async def admin_list_pedidos(
     bodegas_map = {}
     for bid in bodega_ids:
         try:
-            rows = _sb_get("bodegas", {"select":"id,nombre_comercial,telefono_whatsapp,ruc,direccion_fiscal,linea_credito,linea_disponible","id":f"eq.{bid}"})
+            rows = _sb_get("bodegas", {
+                "select": (
+                    "id,nombre_comercial,razon_social,representante_legal,"
+                    "representante_nombre_corto,telefono_whatsapp,ruc,"
+                    "direccion_fiscal,linea_aprobada,linea_disponible"
+                ),
+                "id": f"eq.{bid}",
+            })
             if rows: bodegas_map[bid] = rows[0]
         except: pass
     dist_map = {}
@@ -327,7 +334,18 @@ async def admin_list_pedidos(
     # Filter by name if provided
     if bodega:
         bl = bodega.lower()
-        pedidos = [p for p in pedidos if bl in (p.get("bodega",{}).get("nombre_comercial","") or "").lower()]
+        def _match_bodega(p: dict) -> bool:
+            b = p.get("bodega", {}) or {}
+            haystack = " ".join([
+                b.get("nombre_comercial", "") or "",
+                b.get("razon_social", "") or "",
+                b.get("representante_legal", "") or "",
+                b.get("representante_nombre_corto", "") or "",
+                b.get("telefono_whatsapp", "") or "",
+                b.get("ruc", "") or "",
+            ]).lower()
+            return bl in haystack
+        pedidos = [p for p in pedidos if _match_bodega(p)]
     if distribuidor:
         dl = distribuidor.lower()
         pedidos = [p for p in pedidos if dl in (p.get("distribuidor",{}).get("nombre_comercial","") or "").lower()]

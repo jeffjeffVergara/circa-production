@@ -292,6 +292,11 @@ function api(path){
   });
 }
 
+function nombreBodega(b){
+  b = b || {};
+  return b.nombre_comercial || b.razon_social || b.representante_nombre_corto || b.representante_legal || '?';
+}
+
 function refreshAll(){
   api('/api/distribuidor/admin/resumen').then(function(d){
     document.getElementById('kpiActivos').textContent = d.total_pedidos || 0;
@@ -442,7 +447,7 @@ function loadPedidos(){
       var b = p.bodega || {};
       var dt = p.distribuidor || {};
       var fecha = p.created_at ? new Date(p.created_at).toLocaleDateString('es-PE',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) : '-';
-      return '<tr><td>'+fecha+'</td><td class="pedido-num mono">'+(p.numero||'-')+'</td><td>'+(b.nombre_comercial||'?')+'</td><td style="color:var(--muted)">'+(dt.nombre_comercial||'?')+'</td><td class="mono">S/'+Number(p.monto_productos||0).toFixed(2)+'</td><td class="mono" style="color:var(--blue-light)">S/'+Number(p.monto_financiado||0).toFixed(2)+'</td><td><span class="badge badge-'+(p.estado||'').replace(' ','_')+'">'+(p.estado||'-')+'</span></td></tr>';
+      return '<tr><td>'+fecha+'</td><td class="pedido-num mono">'+(p.numero||'-')+'</td><td>'+nombreBodega(b)+'</td><td style="color:var(--muted)">'+(dt.nombre_comercial||'?')+'</td><td class="mono">S/'+Number(p.monto_productos||0).toFixed(2)+'</td><td class="mono" style="color:var(--blue-light)">S/'+Number(p.monto_financiado||0).toFixed(2)+'</td><td><span class="badge badge-'+(p.estado||'').replace(' ','_')+'">'+(p.estado||'-')+'</span></td></tr>';
     }).join('') : '<tr><td colspan="7" class="empty">Sin pedidos</td></tr>';
   });
 }
