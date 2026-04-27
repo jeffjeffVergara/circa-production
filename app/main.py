@@ -1288,6 +1288,7 @@ class AnalyticsEventIn(BaseModel):
 @app.post("/api/catalogo/submit-cart")
 async def submit_cart(data: CartSubmission):
     from app.services.analytics import track_event
+    from app.services import meta_client
     items_list = [dict(i) if not isinstance(i, dict) else i for i in data.items]
     total = sum(i.get("subtotal", 0) for i in items_list)
     tipo = "preventa" if data.tipo_operacion == "preventa" else "venta"
