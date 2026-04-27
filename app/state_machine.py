@@ -666,6 +666,18 @@ def handle_message(telefono: str, body: str, media_url: str = None) -> list:
             if entregados:
                 p = entregados[0]
                 db.update_pedido_estado(p["id"], "pago_reportado", "bodeguero")
+                try:
+                    from app.services.analytics import track_event
+                    track_event(
+                        "payment_reported",
+                        bodega_id=bodega["id"],
+                        pedido_id=p["id"],
+                        telefono=telefono,
+                        source="chat",
+                        metadata={"numero": p.get("numero", "")},
+                    )
+                except Exception:
+                    pass
                 total_pagar = (
                     p.get("monto_total_credito")
                     or p.get("total")

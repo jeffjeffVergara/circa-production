@@ -293,6 +293,11 @@ async def verify_admin(x_admin_token: str = Header(..., alias="X-Admin-Token")):
         raise HTTPException(status_code=401, detail="Token admin invalido")
     return True
 
+
+def _days_ago_iso(days: int) -> str:
+    from datetime import timedelta
+    return (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+
 @router.get("/admin/pedidos")
 async def admin_list_pedidos(
     bodega: Optional[str] = None,
@@ -397,6 +402,56 @@ async def admin_resumen(admin: bool = Depends(verify_admin)):
         "total_fee_circa": round(total_fee, 2),
         "total_contado": round(total_contado, 2),
         "circa_cobra_bodegas": round(total_financiado + total_fee, 2),
+    }
+
+
+@router.get("/admin/analytics-resumen")
+async def admin_analytics_resumen(admin: bool = Depends(verify_admin)):
+    """Light analytics dashboard for pilot event/message tracking."""
+    since_7d = _days_ago_iso(7)
+    since_30d = _days_ago_iso(30)
+
+    events_7d = _sb_get("events", {"select": "event_type,created_at", "created_at": f"gte.{since_7d}", "limit": "5000"})
+    events_30d = _sb_get("events", {"select": "event_type,created_at,bodega_id", "created_at": f"gte.{since_30d}", "limit": "20000"})
+    msgs_7d = _sb_get("messages", {"select": "direction,bodega_id", "created_at": f"gte.{since_7d}", "limit": "10000"})
+
+    def _cnt(rows, ev):
+        return sum(1 for r in rows if r.get("event_type") == ev)
+
+    funnel = {
+        "catalog_opened": _cnt(events_7d, "catalog_opened"),
+        "product_added": _cnt(events_7d, "product_added"),
+        "order_created": _cnt(events_7d, "order_created") + _cnt(events_7d, "preventa_created"),
+        "order_confirmed": _cnt(events_7d, "order_confirmed") + _cnt(events_7d, "preventa_confirmada"),
+        "payment_made": _cnt(events_7d, "payment_made"),
+    }
+
+    inbound = sum(1 for m in msgs_7d if m.get("direction") == "inbound")
+    outbound = sum(1 for m in msgs_7d if m.get("direction") == "outbound")
+    response_rate = round((inbound / outbound) * 100, 1) if outbound else 0.0
+
+    by_type = {}
+    for ev in events_7d:
+        t = ev.get("event_type", "unknown")
+        by_type[t] = by_type.get(t, 0) + 1
+    top_events = sorted(
+        [{"event_type": k, "count": v} for k, v in by_type.items()],
+        key=lambda x: x["count"],
+        reverse=True,
+    )[:8]
+
+    active_bodegas_30d = len(set(e.get("bodega_id") for e in events_30d if e.get("bodega_id")))
+
+    return {
+        "period_days": 7,
+        "funnel": funnel,
+        "messages": {
+            "inbound_7d": inbound,
+            "outbound_7d": outbound,
+            "response_rate_pct": response_rate,
+        },
+        "active_bodegas_30d": active_bodegas_30d,
+        "top_events_7d": top_events,
     }
 
 @router.post("/admin/cobranza/{pedido_id}")
@@ -578,6 +633,7 @@ async def admin_cobranzas(
 async def admin_verificar_pago(pedido_id: str, payload: dict, admin: bool = Depends(verify_admin)):
     """Mark order as paid + restore bodega line."""
     from datetime import datetime
+    from app.services.analytics import track_event
     
     rows = _sb_get("pedidos", {"select":"*","id":f"eq.{pedido_id}"})
     if not rows:
@@ -595,6 +651,17 @@ async def admin_verificar_pago(pedido_id: str, payload: dict, admin: bool = Depe
         "nro_operacion": payload.get("nro_operacion", ""),
     }
     _sb_patch("pedidos", patch, {"id": f"eq.{pedido_id}"})
+    track_event(
+        "payment_made",
+        bodega_id=bodega_id,
+        pedido_id=pedido_id,
+        source="admin",
+        metadata={
+            "metodo": payload.get("metodo", "yape"),
+            "nro_operacion": payload.get("nro_operacion", ""),
+            "monto_financiado": monto_financiado,
+        },
+    )
     
     # Restore bodega line
     if bodega_id and monto_financiado > 0:

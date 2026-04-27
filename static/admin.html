@@ -164,7 +164,15 @@ tr:hover td{background:var(--card-hover)}
 <div class="kpi"><div class="kpi-label">Monto vencido</div><div class="kpi-value orange" id="kpiMontoVencido">S/0.00</div></div>
 </div>
 
+<div class="kpi-grid">
+<div class="kpi"><div class="kpi-label">Catálogos abiertos (7d)</div><div class="kpi-value blue" id="kpiCatalogOpened">0</div></div>
+<div class="kpi"><div class="kpi-label">Órdenes creadas (7d)</div><div class="kpi-value green" id="kpiOrdersCreated7d">0</div></div>
+<div class="kpi"><div class="kpi-label">Tasa de respuesta WA (7d)</div><div class="kpi-value orange" id="kpiResponseRate">0%</div></div>
+<div class="kpi"><div class="kpi-label">Bodegas activas (30d)</div><div class="kpi-value blue" id="kpiActiveBodegas30d">0</div></div>
+</div>
+
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px" id="rankingGrid"></div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px" id="analyticsGrid"></div>
 </div>
 
 <!-- PAGOS A DISTRIBUIDORES TAB -->
@@ -321,6 +329,37 @@ function refreshAll(){
     allCobranzas.forEach(function(c){if(c.distribuidor && c.distribuidor.nombre_comercial)dists.add(c.distribuidor.nombre_comercial)});
     sel.innerHTML = '<option value="">Todos los distribuidores</option>' + Array.from(dists).map(function(d){return '<option value="'+d+'">'+d+'</option>'}).join('');
   }).catch(console.error);
+
+  api('/api/distribuidor/admin/analytics-resumen').then(function(a){
+    var f = a.funnel || {};
+    var m = a.messages || {};
+    document.getElementById('kpiCatalogOpened').textContent = f.catalog_opened || 0;
+    document.getElementById('kpiOrdersCreated7d').textContent = f.order_created || 0;
+    document.getElementById('kpiResponseRate').textContent = (m.response_rate_pct||0).toFixed(1)+'%';
+    document.getElementById('kpiActiveBodegas30d').textContent = a.active_bodegas_30d || 0;
+    renderAnalyticsPanels(a);
+  }).catch(function(){
+    document.getElementById('analyticsGrid').innerHTML = '<div class="ranking-card"><div class="empty">Sin datos analíticos</div></div>';
+  });
+}
+
+function renderAnalyticsPanels(a){
+  var f = a.funnel || {};
+  var top = a.top_events_7d || [];
+  var embudo = [
+    ['Catálogo abierto', f.catalog_opened||0],
+    ['Producto agregado', f.product_added||0],
+    ['Orden creada', f.order_created||0],
+    ['Orden confirmada', f.order_confirmed||0],
+    ['Pago registrado', f.payment_made||0]
+  ];
+  document.getElementById('analyticsGrid').innerHTML =
+    '<div class="ranking-card"><h3>🧭 Embudo (7 días)</h3>'+
+    embudo.map(function(x){return '<div class="ranking-item"><span>'+x[0]+'</span><strong>'+x[1]+'</strong></div>'}).join('')+
+    '</div>'+
+    '<div class="ranking-card"><h3>⚡ Top eventos (7 días)</h3>'+
+    (top.length ? top.map(function(e){return '<div class="ranking-item"><span>'+e.event_type+'</span><strong>'+e.count+'</strong></div>'}).join('') : '<div class="empty">Sin eventos</div>')+
+    '</div>';
 }
 
 function renderRankings(){

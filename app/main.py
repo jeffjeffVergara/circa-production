@@ -358,6 +358,7 @@ async def meta_webhook_incoming(request: Request):
     """Handle incoming messages from Meta Cloud API."""
     from app.services.meta_webhook import parse_incoming, verify_signature
     from app.services import meta_client
+    from app.services.analytics import track_message
     
     body = await request.json()
     
@@ -371,6 +372,21 @@ async def meta_webhook_incoming(request: Request):
             telefono = f"+{telefono}"
         body_text = msg["body"]
         media_url = None
+        bodega_msg = db.get_bodega_by_phone(telefono) or db.get_bodega_by_phone(f"+{telefono}")
+        bodega_id_msg = bodega_msg.get("id") if bodega_msg else None
+        track_message(
+            telefono=telefono,
+            direction="inbound",
+            bodega_id=bodega_id_msg,
+            message_id=msg.get("message_id", ""),
+            message_type=msg.get("type", ""),
+            content=body_text,
+            metadata={
+                "button_id": msg.get("button_id", ""),
+                "list_id": msg.get("list_id", ""),
+                "has_flow_data": bool(msg.get("flow_data")),
+            },
+        )
         
         # Handle image (selfie for biometria)
         if msg["type"] == "image" and msg["media_id"]:
@@ -811,6 +827,29 @@ async def meta_webhook_incoming(request: Request):
                                         new_ld = min(new_ld, lap)
                                         db.sb.table("bodegas").update(
                                             {"linea_disponible": new_ld}).eq("id", bod_id).execute()
+                                        from app.services.analytics import track_event
+                                        track_event(
+                                            "order_confirmed" if tipo_op == "venta" else "preventa_confirmada",
+                                            bodega_id=bod_id,
+                                            pedido_id=pedido_id,
+                                            telefono=telefono,
+                                            source="pin_verify",
+                                            metadata={
+                                                "numero": num,
+                                                "tipo_operacion": tipo_op,
+                                                "monto_financiado": round(monto, 2),
+                                                "fee_monto": round(fee, 2),
+                                                "dias": dias,
+                                            },
+                                        )
+                                        track_event(
+                                            "credit_used",
+                                            bodega_id=bod_id,
+                                            pedido_id=pedido_id,
+                                            telefono=telefono,
+                                            source="pin_verify",
+                                            metadata={"monto": round(monto, 2), "dias": dias},
+                                        )
                                         await meta_client.send_text(
                                             telefono,
                                             f"✅ *Pedido {num} confirmado*\n"
@@ -837,6 +876,19 @@ async def meta_webhook_incoming(request: Request):
                                         "monto_financiado": 0, "monto_contado": round(monto, 2),
                                         "total": round(monto, 2), "estado": _confirmed_status_for(tipo_op),
                                     }).eq("id", pedido_id).execute()
+                                    from app.services.analytics import track_event
+                                    track_event(
+                                        "order_confirmed" if tipo_op == "venta" else "preventa_confirmada",
+                                        bodega_id=bod_id,
+                                        pedido_id=pedido_id,
+                                        telefono=telefono,
+                                        source="pin_verify",
+                                        metadata={
+                                            "numero": num,
+                                            "tipo_operacion": tipo_op,
+                                            "monto_contado": round(monto, 2),
+                                        },
+                                    )
                                     await meta_client.send_text(
                                         telefono,
                                         f"✅ *Pedido {num} confirmado — Contado*\n\n"
@@ -1189,8 +1241,15 @@ class CartSubmission(BaseModel):
     items: list
     tipo_operacion: str = "venta"
 
+
+class AnalyticsEventIn(BaseModel):
+    bodega_id: str
+    event_type: str
+    metadata: dict | None = None
+
 @app.post("/api/catalogo/submit-cart")
 async def submit_cart(data: CartSubmission):
+    from app.services.analytics import track_event
     items_list = [dict(i) if not isinstance(i, dict) else i for i in data.items]
     total = sum(i.get("subtotal", 0) for i in items_list)
     tipo = "preventa" if data.tipo_operacion == "preventa" else "venta"
@@ -1205,6 +1264,18 @@ async def submit_cart(data: CartSubmission):
         "tipo_operacion": tipo,
     }).execute()
     pedido_id = pedido.data[0]["id"] if pedido.data else None
+    if pedido_id:
+        track_event(
+            "preventa_created" if tipo == "preventa" else "order_created",
+            bodega_id=data.bodega_id,
+            pedido_id=pedido_id,
+            source="catalog_web",
+            metadata={
+                "tipo_operacion": tipo,
+                "items_count": len(items_list),
+                "total": round(total, 2),
+            },
+        )
     # Get bodega phone
     bodega = db.sb.table("bodegas").select("telefono_whatsapp").eq("id", data.bodega_id).limit(1).execute()
     if bodega.data and pedido_id:
@@ -1215,6 +1286,24 @@ async def submit_cart(data: CartSubmission):
         import asyncio
         asyncio.create_task(_send_payment_options(phone, pedido_id, total, items_text, data.bodega_id))
     return {"ok": True, "pedido_id": str(pedido_id) if pedido_id else None}
+
+
+@app.get("/api/analytics/bodega/{bodega_id}")
+async def analytics_bodega(bodega_id: str):
+    from app.services.analytics import get_bodega_features
+    return get_bodega_features(bodega_id)
+
+
+@app.post("/api/analytics/event")
+async def analytics_event(data: AnalyticsEventIn):
+    from app.services.analytics import track_event
+    track_event(
+        data.event_type,
+        bodega_id=data.bodega_id,
+        source="catalog_web",
+        metadata=data.metadata or {},
+    )
+    return {"ok": True}
 
 @app.post("/api/carrito/clear")
 async def clear_carrito_api(data: dict):

@@ -73,6 +73,33 @@ async def _send(to: str, payload: dict) -> dict | None:
             data = r.json()
             msg_id = data.get("messages", [{}])[0].get("id", "")
             logger.info(f"📤 Sent to {to}: {payload.get('type', '?')} (wamid={msg_id})")
+            try:
+                from app.services.analytics import track_message
+                from app.services import db as _db
+
+                b = _db.get_bodega_by_phone(f"+{to}") or _db.get_bodega_by_phone(to)
+                bodega_id = b.get("id") if b else None
+                msg_type = payload.get("type", "")
+                content = ""
+                template_name = ""
+                if msg_type == "text":
+                    content = payload.get("text", {}).get("body", "")
+                elif msg_type == "interactive":
+                    content = payload.get("interactive", {}).get("body", {}).get("text", "")
+                elif msg_type == "template":
+                    template_name = payload.get("template", {}).get("name", "")
+                track_message(
+                    telefono=f"+{to}",
+                    direction="outbound",
+                    bodega_id=bodega_id,
+                    message_id=msg_id,
+                    message_type=msg_type,
+                    content=content,
+                    template_name=template_name,
+                    metadata={"payload_type": msg_type},
+                )
+            except Exception:
+                pass
             return data
             
     except Exception as e:
