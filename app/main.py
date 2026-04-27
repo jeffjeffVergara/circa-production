@@ -154,18 +154,36 @@ async def twilio_webhook(
 # API ENDPOINTS
 # ══════════════════════════════════════════
 
-async def _gen_order_number(bodega_id):
-    """Generate next CRC-NNN order number."""
+async def _gen_order_number(bodega_id, tipo_operacion: str = "venta"):
+    """Generate next order number by operation type."""
+    prefix = "PRV" if tipo_operacion == "preventa" else "CRC"
     try:
-        r = db.sb.table("pedidos").select("numero").eq("bodega_id", bodega_id).not_.is_("numero", "null").order("created_at", desc=True).limit(1).execute()
-        if r.data and r.data[0]["numero"]:
-            last = r.data[0]["numero"]  # e.g. CRC-003
+        r = (
+            db.sb.table("pedidos")
+            .select("numero")
+            .eq("bodega_id", bodega_id)
+            .eq("tipo_operacion", tipo_operacion)
+            .not_.is_("numero", "null")
+            .order("created_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        if r.data and r.data[0].get("numero"):
+            last = r.data[0]["numero"]
             n = int(last.split("-")[1]) + 1
         else:
             n = 1
-        return f"CRC-{n:03d}"
+        return f"{prefix}-{n:03d}"
     except:
-        return f"CRC-{__import__('random').randint(100,999)}"
+        return f"{prefix}-{__import__('random').randint(100,999)}"
+
+
+def _is_draft_status(estado: str) -> bool:
+    return estado in ("borrador", "preventa_borrador")
+
+
+def _confirmed_status_for(tipo_operacion: str) -> str:
+    return "preventa_confirmada" if tipo_operacion == "preventa" else "confirmado"
 
 
 @app.get("/api/health")
@@ -436,7 +454,15 @@ async def meta_webhook_incoming(request: Request):
             try:
                 bod = db.sb.table("bodegas").select("id").eq("telefono_whatsapp", telefono).limit(1).execute()
                 bod_id = bod.data[0]["id"] if bod.data else None
-                r = db.sb.table("pedidos").select("id, monto_productos").eq("bodega_id", bod_id).eq("estado", "borrador").order("created_at", desc=True).limit(1).execute() if bod_id else type("X",(),{"data":[]})()
+                r = (
+                    db.sb.table("pedidos")
+                    .select("id, monto_productos")
+                    .eq("bodega_id", bod_id)
+                    .in_("estado", ["borrador", "preventa_borrador"])
+                    .order("created_at", desc=True)
+                    .limit(1)
+                    .execute()
+                ) if bod_id else type("X",(),{"data":[]})()
                 if r.data:
                     pedido = r.data[0]
                     monto = pedido["monto_productos"]
@@ -480,7 +506,15 @@ async def meta_webhook_incoming(request: Request):
                 fin_amt = int(monto_match.group(1)) if monto_match else 0
                 bod = db.sb.table("bodegas").select("id, linea_disponible").eq("telefono_whatsapp", telefono).limit(1).execute()
                 bod_id = bod.data[0]["id"] if bod.data else None
-                r = db.sb.table("pedidos").select("id, monto_productos").eq("bodega_id", bod_id).eq("estado", "borrador").order("created_at", desc=True).limit(1).execute() if bod_id else type("X",(),{"data":[]})()
+                r = (
+                    db.sb.table("pedidos")
+                    .select("id, monto_productos")
+                    .eq("bodega_id", bod_id)
+                    .in_("estado", ["borrador", "preventa_borrador"])
+                    .order("created_at", desc=True)
+                    .limit(1)
+                    .execute()
+                ) if bod_id else type("X",(),{"data":[]})()
                 if r.data and fin_amt > 0:
                     pedido = r.data[0]
                     total = pedido["monto_productos"]
@@ -511,7 +545,15 @@ async def meta_webhook_incoming(request: Request):
                 bod = db.sb.table("bodegas").select("id, linea_disponible").eq("telefono_whatsapp", telefono).limit(1).execute()
                 bod_id = bod.data[0]["id"] if bod.data else None
                 linea = bod.data[0].get("linea_disponible", 0) if bod.data else 0
-                r = db.sb.table("pedidos").select("id, monto_productos").eq("bodega_id", bod_id).eq("estado", "borrador").order("created_at", desc=True).limit(1).execute() if bod_id else type("X",(),{"data":[]})()
+                r = (
+                    db.sb.table("pedidos")
+                    .select("id, monto_productos")
+                    .eq("bodega_id", bod_id)
+                    .in_("estado", ["borrador", "preventa_borrador"])
+                    .order("created_at", desc=True)
+                    .limit(1)
+                    .execute()
+                ) if bod_id else type("X",(),{"data":[]})()
                 if r.data:
                     pedido = r.data[0]
                     total = pedido["monto_productos"]
@@ -603,11 +645,23 @@ async def meta_webhook_incoming(request: Request):
             try:
                 bodega_ped = db.get_bodega_by_phone(telefono)
                 if bodega_ped:
-                    await meta_client.send_catalogo_flow(telefono, bodega_ped["id"])
+                    await meta_client.send_catalogo_flow(telefono, bodega_ped["id"], tipo_operacion="venta")
                 else:
                     await meta_client.send_text(telefono, "Escribe MENU para empezar.")
             except Exception as e:
                 logger.error(f"PEDIDO handler error: {e}", exc_info=True)
+            if msg["message_id"]:
+                await meta_client.mark_as_read(msg["message_id"])
+            continue
+        if btn == "PREVENTA":
+            try:
+                bodega_pv = db.get_bodega_by_phone(telefono)
+                if bodega_pv:
+                    await meta_client.send_catalogo_flow(telefono, bodega_pv["id"], tipo_operacion="preventa")
+                else:
+                    await meta_client.send_text(telefono, "Escribe MENU para empezar.")
+            except Exception as e:
+                logger.error(f"PREVENTA handler error: {e}", exc_info=True)
             if msg["message_id"]:
                 await meta_client.mark_as_read(msg["message_id"])
             continue
@@ -639,7 +693,15 @@ async def meta_webhook_incoming(request: Request):
                 # Find pedido by bodega phone (most recent borrador)
                 bod = db.sb.table("bodegas").select("id").eq("telefono_whatsapp", telefono).limit(1).execute()
                 bod_id = bod.data[0]["id"] if bod.data else None
-                r = db.sb.table("pedidos").select("id, monto_productos, total, items_json").eq("bodega_id", bod_id).eq("estado", "borrador").order("created_at", desc=True).limit(1).execute() if bod_id else type("X",(),{"data":[]})()
+                r = (
+                    db.sb.table("pedidos")
+                    .select("id, monto_productos, total, items_json")
+                    .eq("bodega_id", bod_id)
+                    .in_("estado", ["borrador", "preventa_borrador"])
+                    .order("created_at", desc=True)
+                    .limit(1)
+                    .execute()
+                ) if bod_id else type("X",(),{"data":[]})()
                 if r.data:
                     pedido = r.data[0]
                     # Check session for fin_amt
@@ -710,7 +772,7 @@ async def meta_webhook_incoming(request: Request):
                                     telefono, "No encontramos ese pedido. Escribe MENU.")
                                 db.sb.table("sesiones").update(
                                     {"fase": "menu", "datos": "{}"}).eq("telefono", telefono).execute()
-                            elif pe.data[0].get("estado") != "borrador":
+                            elif not _is_draft_status(pe.data[0].get("estado")):
                                 await meta_client.send_text(
                                     telefono,
                                     "Este pedido ya estaba confirmado. Escribe MENU si necesitas otra cosa.",
@@ -734,13 +796,15 @@ async def meta_webhook_incoming(request: Request):
                                         qfee = calculate_fee(monto, dias)
                                         fee = qfee["fee"]
                                         rate = qfee["rate"]
-                                        num = await _gen_order_number(bod_id)
+                                        ped_t = db.sb.table("pedidos").select("tipo_operacion").eq("id", pedido_id).limit(1).execute()
+                                        tipo_op = ped_t.data[0].get("tipo_operacion", "venta") if ped_t.data else "venta"
+                                        num = await _gen_order_number(bod_id, tipo_op)
                                         db.sb.table("pedidos").update({
                                             "numero": num,
                                             "fee_tasa": rate, "fee_monto": fee,
                                             "monto_financiado": round(monto, 2), "plazo_dias": dias,
                                             "monto_contado": round(contado, 2),
-                                            "total": round(monto + fee, 2), "estado": "confirmado",
+                                            "total": round(monto + fee, 2), "estado": _confirmed_status_for(tipo_op),
                                         }).eq("id", pedido_id).execute()
                                         lap = float(bod_line.data[0].get("linea_aprobada") or ld)
                                         new_ld = max(0.0, ld - monto)
@@ -764,12 +828,14 @@ async def meta_webhook_incoming(request: Request):
                                             {"fase": "menu", "datos": "{}"}).eq("telefono", telefono).execute()
                                         logger.info(f"Order {pedido_id} confirmed via PIN (financiado)")
                                 else:
-                                    num = await _gen_order_number(bod_id)
+                                    ped_t = db.sb.table("pedidos").select("tipo_operacion").eq("id", pedido_id).limit(1).execute()
+                                    tipo_op = ped_t.data[0].get("tipo_operacion", "venta") if ped_t.data else "venta"
+                                    num = await _gen_order_number(bod_id, tipo_op)
                                     db.sb.table("pedidos").update({
                                         "numero": num,
                                         "fee_tasa": 0, "fee_monto": 0,
                                         "monto_financiado": 0, "monto_contado": round(monto, 2),
-                                        "total": round(monto, 2), "estado": "confirmado",
+                                        "total": round(monto, 2), "estado": _confirmed_status_for(tipo_op),
                                     }).eq("id", pedido_id).execute()
                                     await meta_client.send_text(
                                         telefono,
@@ -1121,18 +1187,22 @@ async def reset_pin(data: PinReset):
 class CartSubmission(BaseModel):
     bodega_id: str
     items: list
+    tipo_operacion: str = "venta"
 
 @app.post("/api/catalogo/submit-cart")
 async def submit_cart(data: CartSubmission):
     items_list = [dict(i) if not isinstance(i, dict) else i for i in data.items]
     total = sum(i.get("subtotal", 0) for i in items_list)
+    tipo = "preventa" if data.tipo_operacion == "preventa" else "venta"
+    estado_inicial = "preventa_borrador" if tipo == "preventa" else "borrador"
     # Create order in pedidos
     pedido = db.sb.table("pedidos").insert({
         "bodega_id": data.bodega_id,
         "distribuidor_id": "a1b2c3d4-0001-4000-8000-000000000001",
         "items_json": json.dumps(items_list),
         "monto_productos": total,
-        "estado": "borrador",
+        "estado": estado_inicial,
+        "tipo_operacion": tipo,
     }).execute()
     pedido_id = pedido.data[0]["id"] if pedido.data else None
     # Get bodega phone

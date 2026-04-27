@@ -314,6 +314,7 @@ async def send_menu(to: str, linea_disponible: float):
             "title": "Menú",
             "rows": [
                 {"id": "PEDIDO", "title": "Hacer un nuevo pedido", "description": "Arma tu pedido del catálogo"},
+                {"id": "PREVENTA", "title": "Hacer una pre-venta", "description": "Reserva para próxima entrega"},
                 {"id": "REPETIR", "title": "Repetir pedido anterior", "description": "Pide lo mismo de antes"},
                 {"id": "LINEA", "title": "Ver mi tope Circa", "description": "Cuánto te queda para pedir"},
                 {"id": "ESTADO", "title": "Estado de mis pedidos", "description": "Seguimiento y pagos"},
@@ -561,16 +562,23 @@ async def send_linea_info(to: str, aprobada: float, disponible: float, scoring: 
     )
 
 
-async def send_catalogo_flow(to: str, bodega_id: str):
+async def send_catalogo_flow(to: str, bodega_id: str, tipo_operacion: str = "venta"):
     """Send catalog as CTA URL button - opens in WhatsApp in-app browser."""
     base = os.getenv("APP_BASE_URL", "https://circa-production-c517.up.railway.app")
-    url = f"{base}/catalogo-v2?b={bodega_id}"
+    t = "preventa" if tipo_operacion == "preventa" else "venta"
+    url = f"{base}/catalogo-v2?b={bodega_id}&t={t}"
+    texto = (
+        "Arma tu pre-venta del catalogo.\n"
+        "Busca por nombre o marca, elige cantidades y confirma."
+        if t == "preventa"
+        else "Arma tu pedido del catalogo.\nBusca por nombre o marca, elige cantidades y confirma."
+    )
     return await _send(to, {
         "type": "interactive",
         "interactive": {
             "type": "cta_url",
             "body": {
-                "text": "Arma tu pedido del catalogo.\nBusca por nombre o marca, elige cantidades y confirma."
+                "text": texto
             },
             "action": {
                 "name": "cta_url",

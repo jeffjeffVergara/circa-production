@@ -620,10 +620,18 @@ def handle_message(telefono: str, body: str, media_url: str = None) -> list:
     if fase == "menu":
         if body_n in ("PEDIDO", "PEDIR", "COMPRAR", "1", "pedido"):
             db.clear_carrito(bodega["id"])  # Fresh order = empty cart
-            url = get_catalog_url(bodega["id"])
+            url = get_catalog_url(bodega["id"]) + "&t=venta"
             db.upsert_session(telefono, "catalogo", {"cart": []}, bodega["id"])
             return [
                 f"📦 *Catálogo de productos*\n\nAbre el catálogo, arma tu pedido y confirma:\n👉 {url}\n\nFiltra por *categoría* o *marca*.\nPrecios por pack (6, 12 o 24u).\nEl tag indica el vendedor.\n\nCuando termines, presiona *Financiar con Circa* en la web."
+            ]
+
+        if body_n in ("PREVENTA", "PRE-VENTA", "PRE VENTA", "5"):
+            db.clear_carrito(bodega["id"])
+            url = get_catalog_url(bodega["id"]) + "&t=preventa"
+            db.upsert_session(telefono, "catalogo", {"cart": [], "tipo_operacion": "preventa"}, bodega["id"])
+            return [
+                f"🗓️ *Pre-venta*\n\nAbre el catálogo, arma tu pre-venta y confirma:\n👉 {url}\n\nTu solicitud quedará en estado *preventa_confirmada* hasta ser aceptada."
             ]
 
         if body_n in ("REPETIR", "4"):

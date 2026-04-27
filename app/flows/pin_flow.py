@@ -196,21 +196,23 @@ def _verify_pin_for_payment(pin: str, bodega_id: str) -> dict:
         fee = 0.0
         rate = 0.0
 
-        pe_st = db.sb.table("pedidos").select("id, estado").eq("id", pedido_id).limit(1).execute()
+        pe_st = db.sb.table("pedidos").select("id, estado, tipo_operacion").eq("id", pedido_id).limit(1).execute()
         if not pe_st.data:
             db.sb.table("sesiones").update({"fase": "menu", "datos": "{}"}).eq("telefono", telefono).execute()
             return {"screen": "SUCCESS", "data": {"message": "No encontramos ese pedido."}}
-        if pe_st.data[0].get("estado") != "borrador":
+        if pe_st.data[0].get("estado") not in ("borrador", "preventa_borrador"):
             db.sb.table("sesiones").update({"fase": "menu", "datos": "{}"}).eq("telefono", telefono).execute()
             return {"screen": "SUCCESS", "data": {"message": "Este pedido ya estaba confirmado."}}
+        tipo_operacion = pe_st.data[0].get("tipo_operacion", "venta")
 
         # Generate order number
         try:
-            num = db.sb.rpc("gen_numero_pedido").execute().data
+            num = db.sb.rpc("gen_numero_pedido", {"p_prefijo": ("PRV" if tipo_operacion == "preventa" else "CRC")}).execute().data
         except Exception as e:
             logger.error(f"gen_numero_pedido error: {e}")
             import random
-            num = f"CRC-{random.randint(100,999)}"
+            pref = "PRV" if tipo_operacion == "preventa" else "CRC"
+            num = f"{pref}-{random.randint(100,999)}"
 
         if dias > 0:
             bod_line = db.sb.table("bodegas").select("linea_disponible, linea_aprobada").eq("id", bodega_id).limit(1).execute()
@@ -232,7 +234,8 @@ def _verify_pin_for_payment(pin: str, bodega_id: str) -> dict:
             db.sb.table("pedidos").update({
                 "numero": num, "fee_tasa": rate, "fee_monto": fee,
                 "monto_financiado": round(monto, 2), "plazo_dias": dias,
-                "total": round(monto + fee, 2), "estado": "confirmado",
+                "total": round(monto + fee, 2),
+                "estado": ("preventa_confirmada" if tipo_operacion == "preventa" else "confirmado"),
             }).eq("id", pedido_id).execute()
             try:
                 lap = float(bod_line.data[0].get("linea_aprobada") or ld) if bod_line.data else ld
@@ -245,7 +248,9 @@ def _verify_pin_for_payment(pin: str, bodega_id: str) -> dict:
         else:
             db.sb.table("pedidos").update({
                 "numero": num, "fee_tasa": 0, "fee_monto": 0,
-                "monto_contado": round(monto, 2), "total": round(monto, 2), "estado": "confirmado",
+                "monto_contado": round(monto, 2),
+                "total": round(monto, 2),
+                "estado": ("preventa_confirmada" if tipo_operacion == "preventa" else "confirmado"),
             }).eq("id", pedido_id).execute()
             msg = f"Pedido #{num} confirmado\nContado: S/{monto:.2f}"
         

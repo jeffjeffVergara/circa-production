@@ -298,11 +298,14 @@ async def admin_list_pedidos(
     bodega: Optional[str] = None,
     distribuidor: Optional[str] = None,
     estado: Optional[str] = None,
+    tipo: Optional[str] = None,
     admin: bool = Depends(verify_admin),
 ):
     """List all orders with full details — admin view."""
     params = {"select":"*","order":"created_at.desc","limit":"1000"}
     if estado: params["estado"] = f"eq.{estado}"
+    if tipo in ("venta", "preventa"):
+        params["tipo_operacion"] = f"eq.{tipo}"
     pedidos = _sb_get("pedidos", params)
     # Fetch all bodegas and distribuidores
     bodega_ids = list(set(p.get("bodega_id","") for p in pedidos if p.get("bodega_id")))
@@ -350,6 +353,28 @@ async def admin_list_pedidos(
         dl = distribuidor.lower()
         pedidos = [p for p in pedidos if dl in (p.get("distribuidor",{}).get("nombre_comercial","") or "").lower()]
     return {"pedidos": pedidos, "total": len(pedidos)}
+
+
+@router.post("/admin/preventa/{pedido_id}/aceptar")
+async def admin_aceptar_preventa(pedido_id: str, admin: bool = Depends(verify_admin)):
+    rows = _sb_get("pedidos", {"select":"id,numero,estado,tipo_operacion","id":f"eq.{pedido_id}"})
+    if not rows:
+        raise HTTPException(status_code=404, detail="Pedido no encontrado")
+    p = rows[0]
+    if p.get("tipo_operacion") != "preventa":
+        raise HTTPException(status_code=400, detail="El pedido no es pre-venta")
+    if p.get("estado") != "preventa_confirmada":
+        raise HTTPException(status_code=400, detail="La pre-venta no está en estado confirmada")
+    _sb_patch(
+        "pedidos",
+        {
+            "estado": "preventa_aceptada",
+            "preventa_aceptada_at": datetime.now(timezone.utc).isoformat(),
+            "preventa_aceptada_por": "admin",
+        },
+        {"id": f"eq.{pedido_id}"},
+    )
+    return {"ok": True, "pedido_id": pedido_id, "estado": "preventa_aceptada", "numero": p.get("numero")}
 
 @router.get("/admin/resumen")
 async def admin_resumen(admin: bool = Depends(verify_admin)):

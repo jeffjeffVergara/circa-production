@@ -218,6 +218,11 @@ tr:hover td{background:var(--card-hover)}
 <div class="filters">
 <input type="text" id="pedFiltroBodega" placeholder="Buscar bodega..." onkeyup="loadPedidos()">
 <input type="text" id="pedFiltroDist" placeholder="Distribuidor..." onkeyup="loadPedidos()">
+<select id="pedFiltroTipo" onchange="loadPedidos()">
+<option value="">Venta y pre-venta</option>
+<option value="venta">Solo venta</option>
+<option value="preventa">Solo pre-venta</option>
+</select>
 <select id="pedFiltroEstado" onchange="loadPedidos()">
 <option value="">Todos</option>
 <option value="confirmado">Confirmado</option>
@@ -232,7 +237,7 @@ tr:hover td{background:var(--card-hover)}
 </div>
 <div class="table-wrap">
 <table class="table-pedidos">
-<thead><tr><th>Fecha</th><th>Pedido</th><th>Bodega</th><th>Distribuidor</th><th>Total</th><th>Circa paga</th><th>Estado</th></tr></thead>
+<thead><tr><th>Fecha</th><th>Pedido</th><th>Tipo</th><th>Bodega</th><th>Distribuidor</th><th>Total</th><th>Circa paga</th><th>Estado</th><th>Acciones</th></tr></thead>
 <tbody id="pedidosBody"></tbody>
 </table>
 </div>
@@ -436,10 +441,12 @@ function loadCobranzas(){
 function loadPedidos(){
   var bodega = document.getElementById('pedFiltroBodega').value;
   var dist = document.getElementById('pedFiltroDist').value;
+  var tipo = document.getElementById('pedFiltroTipo').value;
   var estado = document.getElementById('pedFiltroEstado').value;
   var url = '/api/distribuidor/admin/pedidos?';
   if(bodega) url += 'bodega='+encodeURIComponent(bodega)+'&';
   if(dist) url += 'distribuidor='+encodeURIComponent(dist)+'&';
+  if(tipo) url += 'tipo='+encodeURIComponent(tipo)+'&';
   if(estado) url += 'estado='+estado;
   api(url).then(function(d){
     allPedidos = d.pedidos || [];
@@ -447,9 +454,31 @@ function loadPedidos(){
       var b = p.bodega || {};
       var dt = p.distribuidor || {};
       var fecha = p.created_at ? new Date(p.created_at).toLocaleDateString('es-PE',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) : '-';
-      return '<tr><td>'+fecha+'</td><td class="pedido-num mono">'+(p.numero||'-')+'</td><td>'+nombreBodega(b)+'</td><td style="color:var(--muted)">'+(dt.nombre_comercial||'?')+'</td><td class="mono">S/'+Number(p.monto_productos||0).toFixed(2)+'</td><td class="mono" style="color:var(--blue-light)">S/'+Number(p.monto_financiado||0).toFixed(2)+'</td><td><span class="badge badge-'+(p.estado||'').replace(' ','_')+'">'+(p.estado||'-')+'</span></td></tr>';
-    }).join('') : '<tr><td colspan="7" class="empty">Sin pedidos</td></tr>';
+      var tipo = p.tipo_operacion || 'venta';
+      var tipoBadge = tipo==='preventa' ? '<span class="badge" style="background:rgba(249,115,22,.2);color:#fb923c">pre-venta</span>' : '<span class="badge" style="background:rgba(96,165,250,.2);color:#93c5fd">venta</span>';
+      var acciones = '';
+      if(tipo==='preventa' && p.estado==='preventa_confirmada'){
+        acciones = '<button class="btn btn-small btn-green" onclick="aceptarPreventa(\''+p.id+'\')">Aceptar</button>';
+      } else {
+        acciones = '<span style="color:var(--muted);font-size:12px">-</span>';
+      }
+      return '<tr><td>'+fecha+'</td><td class="pedido-num mono">'+(p.numero||'-')+'</td><td>'+tipoBadge+'</td><td>'+nombreBodega(b)+'</td><td style="color:var(--muted)">'+(dt.nombre_comercial||'?')+'</td><td class="mono">S/'+Number(p.monto_productos||0).toFixed(2)+'</td><td class="mono" style="color:var(--blue-light)">S/'+Number(p.monto_financiado||0).toFixed(2)+'</td><td><span class="badge badge-'+(p.estado||'').replace(' ','_')+'">'+(p.estado||'-')+'</span></td><td>'+acciones+'</td></tr>';
+    }).join('') : '<tr><td colspan="9" class="empty">Sin pedidos</td></tr>';
   });
+}
+
+function aceptarPreventa(pid){
+  if(!confirm('¿Aceptar esta pre-venta?')) return;
+  fetch('/api/distribuidor/admin/preventa/'+pid+'/aceptar', {
+    method:'POST', headers:{'X-Admin-Token':TOKEN}
+  }).then(function(r){return r.json()}).then(function(d){
+    if(d && d.ok){
+      showToast('Pre-venta aceptada','success');
+      loadPedidos();
+    } else {
+      showToast('No se pudo aceptar','error');
+    }
+  }).catch(function(e){showToast('Error: '+e.message,'error')});
 }
 
 function openVerificarPago(pid){
