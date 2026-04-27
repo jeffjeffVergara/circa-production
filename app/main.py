@@ -466,6 +466,44 @@ async def meta_webhook_incoming(request: Request):
                 await meta_client.mark_as_read(msg["message_id"])
             continue
 
+        if btn.startswith("PRECONF_"):
+            try:
+                bod = db.sb.table("bodegas").select("id").eq("telefono_whatsapp", telefono).limit(1).execute()
+                bod_id = bod.data[0]["id"] if bod.data else None
+                r = (
+                    db.sb.table("pedidos")
+                    .select("id, monto_productos")
+                    .eq("bodega_id", bod_id)
+                    .eq("estado", "preventa_borrador")
+                    .order("created_at", desc=True)
+                    .limit(1)
+                    .execute()
+                ) if bod_id else type("X",(),{"data":[]})()
+                if r.data:
+                    pedido = r.data[0]
+                    monto = pedido["monto_productos"]
+                    db.sb.table("sesiones").delete().eq("telefono", telefono).execute()
+                    db.sb.table("sesiones").insert({
+                        "telefono": telefono,
+                        "fase": "pin_pago",
+                        "datos": json.dumps({"pedido_id": pedido["id"], "dias": 0, "rate": 0, "monto": monto}),
+                        "bodega_id": bod_id,
+                    }).execute()
+                    await meta_client.send_text(
+                        telefono,
+                        f"🔐 *Confirmar pre-venta*\n\n"
+                        f"Ingresa tu clave Circa para confirmar la pre-venta por S/{monto:.2f}.",
+                    )
+                    await meta_client.send_pin_request(telefono, mode="verify", bodega_id=bod_id)
+                else:
+                    await meta_client.send_text(telefono, "No encontré una pre-venta pendiente.")
+            except Exception as e:
+                logger.error(f"PRECONF handler error: {e}", exc_info=True)
+                await meta_client.send_text(telefono, "Error al confirmar pre-venta. Intenta de nuevo.")
+            if msg.get("message_id"):
+                await meta_client.mark_as_read(msg["message_id"])
+            continue
+
         if btn.startswith("CONTADO_"):
             try:
                 bod = db.sb.table("bodegas").select("id").eq("telefono_whatsapp", telefono).limit(1).execute()
@@ -1277,7 +1315,7 @@ async def submit_cart(data: CartSubmission):
             },
         )
     # For venta: send proactive payment options right after cart submit.
-    # For preventa: do NOT send payment notifications until the preventa is confirmed.
+    # For preventa: ask explicit confirm step (no payment options yet).
     if tipo == "venta":
         bodega = db.sb.table("bodegas").select("telefono_whatsapp").eq("id", data.bodega_id).limit(1).execute()
         if bodega.data and pedido_id:
@@ -1287,6 +1325,26 @@ async def submit_cart(data: CartSubmission):
             from app.flows.catalogo import _send_payment_options
             import asyncio
             asyncio.create_task(_send_payment_options(phone, pedido_id, total, items_text, data.bodega_id))
+    else:
+        bodega = db.sb.table("bodegas").select("telefono_whatsapp").eq("id", data.bodega_id).limit(1).execute()
+        if bodega.data and pedido_id:
+            phone = bodega.data[0]["telefono_whatsapp"].replace("+", "")
+            pid = str(pedido_id)[:8]
+            await meta_client.send_text(
+                phone,
+                f"🗓️ *Pre-venta armada*\n\n"
+                f"Total referencial: S/{total:.2f}\n"
+                f"Código temporal: *PRV-{pid}*\n\n"
+                f"Si todo está bien, confirma tu pre-venta con tu clave Circa.",
+            )
+            await meta_client.send_buttons(
+                to=phone,
+                body="¿Qué deseas hacer ahora?",
+                buttons=[
+                    {"id": f"PRECONF_{pid}", "title": "Confirmar pre-venta"},
+                    {"id": f"EDITAR_{pid}", "title": "Editar carrito"},
+                ],
+            )
     return {"ok": True, "pedido_id": str(pedido_id) if pedido_id else None}
 
 
