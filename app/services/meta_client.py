@@ -340,8 +340,8 @@ async def send_menu(to: str, linea_disponible: float):
         sections=[{
             "title": "Menú",
             "rows": [
-                {"id": "PEDIDO", "title": "Hacer un nuevo pedido", "description": "Arma tu pedido del catálogo"},
                 {"id": "PREVENTA", "title": "Hacer una pre-venta", "description": "Reserva para próxima entrega"},
+                {"id": "PEDIDO", "title": "Hacer un nuevo pedido", "description": "Arma tu pedido del catálogo"},
                 {"id": "REPETIR", "title": "Repetir pedido anterior", "description": "Pide lo mismo de antes"},
                 {"id": "LINEA", "title": "Ver mi tope Circa", "description": "Cuánto te queda para pedir"},
                 {"id": "ESTADO", "title": "Estado de mis pedidos", "description": "Seguimiento y pagos"},

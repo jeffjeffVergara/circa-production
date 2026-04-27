@@ -1276,15 +1276,17 @@ async def submit_cart(data: CartSubmission):
                 "total": round(total, 2),
             },
         )
-    # Get bodega phone
-    bodega = db.sb.table("bodegas").select("telefono_whatsapp").eq("id", data.bodega_id).limit(1).execute()
-    if bodega.data and pedido_id:
-        phone = bodega.data[0]["telefono_whatsapp"].replace("+", "")
-        items_text = "\n".join(f"{i.get('cantidad',1)}x {i.get('nombre','')} — S/{i.get('subtotal',0):.2f}" for i in items_list)
-        # Send payment options via Meta API (async)
-        from app.flows.catalogo import _send_payment_options
-        import asyncio
-        asyncio.create_task(_send_payment_options(phone, pedido_id, total, items_text, data.bodega_id))
+    # For venta: send proactive payment options right after cart submit.
+    # For preventa: do NOT send payment notifications until the preventa is confirmed.
+    if tipo == "venta":
+        bodega = db.sb.table("bodegas").select("telefono_whatsapp").eq("id", data.bodega_id).limit(1).execute()
+        if bodega.data and pedido_id:
+            phone = bodega.data[0]["telefono_whatsapp"].replace("+", "")
+            items_text = "\n".join(f"{i.get('cantidad',1)}x {i.get('nombre','')} — S/{i.get('subtotal',0):.2f}" for i in items_list)
+            # Send payment options via Meta API (async)
+            from app.flows.catalogo import _send_payment_options
+            import asyncio
+            asyncio.create_task(_send_payment_options(phone, pedido_id, total, items_text, data.bodega_id))
     return {"ok": True, "pedido_id": str(pedido_id) if pedido_id else None}
 
 
