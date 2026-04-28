@@ -118,15 +118,15 @@ def _build_field_table(fields: list, styles) -> Table:
 def _build_rates_table(styles) -> Table:
     """Tabla de plazos y cargos."""
     header = [
-        Paragraph("<b>Plazo</b>", styles["ClauseBody"]),
+        Paragraph("<b>D\u00eda de pago</b>", styles["ClauseBody"]),
         Paragraph("<b>Cargo</b>", styles["ClauseBody"]),
         Paragraph("<b>M\u00ednimo</b>", styles["ClauseBody"]),
     ]
     rows = [
         header,
-        ["7 d\u00edas", "3% del monto financiado", "S/ 5.00"],
-        ["15 d\u00edas", "5% del monto financiado", "S/ 5.00"],
-        ["30 d\u00edas", "7% del monto financiado", "S/ 5.00"],
+        ["D\u00eda 1 al 7", "3% del monto financiado", "S/ 3.00"],
+        ["D\u00eda 8 al 15", "5% del monto financiado", "S/ 3.00"],
+        ["D\u00eda 16 al 30", "7% del monto financiado", "S/ 3.00"],
     ]
 
     t = Table(rows, colWidths=[100, 220, 100])
@@ -170,13 +170,16 @@ CLAUSULAS = [
         "hasta en 2 d\u00edas h\u00e1biles.",
     ]),
     ("CL\u00c1USULA 6: INCUMPLIMIENTO Y MORA", [
-        "Regir\u00e1 la mora autom\u00e1tica sin necesidad de interpelaci\u00f3n o aviso al Bodeguero. "
-        "Se podr\u00e1n enviar recordatorios de pago. En caso de morosidad o incumplimiento, "
-        "se aplicar\u00e1 un cargo por mora de 0.30% diario sobre el saldo pendiente, incluyendo "
-        "los cargos. Se suspender\u00e1 la facilidad y se podr\u00e1n bloquear nuevos pedidos.",
-        "En caso de incumplimiento, CIRCA notificar\u00e1 al distribuidor asociado sobre el "
-        "estado de mora del BODEGUERO. Esta informaci\u00f3n podr\u00e1 ser considerada por el "
-        "distribuidor para futuras decisiones comerciales.",
+        "El BODEGUERO se compromete a realizar el pago dentro del plazo acordado. "
+        "CIRCA aplica una tasa seg\u00fan el d\u00eda efectivo de pago, detallada en la Cl\u00e1usula 4.",
+        "A partir del d\u00eda 31 desde la fecha de compra, el saldo pendiente ingresar\u00e1 en "
+        "mora con un cargo diario de 0.03% sobre el monto total adeudado. La mora ser\u00e1 "
+        "autom\u00e1tica sin necesidad de interpelaci\u00f3n ni aviso al BODEGUERO.",
+        "Desde el primer d\u00eda de atraso del pago acordado, CIRCA podr\u00e1 suspender el "
+        "acceso a nuevas compras a cr\u00e9dito hasta que el BODEGUERO regularice su situaci\u00f3n.",
+        "CIRCA podr\u00e1 enviar recordatorios de pago por WhatsApp y notificar al distribuidor "
+        "asociado sobre el estado de mora del BODEGUERO. Esta informaci\u00f3n podr\u00e1 ser "
+        "considerada por el distribuidor para futuras decisiones comerciales.",
     ]),
     ("CL\u00c1USULA 7: SEGURIDAD", [
         "El Bodeguero crear\u00e1 un PIN personal (c\u00f3digo de 4 d\u00edgitos) para acceder a la "
@@ -280,7 +283,7 @@ def generate_contract(bodega_data: dict, output_dir: str = "/tmp") -> str:
     story.append(Spacer(1, 6))
     story.append(HRFlowable(width="100%", thickness=2, color=CIRCA_BLUE))
     story.append(Paragraph(
-        f"Versi\u00f3n 2.0 | Fecha de emisi\u00f3n: 06/04/2026",
+        f"Versi\u00f3n 2.1 | Fecha de emisi\u00f3n: 28/04/2026",
         styles["VersionDate"]
     ))
     

@@ -1,4 +1,12 @@
 """
+⚠️ DEPRECATED — Solo se usa `generate_reminders_schedule` desde cobranza.py.
+El resto de funciones (calculate_eligibility, fees, MIN_FEE, DEFAULT_FEE_TABLE)
+son LEGACY y NO se llaman desde producción. La fuente de verdad para fees es
+app/services/fees.py. Pendiente: migrar generate_reminders_schedule a fees.py
+y borrar este archivo. Verificado 28-abr-2026.
+
+──────────────────────────────────────────────────────────────────
+
 Circa Financing Engine — Fee Calculation, Eligibility & Line Management.
 
 Core rules:
@@ -16,14 +24,14 @@ logger = logging.getLogger("circa.financing")
 
 # ── Fee table (configurable) ──
 # plazo_dias → tasa (as decimal) — flat per contract
-# Minimum fee: S/5.00
+# Minimum fee: S/3.00
 DEFAULT_FEE_TABLE = {
     7: Decimal("0.03"),    # 3%
     15: Decimal("0.05"),   # 5%
     30: Decimal("0.07"),   # 7%
 }
 
-MIN_FEE = Decimal("5.00")
+MIN_FEE = Decimal("3.00")  # Alineado a fees.py (era 5.00, bug histórico)
 
 
 def calculate_eligibility(cart_total: float, linea_disponible: float) -> dict:

@@ -194,7 +194,7 @@ async def health():
 async def privacy():
     return PlainTextResponse("""
 POLÍTICA DE PRIVACIDAD — CIRCA (PALI S.A.C.)
-Última actualización: 6 de abril de 2026
+Última actualización: 28 de abril de 2026
 
 Circa, operado por PALI S.A.C. (RUC 20600627806), recopila datos personales (RUC, DNI, nombre, dirección, teléfono, historial de pedidos y pagos) exclusivamente para la evaluación crediticia, gestión de pedidos y cobranza. Los datos son almacenados en servidores seguros y no se comparten con terceros sin consentimiento, salvo requerimiento legal. El usuario puede ejercer sus derechos ARCO escribiendo a contacto@circa.pe. Cumplimos con la Ley 29733 de Protección de Datos Personales del Perú.
 
@@ -205,9 +205,9 @@ Contacto: contacto@circa.pe | +51 986 311 567
 async def terms():
     return PlainTextResponse("""
 CONDICIONES DEL SERVICIO — CIRCA (PALI S.A.C.)
-Última actualización: 6 de abril de 2026
+Última actualización: 28 de abril de 2026
 
-Circa es una plataforma de crédito embebido para bodegas peruanas operada por PALI S.A.C. Al usar el servicio, el usuario acepta las condiciones del contrato de línea de crédito revolving, incluyendo comisiones (3% a 7 días, 5% a 15 días, 7% a 30 días), interés moratorio (0.30% diario), y las políticas de cobranza. El servicio está sujeto a las leyes de la República del Perú, jurisdicción de Lima.
+Circa es una plataforma de crédito embebido para bodegas peruanas operada por PALI S.A.C. Al usar el servicio, el usuario acepta las condiciones del contrato de línea de crédito revolving, incluyendo tasas según día de pago (3% del día 1 al 7, 5% del día 8 al 15, 7% del día 16 al 30), interés moratorio (0.03% diario a partir del día 31), y las políticas de cobranza. El servicio está sujeto a las leyes de la República del Perú, jurisdicción de Lima.
 
 Contacto: contacto@circa.pe | +51 986 311 567
 """, media_type="text/plain; charset=utf-8")
