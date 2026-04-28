@@ -200,7 +200,7 @@ def _verify_pin_for_payment(pin: str, bodega_id: str) -> dict:
         if not pe_st.data:
             db.sb.table("sesiones").update({"fase": "menu", "datos": "{}"}).eq("telefono", telefono).execute()
             return {"screen": "SUCCESS", "data": {"message": "No encontramos ese pedido."}}
-        if pe_st.data[0].get("estado") not in ("borrador", "preventa_borrador"):
+        if pe_st.data[0].get("estado") not in ("borrador", "preventa_borrador", "preventa_confirmada"):
             db.sb.table("sesiones").update({"fase": "menu", "datos": "{}"}).eq("telefono", telefono).execute()
             return {"screen": "SUCCESS", "data": {"message": "Este pedido ya estaba confirmado."}}
         tipo_operacion = pe_st.data[0].get("tipo_operacion", "venta")
