@@ -1021,7 +1021,8 @@ async def meta_webhook_incoming(request: Request):
                     
                     # ── Menu signals ──
                     elif signal == "MENU":
-                        _pv_pend = db.get_preventa_pendiente(bodega["id"]) if bodega else None
+                        _bodega_menu = db.get_bodega_by_phone(telefono)
+                        _pv_pend = db.get_preventa_pendiente(_bodega_menu["id"]) if _bodega_menu else None
                         await meta_client.send_menu(telefono, resp.get("linea", 500), preventa_pendiente=_pv_pend)
                     elif signal == "LINEA_INFO":
                         await meta_client.send_linea_info(
