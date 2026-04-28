@@ -591,7 +591,7 @@ async def _send_payment_options(phone, pedido_id, total, items_text, bodega_id=N
             })
     
     header = (
-        f"\U0001f6d2 *{saludo_pedido} pedido*\n"
+        f"\U0001f6d2 *{saludo_pedido} pedido est\u00e1 listo para pagar*\n"
         f"\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n"
         f"{items_text}\n"
         f"\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n"
