@@ -1045,6 +1045,24 @@ async def meta_webhook_incoming(request: Request):
                         bodega_leg = db.get_bodega_by_phone(telefono)
                         if bodega_leg:
                             await meta_client.send_catalogo_flow(telefono, bodega_leg["id"])
+                    elif signal == "PREVENTA_PAYMENT_OPTIONS":
+                        from app.flows.catalogo import _send_payment_options
+                        items = resp.get("items") or []
+                        lines_items = []
+                        for it in items:
+                            cat = it.get("catalogo_distribuidor") or {}
+                            prod = cat.get("productos_circa") or {}
+                            nombre = (prod.get("nombre") or "Producto")[:38]
+                            cant = it.get("cantidad", 0)
+                            sub = float(it.get("subtotal") or 0)
+                            if sub == 0:
+                                lines_items.append(f"▸ {cant}x *{nombre}* 🎁")
+                            else:
+                                lines_items.append(f"▸ {cant}x *{nombre}*\n   S/{sub:.2f}")
+                        items_text = "\n".join(lines_items)
+                        asyncio.create_task(_send_payment_options(
+                            telefono, resp["pedido_id"], resp["total"], items_text, resp["bodega_id"]
+                        ))
                     else:
                         logger.warning(f"Unknown signal: {signal}")
                 
