@@ -1060,9 +1060,9 @@ async def meta_webhook_incoming(request: Request):
                             else:
                                 lines_items.append(f"▸ {cant}x *{nombre}*\n   S/{sub:.2f}")
                         items_text = "\n".join(lines_items)
-                        asyncio.create_task(_send_payment_options(
+                        await _send_payment_options(
                             telefono, resp["pedido_id"], resp["total"], items_text, resp["bodega_id"]
-                        ))
+                        )
                     else:
                         logger.warning(f"Unknown signal: {signal}")
                 
