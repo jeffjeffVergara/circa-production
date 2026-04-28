@@ -433,11 +433,18 @@ def crear_pedido_preventa(
             })
             continue
         
+        # pack_size = número entero de unidades por pack ("UND x 1" → 1, "CJA x 6" → 6)
+        unidad_str = it.get("unidad") or "UND x 1"
+        try:
+            pack_size_int = int(unidad_str.split("x")[-1].strip())
+        except (ValueError, AttributeError):
+            pack_size_int = 1  # fallback seguro
+        
         sb.table("items_pedido").insert({
             "pedido_id": pedido_id,
             "catalogo_id": catalogo_id,
-            "pack_size": it.get("unidad", "UND x 1"),
-            "unidad": it.get("unidad"),
+            "pack_size": pack_size_int,
+            "unidad": unidad_str,
             "cantidad": it["cantidad"],
             "precio": it["precio_unitario"],
             "subtotal": it.get("subtotal", it["cantidad"] * it["precio_unitario"]),
