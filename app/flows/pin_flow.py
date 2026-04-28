@@ -196,14 +196,17 @@ def _verify_pin_for_payment(pin: str, bodega_id: str) -> dict:
         fee = 0.0
         rate = 0.0
 
-        pe_st = db.sb.table("pedidos").select("id, estado, tipo_operacion").eq("id", pedido_id).limit(1).execute()
+        pe_st = db.sb.table("pedidos").select("id, estado, tipo_operacion, origen").eq("id", pedido_id).limit(1).execute()
         if not pe_st.data:
             db.sb.table("sesiones").update({"fase": "menu", "datos": "{}"}).eq("telefono", telefono).execute()
             return {"screen": "SUCCESS", "data": {"message": "No encontramos ese pedido."}}
-        if pe_st.data[0].get("estado") not in ("borrador", "preventa_borrador"):
+        if pe_st.data[0].get("estado") not in ("borrador", "preventa_borrador", "preventa_confirmada"):
             db.sb.table("sesiones").update({"fase": "menu", "datos": "{}"}).eq("telefono", telefono).execute()
             return {"screen": "SUCCESS", "data": {"message": "Este pedido ya estaba confirmado."}}
         tipo_operacion = pe_st.data[0].get("tipo_operacion", "venta")
+        origen_pedido = pe_st.data[0].get("origen", "catalogo")
+        # Para preventa DIMAX: el estado final post-PIN es 'confirmado' (no preventa_confirmada que es el estado de import)
+        is_preventa_dimax = (origen_pedido == "preventa_dimax")
 
         # Generate order number
         try:
@@ -231,11 +234,13 @@ def _verify_pin_for_payment(pin: str, bodega_id: str) -> dict:
             qfee = calculate_fee(monto, dias)
             fee = qfee["fee"]
             rate = qfee["rate"]
+            estado_final = "confirmado" if is_preventa_dimax else ("preventa_confirmada" if tipo_operacion == "preventa" else "confirmado")
             db.sb.table("pedidos").update({
                 "numero": num, "fee_tasa": rate, "fee_monto": fee,
                 "monto_financiado": round(monto, 2), "plazo_dias": dias,
-                "total": round(monto + fee, 2),
-                "estado": ("preventa_confirmada" if tipo_operacion == "preventa" else "confirmado"),
+                "monto_total_credito": round(monto + fee, 2),
+                "estado": estado_final,
+                "confirmado_at": datetime.utcnow().isoformat(),
             }).eq("id", pedido_id).execute()
             try:
                 lap = float(bod_line.data[0].get("linea_aprobada") or ld) if bod_line.data else ld
@@ -246,11 +251,12 @@ def _verify_pin_for_payment(pin: str, bodega_id: str) -> dict:
                 logger.error(f"Linea deduct: {e}")
             msg = f"Pedido #{num} confirmado\nFinanciado: S/{monto:.2f}\nCargo Circa: S/{fee:.2f}\nTotal: S/{monto+fee:.2f}\nPlazo: {dias} días"
         else:
+            estado_final = "pagado_cash" if is_preventa_dimax else ("preventa_confirmada" if tipo_operacion == "preventa" else "confirmado")
             db.sb.table("pedidos").update({
                 "numero": num, "fee_tasa": 0, "fee_monto": 0,
                 "monto_contado": round(monto, 2),
-                "total": round(monto, 2),
-                "estado": ("preventa_confirmada" if tipo_operacion == "preventa" else "confirmado"),
+                "estado": estado_final,
+                "confirmado_at": datetime.utcnow().isoformat(),
             }).eq("id", pedido_id).execute()
             msg = f"Pedido #{num} confirmado\nContado: S/{monto:.2f}"
         
