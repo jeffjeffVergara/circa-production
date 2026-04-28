@@ -349,12 +349,12 @@ async def send_menu(to: str, linea_disponible: float, preventa_pendiente: dict =
             "description": f"S/{total:.2f} de DIMAX — listo para despacho",
         }
         rows = [primera] + rows_normales
-        body_text = f"Tope Circa: *S/{linea_disponible:.2f}*\n\nTienes una preventa lista. ¿Qué quieres hacer?"
+        body_text = f"💰 Línea Circa disponible: *S/{linea_disponible:.2f}*\n\nTienes una preventa lista. ¿Qué deseas hacer?"
     else:
         rows = [
             {"id": "PREVENTA", "title": "Hacer una pre-venta", "description": "Reserva para próxima entrega"},
         ] + rows_normales
-        body_text = f"Tope para comprar con Circa: *S/{linea_disponible:.2f}*\n\n¿Qué quieres hacer?"
+        body_text = f"💰 Línea Circa disponible: *S/{linea_disponible:.2f}*\n\n¿Qué deseas hacer?"
     
     return await send_list(
         to=to,
