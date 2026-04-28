@@ -3,7 +3,7 @@ Distribuidor Portal API — Circa
 """
 from fastapi import APIRouter, HTTPException, Header, Depends, UploadFile, File
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 import os, httpx
 from datetime import datetime, timezone
 
@@ -730,4 +730,200 @@ async def admin_export_pagos(
             except: p["bodega"] = {}
     
     return {"grupos": list(grupos.values()), "total_pedidos": len(filtered)}
+
+# ============================================================
+# Endpoint: Importar preventas desde DIMAX (Sprint 28-abr-2026)
+# Modelo: origen='preventa_dimax', estado='preventa_confirmada'
+# Ver memo Circa_Memo_Jeff_Modelo_Preventa_28abr.docx
+# ============================================================
+
+class PreventaItemIn(BaseModel):
+    sku_distribuidor: str
+    descripcion: Optional[str] = None
+    cantidad: int
+    unidad: Optional[str] = "UND x 1"
+    precio_unitario: float
+    subtotal: Optional[float] = None
+
+
+class PreventaIn(BaseModel):
+    ruc_bodega: str
+    razon_social: Optional[str] = None
+    nombre_comercial: Optional[str] = None
+    telefono_whatsapp: Optional[str] = None
+    direccion: Optional[str] = None
+    distrito: Optional[str] = None
+    provincia: Optional[str] = None
+    dni_representante: Optional[str] = None
+    representante_legal: Optional[str] = None
+    vendedor_codigo: Optional[str] = None
+    vendedor_nombre: Optional[str] = None
+    dimax_pedido_id: Optional[str] = None
+    fecha_visita: Optional[str] = None  # ISO date "YYYY-MM-DD"
+    fecha_entrega: Optional[str] = None
+    total_pedido: float
+    descuento_prorrateado: Optional[float] = 0
+    items: List[PreventaItemIn]
+
+
+class PreventasImportRequest(BaseModel):
+    preventas: List[PreventaIn]
+
+
+def _normalizar_telefono(tel: Optional[str]) -> Optional[str]:
+    """Normaliza un teléfono peruano al formato +51XXXXXXXXX."""
+    if not tel:
+        return None
+    t = "".join(c for c in str(tel) if c.isdigit() or c == "+")
+    if t.startswith("+51"):
+        return t
+    if t.startswith("51") and len(t) == 11:
+        return "+" + t
+    if len(t) == 9:
+        return "+51" + t
+    return t  # No reconocido, devolvemos tal cual
+
+
+def _resolver_o_crear_vendedor(codigo: Optional[str], nombre: Optional[str], distribuidor_id: str) -> Optional[str]:
+    """
+    Busca vendedor por (distribuidor_id, codigo). Si no existe, lo crea.
+    Devuelve vendedor_id o None si codigo viene vacío.
+    """
+    if not codigo:
+        return None
+    
+    rows = _sb_get("vendedores", {
+        "select": "id",
+        "distribuidor_id": f"eq.{distribuidor_id}",
+        "codigo": f"eq.{codigo}",
+    })
+    if rows:
+        return rows[0]["id"]
+    
+    # No existe → crear
+    payload = {
+        "distribuidor_id": distribuidor_id,
+        "codigo": codigo,
+        "nombre": nombre or codigo,  # Si no hay nombre, usar el código como placeholder
+        "activo": True,
+    }
+    r = httpx.post(
+        f"{SUPABASE_URL}/rest/v1/vendedores",
+        headers=_sb_headers(),
+        json=payload,
+        timeout=15
+    )
+    r.raise_for_status()
+    nuevo = r.json()
+    return nuevo[0]["id"] if isinstance(nuevo, list) else nuevo["id"]
+
+
+@router.post("/preventas/import")
+async def importar_preventas(
+    request: PreventasImportRequest,
+    dist: dict = Depends(verify_distribuidor)
+):
+    """
+    Recibe un batch de preventas desde el ERP del distribuidor (DIMAX).
+    
+    Cada preventa es independiente: si una falla, las demás siguen procesándose.
+    
+    Crea pedidos en estado='preventa_confirmada', origen='preventa_dimax'.
+    Si la bodega no existe, la crea en estado='inactivo' con linea_disponible=0.
+    Si el vendedor no existe, lo crea con nombre stub (Ops puede actualizar después).
+    
+    Returns: dict con resumen de creadas, errores e items_no_match.
+    """
+    from app.services import db
+    import logging
+    logger = logging.getLogger("circa.preventa_import")
+    
+    distribuidor_id = dist["id"]
+    creadas = 0
+    errores = []
+    preventas_creadas = []
+    
+    for pv in request.preventas:
+        try:
+            # 1. Resolver vendedor (lookup o crear)
+            vendedor_id = _resolver_o_crear_vendedor(
+                pv.vendedor_codigo,
+                pv.vendedor_nombre,
+                distribuidor_id
+            )
+            
+            # 2. Sanity: validar que tenga items
+            if not pv.items:
+                errores.append({
+                    "ruc": pv.ruc_bodega,
+                    "error": "preventa sin items"
+                })
+                continue
+            
+            # 3. Upsert bodega
+            tel_norm = _normalizar_telefono(pv.telefono_whatsapp)
+            datos_bodega = {
+                "razon_social": pv.razon_social,
+                "nombre_comercial": pv.nombre_comercial,
+                "telefono_whatsapp": tel_norm,
+                "direccion_fiscal": pv.direccion,
+                "direccion_despacho": pv.direccion,
+                "distrito": pv.distrito,
+                "provincia": pv.provincia,
+                "dni_representante": pv.dni_representante,
+                "representante_legal": pv.representante_legal,
+            }
+            bodega, bodega_creada = db.upsert_bodega_para_preventa(
+                pv.ruc_bodega,
+                distribuidor_id,
+                **datos_bodega
+            )
+            
+            # 4. Crear pedido preventa
+            items_dimax = [
+                {
+                    "sku_distribuidor": str(it.sku_distribuidor),
+                    "descripcion": it.descripcion,
+                    "cantidad": it.cantidad,
+                    "unidad": it.unidad,
+                    "precio_unitario": it.precio_unitario,
+                    "subtotal": it.subtotal if it.subtotal is not None else (it.cantidad * it.precio_unitario),
+                }
+                for it in pv.items
+            ]
+            
+            resultado = db.crear_pedido_preventa(
+                bodega_id=bodega["id"],
+                distribuidor_id=distribuidor_id,
+                items_dimax=items_dimax,
+                total_pedido=pv.total_pedido,
+                descuento_prorrateado=pv.descuento_prorrateado or 0,
+                vendedor_id=vendedor_id,
+                dimax_pedido_id=pv.dimax_pedido_id,
+                fecha_visita=pv.fecha_visita,
+                fecha_entrega=pv.fecha_entrega,
+            )
+            
+            preventas_creadas.append({
+                "ruc": pv.ruc_bodega,
+                "pedido_id": resultado["pedido_id"],
+                "bodega_creada": bodega_creada,
+                "items_creados": resultado["items_creados"],
+                "items_no_match": resultado["items_no_match"],
+            })
+            creadas += 1
+            
+        except Exception as e:
+            logger.error(f"Error procesando preventa RUC {pv.ruc_bodega}: {e}", exc_info=True)
+            errores.append({
+                "ruc": pv.ruc_bodega,
+                "error": str(e)
+            })
+    
+    return {
+        "ok": len(errores) == 0,
+        "creadas": creadas,
+        "errores": errores,
+        "preventas": preventas_creadas,
+    }
 

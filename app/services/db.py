@@ -332,3 +332,169 @@ def get_skus_for_catalogo_ids(distribuidor_id: str, catalogo_ids: list) -> dict:
         import logging
         logging.error(f"get_skus_for_catalogo_ids error: {e}")
         return {}
+
+
+# ============================================================
+# Helpers para preventa DIMAX (Sprint preventa 28-abr-2026)
+# ============================================================
+
+def upsert_bodega_para_preventa(ruc: str, distribuidor_id: str, **datos_bodega) -> tuple:
+    """
+    Busca bodega por RUC. Si existe, devuelve (bodega, False).
+    Si NO existe, crea bodega con estado='inactivo' y linea_disponible=0
+    (línea bloqueada hasta firmar contrato), devuelve (bodega_nueva, True).
+    
+    datos_bodega puede incluir: razon_social, nombre_comercial, telefono_whatsapp,
+        direccion_fiscal, direccion_despacho, dni_representante, representante_legal,
+        distrito, provincia.
+    """
+    existing = get_bodega_by_ruc(ruc)
+    if existing:
+        return (existing, False)
+    
+    payload = {
+        "ruc": ruc,
+        "distribuidor_id": distribuidor_id,
+        "estado": "inactivo",
+        "linea_aprobada": 500,
+        "linea_disponible": 0,  # Bloqueada hasta firmar contrato
+        **{k: v for k, v in datos_bodega.items() if v is not None},
+    }
+    nueva = sb.table("bodegas").insert(payload).execute().data[0]
+    return (nueva, True)
+
+
+def crear_pedido_preventa(
+    bodega_id: str,
+    distribuidor_id: str,
+    items_dimax: list,
+    total_pedido: float,
+    descuento_prorrateado: float = 0,
+    vendedor_id: str = None,
+    dimax_pedido_id: str = None,
+    fecha_visita: str = None,
+    fecha_entrega: str = None,
+) -> dict:
+    """
+    Crea un pedido en estado='preventa_confirmada', origen='preventa_dimax'.
+    NO genera número (eso pasa al confirmar con PIN).
+    NO baja línea de crédito.
+    NO crea pagos ni recordatorios.
+    
+    items_dimax: list of dicts con {sku_distribuidor, cantidad, unidad, precio_unitario, subtotal}
+    
+    Resuelve sku_distribuidor → catalogo_id via lookup. Items que no matchean se reportan
+    en el resultado pero NO bloquean la creación del pedido (decisión: opción b, resiliencia).
+    
+    Returns: {
+        "pedido_id": uuid,
+        "items_creados": int,
+        "items_no_match": list of dicts con SKUs no encontrados
+    }
+    """
+    monto_productos = float(total_pedido) + float(descuento_prorrateado)  # Subtotal antes de descuento
+    
+    # Insertar pedido (sin número, sin financiamiento)
+    pedido = sb.table("pedidos").insert({
+        "bodega_id": bodega_id,
+        "distribuidor_id": distribuidor_id,
+        "vendedor_id": vendedor_id,
+        "estado": "preventa_confirmada",
+        "origen": "preventa_dimax",
+        "monto_productos": monto_productos,
+        "descuento_prorrateado": descuento_prorrateado,
+        "total_pedido": total_pedido,
+        "monto_financiado": 0,
+        "monto_contado": 0,
+        "dimax_pedido_id": dimax_pedido_id,
+        "fecha_visita": fecha_visita,
+        "fecha_entrega": fecha_entrega,
+    }).execute().data[0]
+    pedido_id = pedido["id"]
+    
+    # Resolver SKUs DIMAX → catalogo_id (normalizar quitando ceros a la izquierda)
+    skus_normalizados = list({str(it["sku_distribuidor"]).lstrip("0") or "0" for it in items_dimax})
+    catalogo = sb.table("catalogo_distribuidor").select("id, sku_distribuidor").eq(
+        "distribuidor_id", distribuidor_id
+    ).in_("sku_distribuidor", skus_normalizados).execute().data
+    sku_to_cat = {c["sku_distribuidor"]: c["id"] for c in catalogo}
+    
+    items_creados = 0
+    items_no_match = []
+    
+    for it in items_dimax:
+        sku_norm = str(it["sku_distribuidor"]).lstrip("0") or "0"
+        catalogo_id = sku_to_cat.get(sku_norm)
+        if not catalogo_id:
+            items_no_match.append({
+                "sku_distribuidor": it["sku_distribuidor"],
+                "descripcion": it.get("descripcion"),
+                "cantidad": it["cantidad"],
+            })
+            continue
+        
+        sb.table("items_pedido").insert({
+            "pedido_id": pedido_id,
+            "catalogo_id": catalogo_id,
+            "pack_size": it.get("unidad", "UND x 1"),
+            "unidad": it.get("unidad"),
+            "cantidad": it["cantidad"],
+            "precio": it["precio_unitario"],
+            "subtotal": it.get("subtotal", it["cantidad"] * it["precio_unitario"]),
+        }).execute()
+        items_creados += 1
+    
+    log_evento(pedido_id, bodega_id, "preventa_creada", None, "borrador", "dimax")
+    
+    return {
+        "pedido_id": pedido_id,
+        "items_creados": items_creados,
+        "items_no_match": items_no_match,
+    }
+
+
+def get_preventa_pendiente(bodega_id: str) -> dict:
+    """
+    Devuelve la preventa más reciente en estado borrador para esta bodega.
+    Incluye items_pedido. Devuelve None si no hay.
+    """
+    r = sb.table("pedidos").select("*").eq(
+        "bodega_id", bodega_id
+    ).eq("estado", "preventa_confirmada").eq("origen", "preventa_dimax").order(
+        "fecha_visita", desc=True
+    ).limit(1).execute()
+    
+    if not r.data:
+        return None
+    
+    pedido = r.data[0]
+    items = sb.table("items_pedido").select(
+        "*, catalogo_distribuidor(sku_distribuidor, productos_circa(nombre, marca))"
+    ).eq("pedido_id", pedido["id"]).execute().data
+    pedido["items"] = items
+    return pedido
+
+
+def liberar_linea_post_contrato(bodega_id: str) -> bool:
+    """
+    Activa la línea de crédito de una bodega que firmó contrato.
+    Hace UPDATE linea_disponible = linea_aprobada.
+    Idempotente (correr 2 veces no rompe).
+    El trigger cap_linea_disponible valida que no exceda linea_aprobada.
+    
+    Returns: True si actualizó, False si la bodega no existe.
+    """
+    r = sb.table("bodegas").select("id, linea_aprobada").eq(
+        "id", bodega_id
+    ).limit(1).execute()
+    
+    if not r.data:
+        return False
+    
+    bodega = r.data[0]
+    sb.table("bodegas").update({
+        "linea_disponible": bodega["linea_aprobada"]
+    }).eq("id", bodega_id).execute()
+    
+    return True
+
