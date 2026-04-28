@@ -607,7 +607,7 @@ async def meta_webhook_incoming(request: Request):
                     total_pagar = contado + fin_amt + fee
                     await meta_client.send_text(telefono,
                         f"\U0001f4b3 *Resumen de pago*\n\n"
-                        f"\U0001f69a Hoy al contado al repartidor: *S/{contado:.2f}*\n"
+                        f"\U0001f69a Hoy pagas al repartidor: *S/{contado:.2f}*\n"
                         f"\U0001f4b3 Cuota Circa S/{fin_amt + fee:.2f} — pagar antes del {fecha_venc}\n\n"
                         f"*Total a pagar: S/{total_pagar:.2f}*\n\n"
                         f"Confirma con tu clave de 4 digitos.")

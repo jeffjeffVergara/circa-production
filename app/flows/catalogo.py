@@ -577,7 +577,7 @@ async def _send_payment_options(phone, pedido_id, total, items_text, bodega_id=N
     # Fixed financing tiers: S/100, S/200, S/300
     fee_rate = 0.03
     tiers = []
-    for monto_fin in [100, 200, 300]:
+    for monto_fin in [100, 200, 300, 400, 500]:
         if monto_fin <= linea and monto_fin <= total:
             fee = round(monto_fin * fee_rate, 2)
             if fee < 3: fee = 3.0
