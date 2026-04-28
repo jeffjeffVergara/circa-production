@@ -581,16 +581,18 @@ async def meta_webhook_incoming(request: Request):
                 bod_id = bod.data[0]["id"] if bod.data else None
                 r = (
                     db.sb.table("pedidos")
-                    .select("id, monto_productos")
+                    .select("id, monto_productos, total_pedido, origen")
                     .eq("bodega_id", bod_id)
-                    .in_("estado", ["borrador", "preventa_borrador"])
+                    .in_("estado", ["borrador", "preventa_borrador", "preventa_confirmada"])
                     .order("created_at", desc=True)
                     .limit(1)
                     .execute()
                 ) if bod_id else type("X",(),{"data":[]})()
                 if r.data and fin_amt > 0:
                     pedido = r.data[0]
-                    total = pedido["monto_productos"]
+                    # Para preventa DIMAX, total_pedido es la fuente de verdad
+                    # (monto_productos puede tener subtotales sin descuento DIMAX)
+                    total = float(pedido.get("total_pedido") or pedido.get("monto_productos") or 0)
                     contado = round(total - fin_amt, 2)
                     dias = 7
                     rate = 0.03
