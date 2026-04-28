@@ -221,13 +221,14 @@ def _build_categories(bodega_id, session=None):
 # ── Products ──
 
 async def _build_products(bodega_id, session, category):
-    dist = session.get("dist", "")
-    if not dist:
-        try:
-            row = db.sb.table("bodegas").select("distribuidor_id").eq("id", bodega_id).single().execute().data
-            dist = row["distribuidor_id"] if row else "a1b2c3d4-0001-4000-8000-000000000001"
-        except Exception:
-            dist = "a1b2c3d4-0001-4000-8000-000000000001"
+    # Always fetch distribuidor from bodega, never use cached or hardcoded
+    try:
+        row = db.sb.table("bodegas").select("distribuidor_id").eq("id", bodega_id).limit(1).execute()
+        dist = row.data[0]["distribuidor_id"] if row.data else ""
+        logger.info(f"Distribuidor for bodega {bodega_id}: {dist}")
+    except Exception as e:
+        logger.error(f"Error fetching distribuidor: {e}")
+        dist = ""
 
     session["dist"] = dist
     session["cat"]  = category
