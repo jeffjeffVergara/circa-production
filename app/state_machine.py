@@ -621,9 +621,10 @@ def handle_message(telefono: str, body: str, media_url: str = None) -> list:
         # Handler: bodeguero clickeó "Pagar mi preventa" desde el menú interactivo
         # Reusa el flujo natural _send_payment_options del catálogo (mismo UX que pedido normal)
         if body_n.startswith("PAGAR_PREVENTA_"):
-            pedido_id = body_n.replace("PAGAR_PREVENTA_", "")
+            # WhatsApp trunca IDs de lista a ~200 chars; matcheo por prefijo
+            pedido_id_prefix = body_n.replace("PAGAR_PREVENTA_", "")
             pv = db.get_preventa_pendiente(bodega["id"])
-            if not pv or pv["id"] != pedido_id:
+            if not pv or not pv["id"].startswith(pedido_id_prefix[:30]):
                 return ["No encontré tu preventa pendiente. Escribe *MENU* para volver."]
             
             return [{
