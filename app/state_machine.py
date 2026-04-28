@@ -618,6 +618,22 @@ def handle_message(telefono: str, body: str, media_url: str = None) -> list:
     # MENÚ PRINCIPAL
     # ═══════════════════════════════════════════════
     if fase == "menu":
+        # Handler: bodeguero clickeó "Pagar mi preventa" desde el menú interactivo
+        # Reusa el flujo natural _send_payment_options del catálogo (mismo UX que pedido normal)
+        if body_n.startswith("PAGAR_PREVENTA_"):
+            pedido_id = body_n.replace("PAGAR_PREVENTA_", "")
+            pv = db.get_preventa_pendiente(bodega["id"])
+            if not pv or pv["id"] != pedido_id:
+                return ["No encontré tu preventa pendiente. Escribe *MENU* para volver."]
+            
+            return [{
+                "signal": "PREVENTA_PAYMENT_OPTIONS",
+                "pedido_id": pv["id"],
+                "total": float(pv.get("total_pedido") or 0),
+                "items": pv.get("items") or [],
+                "bodega_id": bodega["id"],
+            }]
+        
         if body_n in ("PEDIDO", "PEDIR", "COMPRAR", "1", "pedido"):
             db.clear_carrito(bodega["id"])  # Fresh order = empty cart
             url = get_catalog_url(bodega["id"]) + "&t=venta"

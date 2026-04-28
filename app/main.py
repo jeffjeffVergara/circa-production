@@ -73,6 +73,24 @@ def dispatch_signal(telefono: str, signal: dict):
         send_item_agregado(telefono, signal["cantidad"], signal["pack_label"], signal["nombre"], signal["subtotal"], signal["cart_total"])
     elif sig == "CARRITO":
         send_carrito_resumen(telefono, signal["items_text"], signal["total"], signal["financiable"])
+    elif sig == "PREVENTA_PAYMENT_OPTIONS":
+        from app.flows.catalogo import _send_payment_options
+        items = signal["items"]
+        lines_items = []
+        for it in items:
+            cat = it.get("catalogo_distribuidor") or {}
+            prod = cat.get("productos_circa") or {}
+            nombre = (prod.get("nombre") or "Producto")[:38]
+            cant = it.get("cantidad", 0)
+            sub = float(it.get("subtotal") or 0)
+            if sub == 0:
+                lines_items.append(f"▸ {cant}x *{nombre}* 🎁")
+            else:
+                lines_items.append(f"▸ {cant}x *{nombre}*\n   S/{sub:.2f}")
+        items_text = "\n".join(lines_items)
+        asyncio.create_task(_send_payment_options(
+            telefono, signal["pedido_id"], signal["total"], items_text, signal["bodega_id"]
+        ))
     elif sig == "MONTO":
         send_monto_financiar(telefono, signal["linea"], signal["total"], signal["financiable"])
     elif sig == "PLAZO":
@@ -439,7 +457,8 @@ async def meta_webhook_incoming(request: Request):
             elif flow_data.get("status") == "activated":
                 bodega = db.get_bodega_by_phone(telefono) or db.get_bodega_by_phone(f"+{telefono}")
                 linea = bodega.get("linea_disponible", 500) if bodega else 500
-                await meta_client.send_menu(to=telefono, linea_disponible=linea)
+                _pv_pend = db.get_preventa_pendiente(bodega["id"])
+                await meta_client.send_menu(to=telefono, linea_disponible=linea, preventa_pendiente=_pv_pend)
             
             # Mark as read
             if msg["message_id"]:
@@ -1002,7 +1021,8 @@ async def meta_webhook_incoming(request: Request):
                     
                     # ── Menu signals ──
                     elif signal == "MENU":
-                        await meta_client.send_menu(telefono, resp.get("linea", 500))
+                        _pv_pend = db.get_preventa_pendiente(bodega["id"]) if bodega else None
+                        await meta_client.send_menu(telefono, resp.get("linea", 500), preventa_pendiente=_pv_pend)
                     elif signal == "LINEA_INFO":
                         await meta_client.send_linea_info(
                             telefono, resp.get("aprobada", 500),

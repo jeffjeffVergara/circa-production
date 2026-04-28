@@ -331,22 +331,36 @@ async def mark_as_read(message_id: str) -> dict | None:
 # CIRCA-SPECIFIC HELPERS
 # ══════════════════════════════════════════════
 
-async def send_menu(to: str, linea_disponible: float):
-    """Main menu."""
+async def send_menu(to: str, linea_disponible: float, preventa_pendiente: dict = None):
+    """Main menu. Si hay preventa DIMAX pendiente, la muestra como primera opción."""
+    rows_normales = [
+        {"id": "PEDIDO", "title": "Hacer un nuevo pedido", "description": "Arma tu pedido del catálogo"},
+        {"id": "REPETIR", "title": "Repetir pedido anterior", "description": "Pide lo mismo de antes"},
+        {"id": "LINEA", "title": "Ver mi tope Circa", "description": "Cuánto te queda para pedir"},
+        {"id": "ESTADO", "title": "Estado de mis pedidos", "description": "Seguimiento y pagos"},
+    ]
+    
+    if preventa_pendiente:
+        total = float(preventa_pendiente.get("total_pedido") or 0)
+        pid = preventa_pendiente["id"]
+        primera = {
+            "id": f"PAGAR_PREVENTA_{pid}",
+            "title": "🛒 Pagar mi preventa",
+            "description": f"S/{total:.2f} de DIMAX — listo para despacho",
+        }
+        rows = [primera] + rows_normales
+        body_text = f"Tope Circa: *S/{linea_disponible:.2f}*\n\nTienes una preventa lista. ¿Qué quieres hacer?"
+    else:
+        rows = [
+            {"id": "PREVENTA", "title": "Hacer una pre-venta", "description": "Reserva para próxima entrega"},
+        ] + rows_normales
+        body_text = f"Tope para comprar con Circa: *S/{linea_disponible:.2f}*\n\n¿Qué quieres hacer?"
+    
     return await send_list(
         to=to,
-        body=f"Tope para comprar con Circa: *S/{linea_disponible:.2f}*\n\n¿Qué quieres hacer?",
+        body=body_text,
         button_text="Ver opciones",
-        sections=[{
-            "title": "Menú",
-            "rows": [
-                {"id": "PREVENTA", "title": "Hacer una pre-venta", "description": "Reserva para próxima entrega"},
-                {"id": "PEDIDO", "title": "Hacer un nuevo pedido", "description": "Arma tu pedido del catálogo"},
-                {"id": "REPETIR", "title": "Repetir pedido anterior", "description": "Pide lo mismo de antes"},
-                {"id": "LINEA", "title": "Ver mi tope Circa", "description": "Cuánto te queda para pedir"},
-                {"id": "ESTADO", "title": "Estado de mis pedidos", "description": "Seguimiento y pagos"},
-            ],
-        }]
+        sections=[{"title": "Menú", "rows": rows}]
     )
 
 
