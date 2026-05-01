@@ -50,6 +50,7 @@ def sign_contract(bodega_id: str, contract_hash: str):
         "contrato_hash": contract_hash,
         "contrato_firmado_at": now_peru().isoformat(),
     }).eq("id", bodega_id).execute()
+    liberar_linea_post_contrato(bodega_id)  # FIX BUG #8
 
 # ── CATÁLOGO ──────────────────────────────────
 def get_catalogo(distribuidor_id: str, marca: str = None, categoria: str = None):

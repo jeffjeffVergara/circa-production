@@ -699,10 +699,7 @@ async def meta_webhook_incoming(request: Request):
                     })
                     nombre = bodega_ac.get("nombre_comercial") or bodega_ac.get("razon_social", "Bodega")
                     await meta_client.send_contract_document(telefono, contract_path, nombre)
-                    db.sb.table("bodegas").update({
-                        "contrato_hash": contract_hash,
-                        "contrato_firmado_at": now.isoformat(),
-                    }).eq("id", bod_id).execute()
+                    db.sign_contract(bod_id, contract_hash)  # FIX BUG #8: usa helper que libera linea
                     import os
                     try: os.remove(contract_path)
                     except: pass
