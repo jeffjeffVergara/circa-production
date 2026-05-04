@@ -46,11 +46,39 @@ def activate_bodega(bodega_id: str, pin_hash: str):
     }).eq("id", bodega_id).execute()
 
 def sign_contract(bodega_id: str, contract_hash: str):
+    firmado_at = now_peru().isoformat()
     sb.table("bodegas").update({
         "contrato_hash": contract_hash,
-        "contrato_firmado_at": now_peru().isoformat(),
+        "contrato_firmado_at": firmado_at,
     }).eq("id", bodega_id).execute()
     liberar_linea_post_contrato(bodega_id)  # FIX BUG #8
+
+    # NUEVO: registrar en tabla contratos para evidencia legal
+    # Si falla por cualquier razon, NO rompemos la firma - solo loggeamos warning
+    try:
+        bodega = sb.table("bodegas").select(
+            "razon_social, representante_legal, dni_representante"
+        ).eq("id", bodega_id).single().execute().data or {}
+        sb.table("contratos").insert({
+            "bodega_id": bodega_id,
+            "version": "v2.1_2026-04-28",
+            "url_contrato": None,
+            "aceptado_at": firmado_at,
+            "canal": "whatsapp",
+            "ip_address": None,
+            "user_agent": None,
+            "nombre_firmante": (
+                bodega.get("representante_legal") or bodega.get("razon_social")
+            ),
+            "dni_firmante": bodega.get("dni_representante"),
+            "metadata": {
+                "contrato_hash": contract_hash,
+                "captured_via": "sign_contract_inline_v1",
+            },
+        }).execute()
+    except Exception as e:
+        import logging
+        logging.warning(f"sign_contract: insert en tabla contratos fallo para bodega {bodega_id}: {e}")
 
 # ── CATÁLOGO ──────────────────────────────────
 def get_catalogo(distribuidor_id: str, marca: str = None, categoria: str = None):

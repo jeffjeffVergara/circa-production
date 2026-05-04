@@ -403,6 +403,10 @@ async def meta_webhook_incoming(request: Request):
                 "button_id": msg.get("button_id", ""),
                 "list_id": msg.get("list_id", ""),
                 "has_flow_data": bool(msg.get("flow_data")),
+                "media_id": msg.get("media_id", ""),
+                "mime_type": msg.get("mime_type", ""),
+                "caption": msg.get("caption", ""),
+                "filename": msg.get("filename", ""),
             },
         )
         
