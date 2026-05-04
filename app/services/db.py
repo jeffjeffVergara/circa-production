@@ -47,11 +47,24 @@ def activate_bodega(bodega_id: str, pin_hash: str):
 
 def sign_contract(bodega_id: str, contract_hash: str):
     firmado_at = now_peru().isoformat()
+    # 1. Marcar contrato firmado
     sb.table("bodegas").update({
         "contrato_hash": contract_hash,
         "contrato_firmado_at": firmado_at,
     }).eq("id", bodega_id).execute()
-    liberar_linea_post_contrato(bodega_id)  # FIX BUG #8
+    # 2. Liberar linea via funcion existente (FIX BUG #8 de Jeff)
+    liberar_linea_post_contrato(bodega_id)
+    # 3. NUEVO: liberacion forzada explicita - garantiza que linea_disponible = linea_aprobada
+    # Sirve como fallback si liberar_linea_post_contrato falla silenciosamente
+    try:
+        b = sb.table("bodegas").select("linea_aprobada").eq("id", bodega_id).single().execute().data or {}
+        if b.get("linea_aprobada"):
+            sb.table("bodegas").update({
+                "linea_disponible": b["linea_aprobada"]
+            }).eq("id", bodega_id).execute()
+    except Exception as e:
+        import logging
+        logging.warning(f"sign_contract: liberacion forzada de linea fallo para bodega {bodega_id}: {e}")
 
     # NUEVO: registrar en tabla contratos para evidencia legal
     # Si falla por cualquier razon, NO rompemos la firma - solo loggeamos warning
