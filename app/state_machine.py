@@ -111,7 +111,21 @@ def handle_message(telefono: str, body: str, media_url: str = None) -> list:
                     "linea": bodega["linea_aprobada"],
                     "distribuidor": dist["nombre_comercial"],
                 }]
-        return ["👋 Hola, este número no está pre-aprobado en Circa. Contacta a tu distribuidor."]
+        return ["""¡Hola, Bienvenido a Circa! 👋 Qué bueno que nos escribes.
+
+Te cuento rapidito cómo funciona Circa Lab:
+
+Somos el sistema que ayuda a tu negocio a crecer. Te damos una línea de crédito para que compres tu mercadería sin descapitalizarte — compras hoy, pagas cuando vendes. Sin ir al banco, sin papeleos, sin demoras. Solo necesitamos conocer con que distribuidores trabajas.
+
+Para afiliarte solo necesitas:
+
+1️⃣ Tener un negocio (bodega, minimarket, puesto) con al menos 6 meses de operación - nos envias tu RUC y/o # DNI de representante legal
+2️⃣ Enviarnos tu DNI (foto por ambos lados)
+3️⃣ Una foto de tu local
+
+En menos de 24 horas validamos tu solicitud y activamos tu línea. Empiezas comprando hasta S/500 y esa línea va creciendo según tu historial con nosotros.
+
+¿Te animas a empezar? Mándame los datos y arrancamos hoy mismo. 🚀"""]
 
     fase = session["fase"]
     datos = json.loads(session["datos"]) if isinstance(session["datos"], str) else (session["datos"] or {})
