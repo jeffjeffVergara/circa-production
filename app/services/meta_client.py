@@ -336,7 +336,7 @@ async def send_menu(to: str, linea_disponible: float, preventa_pendiente: dict =
     rows_normales = [
         {"id": "PEDIDO", "title": "Hacer un nuevo pedido", "description": "Arma tu pedido del catálogo"},
         {"id": "REPETIR", "title": "Repetir pedido anterior", "description": "Pide lo mismo de antes"},
-        {"id": "LINEA", "title": "Ver mi tope Circa", "description": "Cuánto te queda para pedir"},
+        {"id": "LINEA", "title": "Ver mi línea Circa", "description": "Cuánto te queda para pedir"},
         {"id": "ESTADO", "title": "Estado de mis pedidos", "description": "Seguimiento y pagos"},
         {"id": "CONTACTO", "title": "Contactar a Circa", "description": "Equipo Circa por WhatsApp"},
     ]
