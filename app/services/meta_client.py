@@ -460,14 +460,14 @@ async def send_linea_oferta(to: str, nombre: str, linea: float, distribuidor: st
     return await send_buttons(
         to=to,
         body=(
-            f"━━━━━━━━━━━━━━━━━━\n"
-            f"📋 *Tu tope con Circa*\n\n"
+            f"🎉 *¡Tu línea ya está aprobada!*\n\n"
             f"Bodega: *{nombre}*\n"
-            f"Hasta: *S/{linea:.2f}* para pedir al distribuidor\n"
-            f"Distribuidor: {distribuidor}\n"
-            f"━━━━━━━━━━━━━━━━━━\n\n"
-            f"Al aceptar, podrás pedir mercadería y pagarla a Circa en 7, 15 o 30 días.\n\n"
-            f"¿Te parece bien este tope?"
+            f"Línea: *S/{linea:.0f}* para tus compras\n"
+            f"Distribuidor: {distribuidor}\n\n"
+            f"Con esto puedes pedir tu mercadería hoy y pagarla a Circa "
+            f"en *7, 15 o 30 días*, según te convenga.\n\n"
+            f"¡También puedes hacer tus pedidos desde WhatsApp! 📲\n\n"
+            f"Estás a un paso de terminar, ¿continuamos?"
         ),
         buttons=[
             {"id": "ACEPTO_LINEA", "title": "Sí, acepto ✅"},
@@ -593,9 +593,9 @@ async def send_linea_info(to: str, aprobada: float, disponible: float, scoring: 
     return await send_buttons(
         to=to,
         body=(
-            f"💰 *Tu tope Circa*\n\n"
-            f"Tope máximo: S/{aprobada:.2f}\n"
-            f"Te queda para pedir: *S/{disponible:.2f}*\n"
+            f"💰 *Tu línea Circa*\n\n"
+            f"Línea aprobada: S/{aprobada:.0f}\n"
+            f"Disponible para pedir: *S/{disponible:.0f}*\n"
             f"[{barra}]\n"
             f"Confianza Circa: {scoring:.0f}/100 (según tu historial con el distribuidor)"
         ),
