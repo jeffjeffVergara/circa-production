@@ -97,6 +97,14 @@ def dispatch_signal(telefono: str, signal: dict):
         send_plazo(telefono, signal["monto"], signal["fee7"], signal["total7"], signal["fee15"], signal["total15"], signal["fee30"], signal["total30"])
     elif sig == "MENU":
         send_menu(telefono, signal["linea"])
+    elif sig == "CONTACT_CIRCA":
+        link = signal.get("wa_link", "")
+        send_whatsapp(
+            telefono,
+            "📞 *Habla con Circa*\n\n"
+            f"Toca el enlace para abrir un chat con nuestro equipo:\n{link}\n\n"
+            "Cuando termines, escribe *MENU* para volver al menú.",
+        )
     else:
         logger.warning(f"Unknown signal: {sig}")
         send_whatsapp(telefono, "⚠️ Error interno. Escribe MENU para volver.")
@@ -1031,6 +1039,15 @@ async def meta_webhook_incoming(request: Request):
                         await meta_client.send_linea_info(
                             telefono, resp.get("aprobada", 500),
                             resp.get("disponible", 500), resp.get("scoring", 0)
+                        )
+                    elif signal == "CONTACT_CIRCA":
+                        link = resp.get("wa_link", "")
+                        await meta_client.send_text(
+                            telefono,
+                            "📞 *Habla con Circa*\n\n"
+                            f"Toca el enlace para abrir un chat con nuestro equipo:\n{link}\n\n"
+                            "Cuando termines, escribe *MENU* para volver al menú.",
+                            preview_url=True,
                         )
                     
                     # ── Legacy catalog signals → redirect to text for now ──

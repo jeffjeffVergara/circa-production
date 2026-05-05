@@ -25,7 +25,7 @@ from app.services.identity import consultar_ruc_sync, consultar_dni_sync, valida
 
 # Test phones — bypass SUNAT/RENIEC/Vision validation
 TEST_PHONES = {"+51954712581", "+51977652871", "+56991291415", "+51955755308", "+51981254477", "+51961276835", "51954712581", "51977652871", "56991291415", "51955755308", "51981254477", "51961276835"}
-from app.config import TWILIO_FROM, BIOMETRIA_MODE
+from app.config import TWILIO_FROM, BIOMETRIA_MODE, circa_soporte_wa_link
 
 
 def normalize(text: str) -> str:
@@ -690,6 +690,16 @@ En menos de 24 horas validamos tu solicitud y activamos tu línea. Empiezas comp
             for p in pedidos:
                 lines.append(f"• {p['numero']} — {p['estado'].upper()} — S/{p['monto_total_credito']:.2f} — Vence {p['fecha_vencimiento']}")
             return ["\n".join(lines)]
+
+        if body_n in ("CONTACTO", "AYUDA", "SOPORTE", "CONTACTAR", "6"):
+            link = circa_soporte_wa_link()
+            if link:
+                return [{"signal": "CONTACT_CIRCA", "wa_link": link}]
+            return [
+                "📞 *Contacto Circa*\n\n"
+                "El enlace de WhatsApp de soporte aún no está configurado en el sistema.\n\n"
+                "Mientras tanto, escribe a tu *distribuidor* o responde *MENU* para seguir."
+            ]
 
         if body_n in ("PAGUE", "YA PAGUE"):
             pedidos = db.get_pedidos_activos(bodega["id"])

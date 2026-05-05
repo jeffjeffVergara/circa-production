@@ -1,5 +1,6 @@
 """Circa configuration — all settings from environment variables."""
 import os
+import re
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -41,6 +42,19 @@ APP_BASE_URL = os.getenv("APP_BASE_URL", "http://localhost:8000")
 YAPE_PHONE = os.getenv("YAPE_PHONE", "986311567")
 YAPE_NAME = os.getenv("YAPE_NAME", "Circa Lab S.A.C.")
 PLIN_PHONE = os.getenv("PLIN_PHONE", "986311567")
+
+
+def circa_soporte_wa_link() -> str | None:
+    """
+    Enlace wa.me al WhatsApp de soporte Circa (solo dígitos en env, con o sin +).
+    Ej.: CIRCA_SOPORTE_WHATSAPP=51999888777
+    """
+    raw = os.getenv("CIRCA_SOPORTE_WHATSAPP", "").strip()
+    digits = re.sub(r"\D", "", raw)
+    if len(digits) < 9:
+        return None
+    return f"https://wa.me/{digits}"
+
 
 # ── Security ──
 PIN_MAX_ATTEMPTS = 3
