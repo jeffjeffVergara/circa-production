@@ -52,3 +52,4 @@ El archivo `docs/circa-logo.png` corresponde al logo embebido en la web pública
 ---
 
 © Circa / Pali S.A.C. — ver términos y privacidad expuestos en la API (`/terms`, `/privacy`) cuando aplique.
+test deploy 1777941876
