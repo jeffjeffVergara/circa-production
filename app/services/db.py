@@ -388,7 +388,7 @@ def upsert_bodega_para_preventa(ruc: str, distribuidor_id: str, **datos_bodega) 
     
     datos_bodega puede incluir: razon_social, nombre_comercial, telefono_whatsapp,
         direccion_fiscal, direccion_despacho, dni_representante, representante_legal,
-        distrito, provincia.
+        distrito, provincia, solo_dni_sin_ruc (bool; onboarding salta RUC).
     """
     existing = get_bodega_by_ruc(ruc)
     if existing:

@@ -155,6 +155,14 @@ En menos de 24 horas validamos tu solicitud y activamos tu línea. Empiezas comp
     # ═══ WELCOME ═══
     if fase == "welcome":
         if body_n in ("SI", "ACTIVAR", "1", "HOLA", "HI", "MAS_INFO", "MAS INFO"):
+            if bodega and bodega.get("solo_dni_sin_ruc"):
+                db.upsert_session(
+                    telefono,
+                    "reg_dni",
+                    {"bodega_id": bodega["id"]},
+                    bodega["id"],
+                )
+                return [{"signal": "DNI_ASK"}]
             db.upsert_session(telefono, "reg_ruc", datos, bodega["id"] if bodega else None)
             return [{"signal": "RUC_ASK"}]
         return [{
@@ -366,7 +374,12 @@ En menos de 24 horas validamos tu solicitud y activamos tu línea. Empiezas comp
             
             # Cross-check: DNI name must match representante legal from SUNAT/bodega
             rep_legal = bodega_data.get("representante_legal", "")
-            if rep_legal and nombre_reniec:
+            # Con RUC+SUNAT ya validamos representante; solo_dni_sin_ruc confía en RENIEC para el nombre.
+            if (
+                not bodega_data.get("solo_dni_sin_ruc")
+                and rep_legal
+                and nombre_reniec
+            ):
                 import unicodedata
                 def _norm(s):
                     s = unicodedata.normalize("NFKD", s.upper())
