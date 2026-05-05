@@ -50,14 +50,7 @@ _TEXTO_PIDE_CONTACTO_CIRCA = frozenset({
 
 
 def _desvio_contacto_circa_responses() -> list:
-    link = circa_soporte_wa_link()
-    if link:
-        return [{"signal": "CONTACT_CIRCA", "wa_link": link}]
-    return [
-        "📞 *Contacto Circa*\n\n"
-        "El enlace de WhatsApp de soporte aún no está configurado en el sistema.\n\n"
-        "Mientras tanto, escribe a tu *distribuidor* o responde *MENU* para seguir.",
-    ]
+    return [{"signal": "CONTACT_CIRCA", "wa_link": circa_soporte_wa_link()}]
 
 
 def _app_base_url() -> str:

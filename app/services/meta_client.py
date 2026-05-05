@@ -604,6 +604,44 @@ async def send_linea_info(to: str, aprobada: float, disponible: float, scoring: 
     )
 
 
+async def send_contacto_circa(to: str, wa_link: str | None) -> dict | None:
+    """
+    Contacto soporte Circa: botón CTA que abre wa.me (sin mostrar el número en el cuerpo).
+    Si no hay CIRCA_SOPORTE_WHATSAPP, texto + botón de menú.
+    """
+    body_con_link = (
+        "📞 *Circa*\n\n"
+        "¿Necesitas ayuda? Pulsa el botón y se abrirá el chat con nuestro equipo.\n\n"
+        "Cuando termines, escribe *MENU* para volver al menú."
+    )
+    body_sin_link = (
+        "📞 *Contacto Circa*\n\n"
+        "El soporte por WhatsApp aún no está configurado.\n\n"
+        "Escribe *MENU* o habla con tu distribuidor."
+    )
+    if wa_link and str(wa_link).strip().lower().startswith("http"):
+        url = str(wa_link).strip()
+        return await _send(to, {
+            "type": "interactive",
+            "interactive": {
+                "type": "cta_url",
+                "body": {"text": body_con_link[:1024]},
+                "action": {
+                    "name": "cta_url",
+                    "parameters": {
+                        "display_text": "Chatear con Circa",
+                        "url": url,
+                    },
+                },
+            },
+        })
+    return await send_buttons(
+        to=to,
+        body=body_sin_link,
+        buttons=[{"id": "MENU", "title": "Menú principal"}],
+    )
+
+
 async def send_catalogo_flow(to: str, bodega_id: str, tipo_operacion: str = "venta"):
     """Send catalog as CTA URL button - opens in WhatsApp in-app browser."""
     base = os.getenv("APP_BASE_URL", "https://circa-production-c517.up.railway.app")

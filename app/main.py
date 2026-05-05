@@ -98,13 +98,20 @@ def dispatch_signal(telefono: str, signal: dict):
     elif sig == "MENU":
         send_menu(telefono, signal["linea"])
     elif sig == "CONTACT_CIRCA":
-        link = signal.get("wa_link", "")
-        send_whatsapp(
-            telefono,
-            "📞 *Habla con Circa*\n\n"
-            f"Toca el enlace para abrir un chat con nuestro equipo:\n{link}\n\n"
-            "Cuando termines, escribe *MENU* para volver al menú.",
-        )
+        # Twilio (legacy): texto plano; Meta usa send_contacto_circa (CTA wa.me).
+        link = signal.get("wa_link") or ""
+        if link:
+            send_whatsapp(
+                telefono,
+                "📞 *Habla con Circa*\n\n"
+                f"Abre: {link}\n\n"
+                "Cuando termines, escribe MENU para volver.",
+            )
+        else:
+            send_whatsapp(
+                telefono,
+                "📞 Contacto Circa aún no configurado. Escribe MENU o habla con tu distribuidor.",
+            )
     else:
         logger.warning(f"Unknown signal: {sig}")
         send_whatsapp(telefono, "⚠️ Error interno. Escribe MENU para volver.")
@@ -1041,13 +1048,8 @@ async def meta_webhook_incoming(request: Request):
                             resp.get("disponible", 500), resp.get("scoring", 0)
                         )
                     elif signal == "CONTACT_CIRCA":
-                        link = resp.get("wa_link", "")
-                        await meta_client.send_text(
-                            telefono,
-                            "📞 *Habla con Circa*\n\n"
-                            f"Toca el enlace para abrir un chat con nuestro equipo:\n{link}\n\n"
-                            "Cuando termines, escribe *MENU* para volver al menú.",
-                            preview_url=True,
+                        await meta_client.send_contacto_circa(
+                            telefono, resp.get("wa_link"),
                         )
                     
                     # ── Legacy catalog signals → redirect to text for now ──
