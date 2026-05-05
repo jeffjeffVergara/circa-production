@@ -75,6 +75,10 @@ html,body{height:100%;font-family:'Plus Jakarta Sans',sans-serif;background:var(
 .pp{padding:7px 10px;border-radius:8px;font-size:11.5px;line-height:1.35;display:flex;align-items:center;gap:6px;margin-top:2px}
 .pp.ok{background:rgba(0,212,170,.13);color:#5eead4;border:1px solid rgba(0,212,170,.3)}
 .pp.up{background:rgba(251,146,60,.12);color:#fdba74;border:1px solid rgba(251,146,60,.3)}
+.pp.gift{background:rgba(250,204,21,.12);color:#fde047;border:1px solid rgba(250,204,21,.35)}
+.pp.gift-up{background:rgba(56,189,248,.12);color:#7dd3fc;border:1px solid rgba(56,189,248,.3)}
+.bonif-section{margin:10px 0;padding:8px 0;border-top:1px solid rgba(255,255,255,.06)}
+.bonif-title{font-size:11px;font-weight:600;color:#94a3b8;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px}
 .pp .pi{font-size:13px;flex-shrink:0}
 .pp .pt{flex:1;font-weight:600}
 .pc-pills{margin-top:8px;display:flex;flex-direction:column;gap:4px}
@@ -98,7 +102,7 @@ var API=location.origin,QS=new URLSearchParams(location.search),BID=QS.get('b')|
 var TIPO_OPERACION=(QS.get('t')==='preventa'?'preventa':'venta');
 var P=[],cart=[],linea=0,fm='cat',sel='Todos',step='cart',selUnits={};
 var CATS=['Todos'];
-var promosResult={items:[],ahorro_total:0};
+var promosResult={items:[],ahorro_total:0,bonificaciones_aplicables:[],bonificaciones_proximas:[],valor_bonificaciones:0};
 var promoTimer=null;
 
 function $(id){return document.getElementById(id)}
@@ -219,7 +223,7 @@ function aTC(id,u,pr,n,m){var key=id+'_'+u;var x=cart.find(function(c){return(c.
 function sU(id,u,pr){selUnits[id]=u;var i=cart.find(function(c){return c.id===id&&c.unit===u});if(i){i.precio=pr}rend()}
 function cQ(id,d,u){var key=id+'_'+(u||'');var i=cart.find(function(c){return(c.id+'_'+c.unit)===key});if(!i)return;i.qty+=d;if(i.qty<=0)cart=cart.filter(function(c){return(c.id+'_'+c.unit)!==key});uC();rend();evaluarPromos()}
 
-function clearCart(){cart=[];promosResult={items:[],ahorro_total:0};uC();rend();toast('Carrito limpiado');fetch(API+'/api/carrito/clear',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({bodega_id:BID})}).catch(function(){})}
+function clearCart(){cart=[];promosResult={items:[],ahorro_total:0,bonificaciones_aplicables:[],bonificaciones_proximas:[],valor_bonificaciones:0};uC();rend();toast('Carrito limpiado');fetch(API+'/api/carrito/clear',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({bodega_id:BID})}).catch(function(){})}
 function goBack(){window.close();window.location.href='https://wa.me/51986311567?text=MENU'}
 function uC(){
  var t=cart.reduce(function(s,c){return s+c.precio*c.qty},0),n=cart.reduce(function(s,c){return s+c.qty},0);
@@ -231,11 +235,11 @@ function uC(){
 function evaluarPromos(){
  if(promoTimer)clearTimeout(promoTimer);
  promoTimer=setTimeout(function(){
-  if(!cart.length){promosResult={items:[],ahorro_total:0};rend();return}
+  if(!cart.length){promosResult={items:[],ahorro_total:0,bonificaciones_aplicables:[],bonificaciones_proximas:[],valor_bonificaciones:0};rend();return}
   var body={bodega_id:BID,cart:cart.map(function(c){return{catalogo_id:c.id,cantidad:c.qty,formato:c.unit,precio_unitario_formato:c.precio}})};
   fetch(API+'/api/promociones/evaluar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
    .then(function(r){return r.json()})
-   .then(function(j){promosResult=j||{items:[],ahorro_total:0};rend();if(step==='cart'&&$('dW').classList.contains('open'))rD()})
+   .then(function(j){promosResult=j||{items:[],ahorro_total:0,bonificaciones_aplicables:[],bonificaciones_proximas:[],valor_bonificaciones:0};rend();if(step==='cart'&&$('dW').classList.contains('open'))rD()})
    .catch(function(){})
  },250)
 }
@@ -268,10 +272,28 @@ function rD(){
    '<div class="dis">'+fmt(c.precio*c.qty)+'</div></div>'+
    pillHTMLForCartItem(idx)+
    '</div>'}).join('');
-  var dl=t<=linea?'<div class="dfli ok">Todo financiable — tope Circa: '+fmt(linea)+'</div>':
-   linea>0?'<div class="dfli warn">Financiable hasta '+fmt(linea)+'</div>':'<div class="dfli bad">Sin tope disponible</div>';
+  var dl=t<=linea?'<div class="dfli ok">Todo financiable — línea Circa: '+fmt(linea)+'</div>':
+   linea>0?'<div class="dfli warn">Financiable hasta '+fmt(linea)+'</div>':'<div class="dfli bad">Sin línea disponible</div>';
   var ahorroLine=ahorro>0?'<div class="dfr"><span class="dfl" style="color:#5eead4">🎁 Ahorras</span><span class="dfv" style="color:#5eead4;font-size:14px">'+fmt(ahorro)+'</span></div>':'';
-  $('dF').innerHTML='<div class="dfr"><span class="dfl">Total ('+n+' uds)</span><span class="dfv">'+fmt(t)+'</span></div>'+ahorroLine+dl+
+  // Bonificaciones (productos regalo): sección dedicada en el drawer
+  var bonifAplicables=(promosResult&&promosResult.bonificaciones_aplicables)||[];
+  var bonifProximas=(promosResult&&promosResult.bonificaciones_proximas)||[];
+  var bonifHTML='';
+  if(bonifAplicables.length){
+   bonifHTML+='<div class="bonif-section"><div class="bonif-title">🎁 ¡Te llevás gratis!</div>';
+   bonifAplicables.forEach(function(b){
+    bonifHTML+='<div class="pp gift"><span class="pi">🎁</span><span class="pt">'+esc(b.mensaje_corto||'')+'</span></div>';
+   });
+   bonifHTML+='</div>';
+  }
+  if(bonifProximas.length){
+   bonifHTML+='<div class="bonif-section"><div class="bonif-title">Casi alcanzas</div>';
+   bonifProximas.forEach(function(b){
+    bonifHTML+='<div class="pp gift-up"><span class="pi">🎁</span><span class="pt">'+esc(b.mensaje_corto||'')+'</span></div>';
+   });
+   bonifHTML+='</div>';
+  }
+  $('dF').innerHTML='<div class="dfr"><span class="dfl">Total ('+n+' uds)</span><span class="dfv">'+fmt(t)+'</span></div>'+ahorroLine+bonifHTML+dl+
    '<div class="btn-row"><button class="btn-sec" onclick="closeD()">Seguir comprando</button><button class="btn-pri" onclick="goFin()">Continuar</button></div>';
  }else if(step==='summary'){
   $('dTl').textContent='Resumen del pedido';
@@ -293,7 +315,7 @@ async function cfmOrder(){
   $('dTl').textContent='Carrito listo';
   $('dI').innerHTML='<div style="text-align:center;padding:24px 0"><div style="font-size:44px;margin-bottom:10px">🛒</div><div style="font-size:15px;font-weight:700;margin-bottom:8px;color:var(--accent)">Carrito listo</div><div style="font-size:12px;color:var(--t2);line-height:1.5">Avancemos con el pago. Elige tu plazo y confirma<br>con tu clave Circa en el chat.</div></div>';
   $('dF').innerHTML='<button class="btn-pri" onclick="location.href=\x27https://wa.me/51986311567\x27" style="width:100%">Avanzar con el pago</button>';
-  cart=[];promosResult={items:[],ahorro_total:0};uC();rend();
+  cart=[];promosResult={items:[],ahorro_total:0,bonificaciones_aplicables:[],bonificaciones_proximas:[],valor_bonificaciones:0};uC();rend();
  }catch(e){b.disabled=false;b.textContent='Continuar pedido';toast('Error al enviar')}
 }
 
