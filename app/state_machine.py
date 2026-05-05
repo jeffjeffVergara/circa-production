@@ -34,6 +34,21 @@ def normalize(text: str) -> str:
     return "".join(c for c in nfkd if not unicodedata.combining(c))
 
 
+# Palabras clave que en cualquier fase derivan a la misma respuesta que "Contactar a Circa".
+_TEXTO_PIDE_CONTACTO_CIRCA = frozenset({
+    "AYUDA",
+    "HELP",
+    "NO ENTIENDO",
+    "NO TE ENTIENDO",
+    "NO LO ENTIENDO",
+    "NO ENTIENDES",
+    "CONTACTO",
+    "SOPORTE",
+    "CONTACTAR",
+    "6",
+})
+
+
 def _desvio_contacto_circa_responses() -> list:
     link = circa_soporte_wa_link()
     if link:
@@ -99,6 +114,9 @@ def handle_message(telefono: str, body: str, media_url: str = None) -> list:
 
     session = db.get_session(telefono)
     bodega = db.get_bodega_by_phone(telefono)
+
+    if body_n and body_n in _TEXTO_PIDE_CONTACTO_CIRCA:
+        return _desvio_contacto_circa_responses()
 
     # ── NO SESSION ──
     if not session:
@@ -701,9 +719,6 @@ En menos de 24 horas validamos tu solicitud y activamos tu línea. Empiezas comp
             for p in pedidos:
                 lines.append(f"• {p['numero']} — {p['estado'].upper()} — S/{p['monto_total_credito']:.2f} — Vence {p['fecha_vencimiento']}")
             return ["\n".join(lines)]
-
-        if body_n in ("CONTACTO", "AYUDA", "SOPORTE", "CONTACTAR", "6"):
-            return _desvio_contacto_circa_responses()
 
         if body_n in ("PAGUE", "YA PAGUE"):
             pedidos = db.get_pedidos_activos(bodega["id"])
