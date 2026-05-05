@@ -547,3 +547,17 @@ def liberar_linea_post_contrato(bodega_id: str) -> bool:
     
     return True
 
+def get_bonificaciones_activas(distribuidor_id: str) -> list:
+    """Reglas de bonificaciones (productos regalo) activas y vigentes para un distribuidor."""
+    try:
+        from datetime import date
+        hoy = date.today().isoformat()
+        r = sb.table("bonificaciones_distribuidor").select("*").eq(
+            "distribuidor_id", distribuidor_id
+        ).eq("activa", True).lte("vigente_desde", hoy).gte("vigente_hasta", hoy).execute()
+        return r.data or []
+    except Exception as e:
+        import logging
+        logging.error(f"get_bonificaciones_activas error: {e}")
+        return []
+

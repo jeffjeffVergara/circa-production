@@ -334,6 +334,177 @@ def evaluar_promociones(cart: List[Dict], reglas: List[Dict]) -> Dict:
 
 # ============================================================
 # TESTS INTERNOS (correr con: python -m app.services.promociones)
+
+# ============================================================
+# EVALUADOR DE BONIFICACIONES (productos regalo, no descuentos %)
+# Agregado: 5 mayo 2026 — Sprint v2 motor de promociones
+# ============================================================
+
+def _grupo_bonif(b: Dict) -> Optional[str]:
+    """Asigna grupo lógico para evaluación de escalones."""
+    cat = (b.get('categoria') or '').strip()
+    marca = (b.get('marca_aplica') or '').strip()
+    if b.get('umbral_monto') is not None:
+        return f"{cat}__MONTO"
+    if b.get('umbral_cantidad') is not None and b.get('umbral_unidad'):
+        return f"{marca}__{b['umbral_unidad']}"
+    return None
+
+
+def _mensaje_bonif_aplicada(regla):
+    cant = regla.get("cantidad_regalo") or 1
+    unid = regla.get("unidad_regalo") or "UND"
+    nombre = regla.get("producto_regalo_nombre") or "regalo"
+    return f"🎁 ¡Te llevás {cant} {unid} de {nombre} GRATIS!"
+
+
+def evaluar_bonificaciones(cart: List[Dict], reglas_bonif: List[Dict]) -> Dict:
+    """
+    Evalúa qué bonificaciones (productos regalo) aplican al carrito.
+    
+    A diferencia de `evaluar_promociones` (que devuelve % off),
+    ésta devuelve qué producto regalo se ganó y cuánto falta para el siguiente escalón.
+    
+    Args:
+        cart: lista de items con sku_distribuidor, cantidad, formato,
+              precio_unitario_formato, categoria, marca, contenido_caja, contenido_pack
+        reglas_bonif: filas activas de bonificaciones_distribuidor
+    
+    Returns:
+        {
+            "aplicables": [{regla_id, regalo_nombre, regalo_cantidad, ...}],
+            "proximas":   [{regla_id, falta, mensaje_corto, ...}],
+            "valor_total_estimado": float
+        }
+    """
+    reglas = [r for r in reglas_bonif if r.get("activa", True)]
+    
+    grupos = defaultdict(list)
+    for r in reglas:
+        g = _grupo_bonif(r)
+        if g:
+            grupos[g].append(r)
+    
+    for g in grupos:
+        grupos[g].sort(
+            key=lambda r: float(r.get("umbral_cantidad") or r.get("umbral_monto") or 0),
+            reverse=True
+        )
+    
+    aplicables = []
+    proximas = []
+    valor_total = 0.0
+    
+    for grupo_nombre, reglas_grupo in grupos.items():
+        regla_ejemplo = reglas_grupo[0]
+        es_por_monto = regla_ejemplo.get("umbral_monto") is not None
+        
+        if es_por_monto:
+            categoria = regla_ejemplo.get("categoria")
+            items_grupo = [
+                i for i in cart
+                if (i.get("categoria") or "").strip() == (categoria or "").strip()
+            ]
+            if not items_grupo:
+                continue
+            total_alcanzado = sum(i["cantidad"] * i["precio_unitario_formato"] for i in items_grupo)
+            tipo_umbral = "monto"
+        else:
+            marca = regla_ejemplo.get("marca_aplica")
+            unidad = regla_ejemplo["umbral_unidad"]
+            items_grupo = [
+                i for i in cart
+                if (i.get("marca") or "").strip() == (marca or "").strip()
+            ]
+            if not items_grupo:
+                continue
+            total_alcanzado = 0
+            for it in items_grupo:
+                total_alcanzado += cantidad_en_unidad_base(
+                    it["cantidad"], it["formato"], unidad,
+                    it.get("contenido_caja"), it.get("contenido_pack")
+                )
+            tipo_umbral = "cantidad"
+        
+        regla_aplicada = None
+        for r in reglas_grupo:
+            umbral_r = float(r.get("umbral_monto") or r.get("umbral_cantidad") or 0)
+            if total_alcanzado >= umbral_r:
+                regla_aplicada = r
+                break
+        
+        no_alcanzados = [
+            r for r in reglas_grupo
+            if total_alcanzado < float(r.get("umbral_monto") or r.get("umbral_cantidad") or 0)
+        ]
+        regla_siguiente = None
+        if no_alcanzados:
+            regla_siguiente = min(
+                no_alcanzados,
+                key=lambda r: float(r.get("umbral_monto") or r.get("umbral_cantidad") or 0)
+            )
+        
+        if regla_aplicada:
+            umbral_a = float(regla_aplicada.get("umbral_monto") or regla_aplicada.get("umbral_cantidad") or 0)
+            tasa = float(regla_aplicada.get("porcentaje_descuento_equivalente") or 0)
+            subtotal_grupo = sum(i["cantidad"] * i["precio_unitario_formato"] for i in items_grupo)
+            valor_estim = round(subtotal_grupo * tasa, 2)
+            valor_total += valor_estim
+            
+            aplicables.append({
+                "regla_id": regla_aplicada["id"],
+                "categoria": regla_aplicada.get("categoria"),
+                "marca_aplica": regla_aplicada.get("marca_aplica"),
+                "regalo_nombre": regla_aplicada.get("producto_regalo_nombre"),
+                "regalo_cantidad": regla_aplicada.get("cantidad_regalo"),
+                "regalo_unidad": regla_aplicada.get("unidad_regalo") or "UND",
+                "descripcion": regla_aplicada.get("descripcion_completa") or regla_aplicada.get("nombre"),
+                "alcanzado": round(total_alcanzado, 2) if es_por_monto else int(total_alcanzado),
+                "umbral": round(umbral_a, 2) if es_por_monto else int(umbral_a),
+                "tipo_umbral": tipo_umbral,
+                "valor_estimado": valor_estim,
+                "mensaje_corto": _mensaje_bonif_aplicada(regla_aplicada),
+            })
+        
+        if regla_siguiente:
+            umbral_s = float(regla_siguiente.get("umbral_monto") or regla_siguiente.get("umbral_cantidad") or 0)
+            falta = umbral_s - total_alcanzado
+            cant_regalo = regla_siguiente.get("cantidad_regalo") or 1
+            unid_regalo = regla_siguiente.get("unidad_regalo") or "UND"
+            regalo_nombre = regla_siguiente.get("producto_regalo_nombre") or "regalo"
+            
+            if es_por_monto:
+                falta_str = f"S/{falta:.2f}"
+            else:
+                falta_str = f"{int(falta)} {regla_siguiente.get('umbral_unidad')}"
+            
+            mensaje = (
+                f"+{falta_str} para llevarte "
+                f"{cant_regalo} {unid_regalo} de {regalo_nombre} GRATIS 🎁"
+            )
+            
+            proximas.append({
+                "regla_id": regla_siguiente["id"],
+                "categoria": regla_siguiente.get("categoria"),
+                "marca_aplica": regla_siguiente.get("marca_aplica"),
+                "regalo_nombre": regalo_nombre,
+                "regalo_cantidad": cant_regalo,
+                "regalo_unidad": unid_regalo,
+                "descripcion": regla_siguiente.get("descripcion_completa") or regla_siguiente.get("nombre"),
+                "alcanzado": round(total_alcanzado, 2) if es_por_monto else int(total_alcanzado),
+                "umbral": round(umbral_s, 2) if es_por_monto else int(umbral_s),
+                "falta": round(falta, 2) if es_por_monto else int(falta),
+                "tipo_umbral": tipo_umbral,
+                "mensaje_corto": mensaje,
+            })
+    
+    return {
+        "aplicables": aplicables,
+        "proximas": proximas,
+        "valor_total_estimado": round(valor_total, 2),
+    }
+
+
 # ============================================================
 
 if __name__ == "__main__":

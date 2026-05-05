@@ -1555,7 +1555,7 @@ async def debug_catalogo_response():
 # Endpoint: motor de promociones por distribuidor
 # (Sprint promociones DIMAX 22-abr-2026)
 # ============================================================
-from app.services.promociones import evaluar_promociones as _evaluar_promociones
+from app.services.promociones import evaluar_promociones as _evaluar_promociones, evaluar_bonificaciones as _evaluar_bonificaciones
 
 
 class _CartItem(BaseModel):
@@ -1585,7 +1585,8 @@ async def api_evaluar_promociones(req: _EvaluarPromocionesReq):
         return {"error": "Bodega no encontrada o sin distribuidor", "items": []}
 
     reglas = db.get_promociones_activas(distribuidor_id)
-    if not reglas:
+    reglas_bonif = db.get_bonificaciones_activas(distribuidor_id)
+    if not reglas and not reglas_bonif:
         items = [{
             "sku_distribuidor": i.sku_distribuidor,
             "subtotal": round(i.cantidad * i.precio_unitario_formato, 2),
@@ -1593,7 +1594,12 @@ async def api_evaluar_promociones(req: _EvaluarPromocionesReq):
             "siguiente_escalon": None,
         } for i in req.cart]
         subtotal = sum(it["subtotal"] for it in items)
-        return {"items": items, "ahorro_total": 0, "subtotal_total": subtotal, "total_final": subtotal}
+        return {
+            "items": items, "ahorro_total": 0,
+            "subtotal_total": subtotal, "total_final": subtotal,
+            "bonificaciones_aplicables": [], "bonificaciones_proximas": [],
+            "valor_bonificaciones": 0
+        }
 
     # Resolver catalogo_id (UUID) → sku_distribuidor si el frontend solo manda UUIDs
     cat_ids_to_resolve = [i.catalogo_id for i in req.cart if i.catalogo_id and not i.sku_distribuidor]
@@ -1621,4 +1627,17 @@ async def api_evaluar_promociones(req: _EvaluarPromocionesReq):
             "contenido_pack": ci.get("contenido_pack"),
         })
 
-    return _evaluar_promociones(cart_enriched, reglas)
+    resultado = _evaluar_promociones(cart_enriched, reglas)
+
+    # Evaluar bonificaciones (productos regalo)
+    if reglas_bonif:
+        bonif = _evaluar_bonificaciones(cart_enriched, reglas_bonif)
+        resultado["bonificaciones_aplicables"] = bonif["aplicables"]
+        resultado["bonificaciones_proximas"] = bonif["proximas"]
+        resultado["valor_bonificaciones"] = bonif["valor_total_estimado"]
+    else:
+        resultado["bonificaciones_aplicables"] = []
+        resultado["bonificaciones_proximas"] = []
+        resultado["valor_bonificaciones"] = 0
+
+    return resultado
