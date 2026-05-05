@@ -366,26 +366,28 @@ async def send_menu(to: str, linea_disponible: float, preventa_pendiente: dict =
 
 
 async def send_welcome(to: str, nombre: str, linea: float, distribuidor: str):
-    """Welcome message."""
+    """Welcome message - aliado DIMAX + linea pre-aprobada."""
+    distribuidor_safe = distribuidor if distribuidor else "tu distribuidor"
     return await send_buttons(
         to=to,
         header="Circa",
         body=(
-            f"\u00a1Hola, *{nombre}*! \U0001f44b\n\n"
-            f"\U0001f389 *\u00a1Felicitaciones!* Por tu buen historial con *{distribuidor}*, "
-            f"puedes comprar hasta:\n\n"
-            f"\U0001f4b0 *S/{linea:.2f}* para comprar mercader\u00eda y pagarla en cuotas con Circa\n\n"
-            f"\u00bfC\u00f3mo funciona?\n\n"
-            f"1. Pide lo que necesites a *{distribuidor}*\n"
-            f"2. Circa le paga directo al distribuidor\n"
-            f"3. T\u00fa eliges pagar en *7, 15 o 30 d\u00edas*\n"
-            f"4. Pagas a Circa por *Yape o Plin*\n"
-            f"5. Tu cr\u00e9dito se renueva al pagar\n\n"
-            f"No necesitas ir a ning\u00fan banco. Todo por WhatsApp."
+            f"Hola, *{nombre}* 👋\n\n"
+            f"Trabajo junto a *{distribuidor_safe}* para ayudarte a comprar mejor "
+            f"y vender más en tu bodega.\n\n"
+            f"🎉 Por ser cliente de *{distribuidor_safe}*, tienes una línea "
+            f"pre-aprobada de *S/{linea:.0f}* para tus pedidos.\n\n"
+            f"Con Circa puedes:\n\n"
+            f"📋 Pedir tu mercadería por WhatsApp, con promos al toque\n"
+            f"🚚 Recibir más rápido porque tu pedido llega directo al distribuidor\n"
+            f"⏳ Y si lo necesitas, pagar después (7, 15 o 30 días) para "
+            f"aprovechar promos sin quedarte sin caja\n\n"
+            f"Sin papeleos. Todo por WhatsApp.\n\n"
+            f"¿Empezamos? Te toma menos de 5 minutos 👇"
         ),
         buttons=[
-            {"id": "SI", "title": "Activar mi cuenta"},
-            {"id": "MAS_INFO", "title": "\u00bfC\u00f3mo funciona?"},
+            {"id": "SI", "title": "Sí, activar"},
+            {"id": "MAS_INFO", "title": "Quiero más info"},
         ]
     )
 
