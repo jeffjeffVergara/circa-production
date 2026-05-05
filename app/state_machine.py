@@ -34,6 +34,17 @@ def normalize(text: str) -> str:
     return "".join(c for c in nfkd if not unicodedata.combining(c))
 
 
+def _desvio_contacto_circa_responses() -> list:
+    link = circa_soporte_wa_link()
+    if link:
+        return [{"signal": "CONTACT_CIRCA", "wa_link": link}]
+    return [
+        "📞 *Contacto Circa*\n\n"
+        "El enlace de WhatsApp de soporte aún no está configurado en el sistema.\n\n"
+        "Mientras tanto, escribe a tu *distribuidor* o responde *MENU* para seguir.",
+    ]
+
+
 def _app_base_url() -> str:
     return os.getenv("APP_BASE_URL", "http://localhost:8000").rstrip("/")
 
@@ -692,14 +703,7 @@ En menos de 24 horas validamos tu solicitud y activamos tu línea. Empiezas comp
             return ["\n".join(lines)]
 
         if body_n in ("CONTACTO", "AYUDA", "SOPORTE", "CONTACTAR", "6"):
-            link = circa_soporte_wa_link()
-            if link:
-                return [{"signal": "CONTACT_CIRCA", "wa_link": link}]
-            return [
-                "📞 *Contacto Circa*\n\n"
-                "El enlace de WhatsApp de soporte aún no está configurado en el sistema.\n\n"
-                "Mientras tanto, escribe a tu *distribuidor* o responde *MENU* para seguir."
-            ]
+            return _desvio_contacto_circa_responses()
 
         if body_n in ("PAGUE", "YA PAGUE"):
             pedidos = db.get_pedidos_activos(bodega["id"])
@@ -737,7 +741,7 @@ En menos de 24 horas validamos tu solicitud y activamos tu línea. Empiezas comp
             db.upsert_session(telefono, "reg_dni", {"bodega_id": bodega["id"], "is_reset": True}, bodega["id"])
             return ["🔐 Para resetear tu clave, envía una *foto de tu DNI* para verificar tu identidad.\n\n📷 Envía la foto como imagen en este chat."]
 
-        # Default: show menu again
+        # Default: volver a mostrar el menú (sin clasificar saludos/despedidas/modales).
         return [{"signal": "MENU", "linea": bodega["linea_disponible"]}]
 
     # ═══════════════════════════════════════════════
