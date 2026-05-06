@@ -569,13 +569,25 @@ async def send_pin_request(to: str, mode: str = "create", bodega_id: str = ""):
 
 
 async def send_cuenta_activa(to: str, linea: float):
-    """Send account activation confirmation + menu."""
+    """Send account ready (T04) + benefits (T05) + menu."""
+    # T04 - cuenta lista
     await send_text(
         to=to,
         text=(
-            f"🎉 *¡Tu cuenta Circa está activa!*\n\n"
-            f"Tu clave fue creada correctamente.\n"
-            f"Tope disponible para comprar: *S/{linea:.2f}*"
+            f"🎉 *¡Tu cuenta ya está lista!*\n\n"
+            f"Con Circa puedes pedir hasta:\n"
+            f"*S/{linea:.0f}* con pago después\n\n"
+            f"DIMAX seguirá entregándote como siempre 🚚"
+        )
+    )
+    # T05 - beneficios
+    await send_text(
+        to=to,
+        text=(
+            "Puedes:\n\n"
+            "🛒 Pedir normal\n"
+            "📆 Pagar después si lo necesitas\n"
+            "🔥 Aprovechar promos exclusivas"
         )
     )
     # Follow with menu
