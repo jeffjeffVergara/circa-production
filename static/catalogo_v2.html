@@ -79,6 +79,12 @@ html,body{height:100%;font-family:'Plus Jakarta Sans',sans-serif;background:var(
 .pp.gift-up{background:rgba(56,189,248,.12);color:#7dd3fc;border:1px solid rgba(56,189,248,.3)}
 .bonif-section{margin:10px 0;padding:8px 0;border-top:1px solid rgba(255,255,255,.06)}
 .bonif-title{font-size:11px;font-weight:600;color:#94a3b8;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px}
+.bonif-bar{background:rgba(250,204,21,0.08);border-top:1px solid rgba(250,204,21,0.18);padding:7px 14px;font-size:11.5px;color:#fde047;line-height:1.4;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.bonif-bar.hide{display:none}
+.bonif-bar .bb-app{font-weight:600}
+.bonif-bar .bb-up{color:#7dd3fc;font-weight:500}
+.bonif-bar .bb-sep{color:#475569;margin:0 2px}
+.bonif-bar .bb-more{color:#94a3b8;font-size:10.5px;font-style:italic}
 .pp .pi{font-size:13px;flex-shrink:0}
 .pp .pt{flex:1;font-weight:600}
 .pc-pills{margin-top:8px;display:flex;flex-direction:column;gap:4px}
@@ -107,6 +113,7 @@ var promoTimer=null;
 
 function $(id){return document.getElementById(id)}
 function esc(s){return(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')}
+function escJS(s){return(s||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'")}
 function toast(m){var t=$('tt');t.textContent=m;t.classList.add('show');setTimeout(function(){t.classList.remove('show')},1500)}
 function fmt(n){return'S/'+n.toFixed(2)}
 function sendEvent(ev,meta){
@@ -212,7 +219,7 @@ function rend(){
    '<div class="pc-row"><div class="pc-units">'+us.map(function(u){return'<button class="ub '+(u[0]===su?'sel':'')+'" onclick="sU(\''+p.id+'\',\''+esc(u[0])+'\','+u[1]+')"><span class="ub-lbl">'+esc(u[0])+'</span><span class="ub-pr">'+fmt(u[1])+'</span></button>'}).join('')+'</div>'+
    '<div class="pc-qty">'+(qThisFormat>0?
     '<button class="qb rm" onclick="cQ(\''+p.id+'\',-1,\''+su+'\')">'+(qThisFormat===1?'X':'-')+'</button><span class="qv">'+qThisFormat+'</span><button class="qb" onclick="cQ(\''+p.id+'\',1,\''+su+'\')">+</button>':
-    '<button class="qb add" onclick="aTC(\''+p.id+'\',\''+esc(su)+'\','+sp+',\''+esc(p.nombre)+'\',\''+esc(p.marca)+'\')">+</button>'
+    '<button class="qb add" onclick="aTC(\''+p.id+'\',\''+escJS(su)+'\','+sp+',\''+escJS(p.nombre)+'\',\''+escJS(p.marca)+'\')">+</button>'
    )+'</div></div>'+pills+'</div>';
  }).join('');
 }
@@ -229,6 +236,36 @@ function uC(){
  var t=cart.reduce(function(s,c){return s+c.precio*c.qty},0),n=cart.reduce(function(s,c){return s+c.qty},0);
  if(n>0){$('sB').classList.remove('hide');$('sL').innerHTML=n+' items - <b>'+fmt(t)+'</b>'}
  else $('sB').classList.add('hide');
+ // Banner de bonificaciones (debajo de la barra del cart)
+ var bb=$('bonifBar');
+ if(!bb){
+  bb=document.createElement('div');
+  bb.id='bonifBar';
+  bb.className='bonif-bar hide';
+  if($('sB')&&$('sB').parentNode){
+   $('sB').parentNode.insertBefore(bb,$('sB').nextSibling);
+  }
+ }
+ var bA=(promosResult&&promosResult.bonificaciones_aplicables)||[];
+ var bP=(promosResult&&promosResult.bonificaciones_proximas)||[];
+ if((bA.length||bP.length)&&n>0){
+  var partes=[];
+  if(bA.length){
+   var msgA=(bA[0].mensaje_corto||'').replace(/^🎁\s*/,'');
+   partes.push('<span class="bb-app">🎁 '+esc(msgA)+'</span>');
+  }
+  if(bP.length){
+   var msgP=(bP[0].mensaje_corto||'').replace(/\s*🎁\s*$/,'');
+   partes.push('<span class="bb-up">'+esc(msgP)+'</span>');
+  }
+  var html=partes.join('<span class="bb-sep">·</span>');
+  var extras=(bA.length-1)+(bP.length-1);
+  if(extras>0){html+=' <span class="bb-more">y +'+extras+' más</span>'}
+  bb.innerHTML=html;
+  bb.classList.remove('hide');
+ }else{
+  bb.classList.add('hide');
+ }
 }
 
 // Llama al backend para evaluar promociones (debounced 250ms)
