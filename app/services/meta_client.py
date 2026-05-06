@@ -366,28 +366,23 @@ async def send_menu(to: str, linea_disponible: float, preventa_pendiente: dict =
 
 
 async def send_welcome(to: str, nombre: str, linea: float, distribuidor: str):
-    """Welcome message - aliado DIMAX + linea pre-aprobada."""
+    """Welcome message - canal por WhatsApp (sin protagonismo de crédito)."""
     distribuidor_safe = distribuidor if distribuidor else "tu distribuidor"
     return await send_buttons(
         to=to,
         header="Circa",
         body=(
-            f"Hola, *{nombre}* 👋\n\n"
-            f"Trabajo junto a *{distribuidor_safe}* para ayudarte a comprar mejor "
-            f"y vender más en tu bodega.\n\n"
-            f"🎉 Por ser cliente de *{distribuidor_safe}*, tienes una línea "
-            f"pre-aprobada de *S/{linea:.0f}* para tus pedidos.\n\n"
-            f"Con Circa puedes:\n\n"
-            f"📋 Pedir tu mercadería por WhatsApp, con promos al toque\n"
-            f"🚚 Recibir más rápido porque tu pedido llega directo al distribuidor\n"
-            f"⏳ Y si lo necesitas, pagar después (7, 15 o 30 días) para "
-            f"aprovechar promos sin quedarte sin caja\n\n"
-            f"Sin papeleos. Todo por WhatsApp.\n\n"
-            f"¿Empezamos? Te toma menos de 5 minutos 👇"
+            f"👋 Hola, *{nombre}*\n\n"
+            f"Con Circa + *{distribuidor_safe}* puedes:\n\n"
+            f"🛒 Pedir por WhatsApp\n"
+            f"🔥 Ver promos del mes\n"
+            f"⚡ Repetir pedidos rápido\n"
+            f"📆 Y si te falta caja, pagar después\n\n"
+            f"Todo desde este chat.\n\n"
+            f"¿Activamos tu cuenta?"
         ),
         buttons=[
-            {"id": "SI", "title": "Sí, activar"},
-            {"id": "MAS_INFO", "title": "Quiero más info"},
+            {"id": "SI", "title": "✅ Activar Circa"},
         ]
     )
 
