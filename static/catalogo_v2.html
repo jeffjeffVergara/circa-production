@@ -193,7 +193,7 @@ function rend(){
  $('mA').innerHTML=l.map(function(p){
   var un=p.unidades||{};if(typeof un==='string')try{un=JSON.parse(un)}catch(e){un={}}
   var us=Object.entries(un).sort(function(a,b){
-    var o={'UND':0,'TIRA':1,'CJA':2,'DSP':3,'PACK':4};
+    var o={'UND':0,'TIRA':1,'DSP':2,'CJA':3,'PACK':4};
     var ga=Object.keys(o).find(function(k){return a[0].toUpperCase().indexOf(k)>=0});
     var gb=Object.keys(o).find(function(k){return b[0].toUpperCase().indexOf(k)>=0});
     return(o[ga]===undefined?9:o[ga])-(o[gb]===undefined?9:o[gb])});
