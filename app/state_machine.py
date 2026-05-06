@@ -684,7 +684,7 @@ En menos de 24 horas validamos tu solicitud y activamos tu línea. Empiezas comp
                 "bodega_id": bodega["id"],
             }]
         
-        if body_n in ("PEDIDO", "PEDIR", "COMPRAR", "1", "pedido"):
+        if body_n in ("PEDIDO", "PEDIR", "COMPRAR", "1", "pedido", "VER_PROMOS"):
             db.clear_carrito(bodega["id"])  # Fresh order = empty cart
             url = get_catalog_url(bodega["id"]) + "&t=venta"
             db.upsert_session(telefono, "catalogo", {"cart": []}, bodega["id"])

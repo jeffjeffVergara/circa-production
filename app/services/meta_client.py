@@ -332,13 +332,14 @@ async def mark_as_read(message_id: str) -> dict | None:
 # ══════════════════════════════════════════════
 
 async def send_menu(to: str, linea_disponible: float, preventa_pendiente: dict = None):
-    """Main menu. Si hay preventa DIMAX pendiente, la muestra como primera opción."""
+    """Main menu (T12 v2 - sin tope, foco en utilidad). Si hay preventa DIMAX pendiente, primera opción."""
     rows_normales = [
-        {"id": "PEDIDO", "title": "Hacer un nuevo pedido", "description": "Arma tu pedido del catálogo"},
-        {"id": "REPETIR", "title": "Repetir pedido anterior", "description": "Pide lo mismo de antes"},
-        {"id": "LINEA", "title": "Ver mi línea Circa", "description": "Cuánto te queda para pedir"},
-        {"id": "ESTADO", "title": "Estado de mis pedidos", "description": "Seguimiento y pagos"},
-        {"id": "CONTACTO", "title": "Contactar a Circa", "description": "Equipo Circa por WhatsApp"},
+        {"id": "VER_PROMOS", "title": "🔥 Ver promos", "description": "Las promos del mes"},
+        {"id": "PEDIDO", "title": "🛒 Pedido / preventa", "description": "Catálogo completo"},
+        {"id": "REPETIR", "title": "⚡ Repetir último pedido", "description": "Pide lo mismo de antes"},
+        {"id": "LINEA", "title": "📆 Comprar y pagar luego", "description": "Ver tu línea Circa"},
+        {"id": "ESTADO", "title": "📦 Ver mis pedidos", "description": "Seguimiento y pagos"},
+        {"id": "CONTACTO", "title": "💬 Hablar con Circa", "description": "Equipo Circa por WhatsApp"},
     ]
     
     if preventa_pendiente:
@@ -350,12 +351,10 @@ async def send_menu(to: str, linea_disponible: float, preventa_pendiente: dict =
             "description": f"S/{total:.2f} de DIMAX — listo para despacho",
         }
         rows = [primera] + rows_normales
-        body_text = f"💰 Línea Circa disponible: *S/{linea_disponible:.2f}*\n\nTienes una preventa lista. ¿Qué deseas hacer?"
+        body_text = "Tienes una preventa lista. ¿Qué deseas hacer?"
     else:
-        rows = [
-            {"id": "PREVENTA", "title": "Hacer una pre-venta", "description": "Reserva para próxima entrega"},
-        ] + rows_normales
-        body_text = f"💰 Línea Circa disponible: *S/{linea_disponible:.2f}*\n\n¿Qué deseas hacer?"
+        rows = rows_normales
+        body_text = "¿Qué deseas hacer?"
     
     return await send_list(
         to=to,
