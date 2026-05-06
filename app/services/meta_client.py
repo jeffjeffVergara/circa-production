@@ -431,21 +431,17 @@ async def send_dni_request(to: str):
 
 
 async def send_biometria_request(to: str, nombre_rep: str):
-    """Ask for selfie photo for Claude Vision verification."""
+    """Ask for selfie photo (T03 - tono humano, sin jerga banco)."""
     nombre_rep = (nombre_rep or "").strip()
     if nombre_rep:
         cuerpo = (
-            f"Ahora necesito una *selfie en vivo* para verificación biométrica.\n\n"
-            f"\U0001f933 {nombre_rep}, toma una foto de tu rostro mirando a la camara "
-            f"y enviala como imagen en este chat.\n\n"
-            f"\U0001f512 Tip: enviala como *Vista unica* (\u2460) para mayor seguridad."
+            f"📸 {nombre_rep}, ahora tómate una selfie rápida.\n\n"
+            f"Es solo para confirmar que eres tú y proteger tu cuenta Circa."
         )
     else:
         cuerpo = (
-            f"Ahora necesito una *selfie en vivo* para verificación biométrica.\n\n"
-            f"\U0001f933 Toma una foto de tu rostro mirando a la camara "
-            f"y enviala como imagen en este chat.\n\n"
-            f"\U0001f512 Tip: enviala como *Vista unica* (\u2460) para mayor seguridad."
+            f"📸 Ahora tómate una selfie rápida.\n\n"
+            f"Es solo para confirmar que eres tú y proteger tu cuenta Circa."
         )
     return await send_text(to=to, text=cuerpo)
 
@@ -472,27 +468,22 @@ async def send_linea_oferta(to: str, nombre: str, linea: float, distribuidor: st
 
 
 async def send_contrato(to: str, linea: float):
-    """Show contract summary with terms."""
+    """Show terms summary (T06 heading + T07 resumen)."""
     return await send_buttons(
         to=to,
         body=(
-            f"📋 *Contrato de Facilidad de Financiamiento Circa*\n\n"
-            f"*Resumen de términos:*\n"
-            f"• Línea de crédito revolving (se renueva al pagar)\n"
-            f"• Tasa según día de pago: 3% (1-7d), 5% (8-15d), 7% (16-30d) — mín S/3\n"
-            f"• Plazos: 7, 15 o 30 días\n"
-            f"• El dinero va directo al proveedor\n"
-            f"• Sin costo de apertura ni mantenimiento\n"
-            f"• Mora: 0.03% diario desde el día 31\n\n"
-            f"Al aceptar, autorizas:\n"
-            f"✅ Tratamiento de datos personales (Ley 29733)\n"
-            f"✅ Distribuidor comparta historial de compras\n"
-            f"✅ Consulta en centrales de riesgo"
+            f"📄 *Términos de uso Circa*\n\n"
+            f"Resumen rápido:\n\n"
+            f"✅ Puedes comprar hoy y pagar después\n"
+            f"✅ Tú eliges cuándo usarlo\n"
+            f"✅ No hay costo de activación\n"
+            f"✅ Todo se maneja por WhatsApp\n"
+            f"✅ Si te atrasas, se pausa la opción de pago después"
         ),
         buttons=[
-            {"id": "ACEPTO", "title": "Acepto los términos ✅"},
+            {"id": "ACEPTO", "title": "Acepto ✅"},
         ],
-        footer="Ver contrato completo: circa.pe/contrato"
+        footer="Ver detalle completo: circa.pe/terminos"
     )
 
 
@@ -873,8 +864,8 @@ async def send_contract_document(to: str, file_path: str, bodega_nombre: str) ->
         "type": "document",
         "document": {
             "id": media_id,
-            "filename": f"Contrato_Circa_{safe_name}.pdf",
-            "caption": f"Contrato de Facilidad de Financiamiento — {bodega_nombre}\n\nEste documento confirma tu aceptacion de los terminos de Circa."
+            "filename": f"Terminos_Circa_{safe_name}.pdf",
+            "caption": f"📄 Términos de uso Circa — {bodega_nombre}\n\nGuárdalo. Confirma los términos que aceptaste."
         }
     })
     
