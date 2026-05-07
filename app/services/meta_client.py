@@ -446,21 +446,20 @@ async def send_biometria_request(to: str, nombre_rep: str):
 
 
 async def send_linea_oferta(to: str, nombre: str, linea: float, distribuidor: str):
-    """Show credit line offer for explicit acceptance."""
+    """Confirm verification + Circa value prop + line amount before contract (sin protagonismo de credito)."""
     return await send_buttons(
         to=to,
         body=(
-            f"🎉 *¡Tu línea ya está aprobada!*\n\n"
-            f"Bodega: *{nombre}*\n"
-            f"Línea: *S/{linea:.0f}* para tus compras\n"
-            f"Distribuidor: {distribuidor}\n\n"
-            f"Con esto puedes pedir tu mercadería hoy y pagarla a Circa "
-            f"en *7, 15 o 30 días*, según te convenga.\n\n"
-            f"¡También puedes hacer tus pedidos desde WhatsApp! 📲\n\n"
-            f"Estás a un paso de terminar, ¿continuamos?"
+            f"✅ Listo, *{nombre}*. Verificación completa.\n\n"
+            f"Tu cuenta Circa con *{distribuidor}* incluye:\n\n"
+            f"🛒 Pedir por WhatsApp\n"
+            f"🔥 Promos del mes al toque\n"
+            f"📆 Comprar hoy y pagar después si te falta caja *(hasta S/{linea:.0f})*\n\n"
+            f"Sin papeleos. Todo desde este chat.\n\n"
+            f"¿Continuamos?"
         ),
         buttons=[
-            {"id": "ACEPTO_LINEA", "title": "Sí, acepto ✅"},
+            {"id": "ACEPTO_LINEA", "title": "✅ Continuar"},
             {"id": "NO_GRACIAS", "title": "No, gracias"},
         ]
     )
@@ -670,31 +669,31 @@ async def send_catalogo_flow(to: str, bodega_id: str, tipo_operacion: str = "ven
     })
 
 async def send_order_confirmation(to: str, order_number: str, total_credito: float, pago_contado: float):
-    """Send order confirmation message after Flow completes."""
+    """Send order confirmation (T9 - humanizado)."""
     return await send_text(
         to=to,
         text=(
-            f"✅ *¡Pedido confirmado!*\n\n"
-            f"Número: *{order_number}*\n"
-            f"Total crédito: S/{total_credito:.2f}\n"
-            f"Pago contado: S/{pago_contado:.2f}\n\n"
-            f"Recibirás actualizaciones cuando tu pedido cambie de estado.\n\n"
-            f"Escribe *MENU* para volver al menú principal."
+            f"🎉 *¡Pedido confirmado!*\n\n"
+            f"Pedido: *{order_number}*\n"
+            f"Pago hoy: *S/{pago_contado:.2f}*\n"
+            f"Pago después: *S/{total_credito:.2f}*\n\n"
+            f"Te aviso cuando esté en camino.\n\n"
+            f"Escribe *MENU* cuando quieras pedir otra vez."
         )
     )
 
 
 async def send_tracking_update(to: str, order_number: str, estado: str, detalle: str = ""):
-    """Send order tracking update."""
-    estados_emoji = {
-        "confirmado": "📦",
-        "preparando": "🔧",
-        "en_camino": "🚚",
-        "entregado": "✅",
+    """Send order tracking update (T10 - mensajes humanos por estado)."""
+    estados_msg = {
+        "confirmado": "📦 *Pedido recibido* — DIMAX está preparando todo",
+        "preparando": "🔧 *Preparando tu pedido* — alistando los productos",
+        "en_camino": "🚚 *En camino a tu bodega*",
+        "entregado": "✅ *Entregado* — ¡gracias!",
     }
-    emoji = estados_emoji.get(estado, "📦")
+    titulo = estados_msg.get(estado, f"📦 *{estado.replace('_', ' ').title()}*")
     
-    text = f"{emoji} *Pedido {order_number}*\nEstado: *{estado.replace('_', ' ').title()}*"
+    text = f"{titulo}\nPedido: *{order_number}*"
     if detalle:
         text += f"\n{detalle}"
     
@@ -702,24 +701,23 @@ async def send_tracking_update(to: str, order_number: str, estado: str, detalle:
 
 
 async def send_payment_instructions(to: str, order_number: str, monto: float, vencimiento: str):
-    """Send payment instructions with Yape details."""
+    """Send Yape payment instructions (T11 humanizado)."""
     yape_phone = os.getenv("YAPE_PHONE", "986311567")
     yape_name = os.getenv("YAPE_NAME", "PALI SAC")
     
     return await send_buttons(
         to=to,
         body=(
-            f"💰 *Pago pendiente — {order_number}*\n\n"
+            f"💸 *Hora de pagar tu pedido {order_number}*\n\n"
             f"Monto: *S/{monto:.2f}*\n"
-            f"Vence: *{vencimiento}*\n\n"
-            f"Paga por Yape al:\n"
-            f"📱 *{yape_phone}*\n"
-            f"👤 {yape_name}\n\n"
-            f"Cuando hayas pagado, toca el botón:"
+            f"Hasta: *{vencimiento}*\n\n"
+            f"Yapea a:\n"
+            f"📱 *{yape_phone}* — {yape_name}\n\n"
+            f"Cuando hayas yapeado, dale al botón:"
         ),
         buttons=[
-            {"id": "YA_PAGUE", "title": "Ya pagué ✅"},
-            {"id": "MENU", "title": "Menú principal"},
+            {"id": "YA_PAGUE", "title": "Ya yapeé ✅"},
+            {"id": "MENU", "title": "Menú"},
         ]
     )
 
@@ -738,20 +736,38 @@ async def send_payment_confirmed(to: str, linea_disponible: float):
 
 
 async def send_reminder(to: str, order_number: str, monto: float, dias_restantes: int):
-    """Send payment reminder."""
-    if dias_restantes > 0:
-        urgencia = f"Faltan *{dias_restantes} días* para el vencimiento."
+    """Send payment reminder (T11 humanizado, 4 estados)."""
+    if dias_restantes > 1:
+        body = (
+            f"💸 *Recordatorio del pedido {order_number}*\n\n"
+            f"Monto: *S/{monto:.2f}*\n"
+            f"Te quedan *{dias_restantes} días* para yapear."
+        )
+    elif dias_restantes == 1:
+        body = (
+            f"💸 *Mañana vence tu pago — {order_number}*\n\n"
+            f"Monto: *S/{monto:.2f}*\n"
+            f"Yapea hoy o mañana antes que se cierre."
+        )
     elif dias_restantes == 0:
-        urgencia = "⚠️ *Tu pago vence HOY.*"
+        body = (
+            f"⏰ *Hoy vence tu pago — {order_number}*\n\n"
+            f"Monto: *S/{monto:.2f}*\n"
+            f"Yapea hoy mismo, ¡no se te pase!"
+        )
     else:
-        urgencia = f"🔴 *Tu pago está vencido hace {abs(dias_restantes)} días.*"
+        body = (
+            f"🔴 *Pago vencido — {order_number}*\n\n"
+            f"Monto: *S/{monto:.2f}*\n"
+            f"Vencido hace *{abs(dias_restantes)} días*. Si no puedes ahora, escríbenos."
+        )
     
     return await send_buttons(
         to=to,
-        body=f"📋 *Recordatorio — {order_number}*\n\nMonto: S/{monto:.2f}\n{urgencia}",
+        body=body,
         buttons=[
-            {"id": "YA_PAGUE", "title": "Ya pagué ✅"},
-            {"id": "MENU", "title": "Menú principal"},
+            {"id": "YA_PAGUE", "title": "Ya yapeé ✅"},
+            {"id": "MENU", "title": "Menú"},
         ]
     )
 
