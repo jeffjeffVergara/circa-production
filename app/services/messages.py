@@ -35,11 +35,9 @@ def msg_pedir_dni() -> str:
 
 def msg_dni_verificado(nombre: str, dni: str) -> str:
     return (
-        f"✅ *DNI verificado correctamente.*\n\n"
-        f"👤 *{nombre}*\n"
-        f"DNI: {dni}\n"
-        f"Coincide con el representante legal registrado.\n\n"
-        f"Escribe *SI* para ver los términos del servicio."
+        f"✅ Listo, *{nombre}*. Identidad verificada.\n\n"
+        f"DNI: {dni}\n\n"
+        f"Escribe *SI* para continuar con los términos."
     )
 
 def msg_contrato(linea: float) -> str:

@@ -365,8 +365,8 @@ En menos de 24 horas validamos tu solicitud y activamos tu línea. Empiezas comp
             datos["dni_nombre"] = bodega_data.get("nombre_comercial", "Test User")
             db.upsert_session(telefono, "reg_dni", datos, bodega_id)
             return [
-                f"\u2705 *DNI verificado*\n{datos['dni_nombre']}\n\n"
-                f"\U0001f4f8 Ahora envia una *foto* (cualquier imagen sirve para test).\n"
+                f"\u2705 Listo, *{datos['dni_nombre']}*. Identidad verificada.\n\n"
+                f"\U0001f4f8 Ahora env\u00edame una foto (cualquier imagen sirve para test).\n"
             ]
         reniec = consultar_dni_sync(dni)
         if reniec:
@@ -407,15 +407,14 @@ En menos de 24 horas validamos tu solicitud y activamos tu línea. Empiezas comp
             if datos.get("is_reset"):
                 db.upsert_session(telefono, "reg_pin", datos, bodega_id)
                 return [
-                    f"\u2705 *DNI verificado en RENIEC*\n{nombre_reniec}",
+                    f"\u2705 Listo, *{nombre_reniec}*. Identidad verificada.",
                     {"signal": "PIN_ASK", "mode": "create", "bodega_id": bodega_id},
                 ]
             
             db.upsert_session(telefono, "reg_dni", datos, bodega_id)
             return [
-                f"\u2705 *DNI verificado en RENIEC*\n{nombre_reniec}\n\n"
-                f"\U0001f4f8 Ahora env\u00eda una *foto del anverso de tu DNI f\u00edsico* para confirmar que lo tienes en tu poder.\n\n"
-                f"\U0001f512 Tip: env\u00edala como *Vista \u00fanica* (\u2460) para mayor seguridad."
+                f"\u2705 Listo, *{nombre_reniec}*. Identidad verificada.\n\n"
+                f"\U0001f4f8 Ahora env\u00edame una foto de tu DNI f\u00edsico para confirmar que lo tienes contigo."
             ]
         else:
             return [
