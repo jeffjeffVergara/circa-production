@@ -497,9 +497,30 @@ async def meta_webhook_incoming(request: Request):
                 bod = db.sb.table("bodegas").select("id").eq("telefono_whatsapp", telefono).limit(1).execute()
                 bod_id = bod.data[0]["id"] if bod.data else None
                 if bod_id:
-                    await meta_client.send_catalogo_flow(telefono, bod_id)
+                    po = (
+                        db.sb.table("pedidos")
+                        .select("tipo_operacion")
+                        .eq("bodega_id", bod_id)
+                        .in_("estado", ["borrador", "preventa_borrador"])
+                        .order("created_at", desc=True)
+                        .limit(1)
+                        .execute()
+                    )
+                    tipo_op = "preventa" if po.data and po.data[0].get("tipo_operacion") == "preventa" else "venta"
+                    await meta_client.send_catalogo_flow(
+                        telefono, bod_id, tipo_operacion=tipo_op, load_saved_cart=True
+                    )
             except Exception as e:
                 logger.error(f"EDITAR error: {e}", exc_info=True)
+            if msg.get("message_id"):
+                await meta_client.mark_as_read(msg["message_id"])
+            continue
+
+        if btn == "FLYER_PROMO":
+            try:
+                await meta_client.send_flyer_link(telefono)
+            except Exception as e:
+                logger.error(f"FLYER_PROMO error: {e}", exc_info=True)
             if msg.get("message_id"):
                 await meta_client.mark_as_read(msg["message_id"])
             continue
@@ -761,14 +782,43 @@ async def meta_webhook_incoming(request: Request):
         if btn == "REPETIR":
             try:
                 bodega_rep = db.get_bodega_by_phone(telefono)
-                if bodega_rep:
-                    # Check if there's a last order
-                    last = db.sb.table("pedidos").select("items_json").eq("bodega_id", bodega_rep["id"]).not_.is_("items_json", "null").order("created_at", desc=True).limit(1).execute()
-                    if last.data and last.data[0].get("items_json"):
-                        await meta_client.send_text(telefono, "📋 Tu ultimo pedido. Abre el catalogo para repetirlo:")
-                    await meta_client.send_catalogo_flow(telefono, bodega_rep["id"])
+                if not bodega_rep:
+                    await meta_client.send_text(telefono, "Escribe MENU para empezar.")
                 else:
-                    await meta_client.send_text(telefono, "No tienes pedidos anteriores. Escribe MENU.")
+                    items = None
+                    upi = bodega_rep.get("ultimo_pedido_items")
+                    if upi:
+                        items = json.loads(upi) if isinstance(upi, str) else upi
+                    if not items:
+                        last = (
+                            db.sb.table("pedidos")
+                            .select("items_json")
+                            .eq("bodega_id", bodega_rep["id"])
+                            .not_.is_("items_json", "null")
+                            .order("created_at", desc=True)
+                            .limit(1)
+                            .execute()
+                        )
+                        if last.data and last.data[0].get("items_json"):
+                            raw = last.data[0]["items_json"]
+                            items = json.loads(raw) if isinstance(raw, str) else raw
+                    if items:
+                        db.save_carrito(bodega_rep["id"], items)
+                        await meta_client.send_text(
+                            telefono,
+                            "📋 Tu último pedido está listo. Ábrelo en el catálogo para revisarlo y confirmar.",
+                        )
+                        await meta_client.send_catalogo_flow(
+                            telefono,
+                            bodega_rep["id"],
+                            tipo_operacion="venta",
+                            load_saved_cart=True,
+                        )
+                    else:
+                        await meta_client.send_text(
+                            telefono,
+                            "No tienes un pedido anterior. Escribe PEDIDO o MENU.",
+                        )
             except Exception as e:
                 logger.error(f"REPETIR handler error: {e}", exc_info=True)
             if msg["message_id"]:
@@ -1367,6 +1417,8 @@ async def submit_cart(data: CartSubmission):
     }).execute()
     pedido_id = pedido.data[0]["id"] if pedido.data else None
     if pedido_id:
+        # Persist cart so "Editar carrito" (catalog with repeat=1) can reload line items.
+        db.save_carrito(data.bodega_id, items_list)
         track_event(
             "preventa_created" if tipo == "preventa" else "order_created",
             bodega_id=data.bodega_id,
@@ -1436,6 +1488,37 @@ async def clear_carrito_api(data: dict):
         db.clear_carrito(bodega_id)
     return {"ok": True}
 
+
+@app.post("/api/carrito/save")
+async def save_carrito_api(data: dict):
+    """Persist cart while browsing (same shape as submit-carrito items / get_carrito)."""
+    bodega_id = data.get("bodega_id", "")
+    raw = data.get("items")
+    if not bodega_id or not isinstance(raw, list):
+        return {"ok": False, "error": "bodega_id e items requeridos"}
+    items_out = []
+    for i in raw:
+        if not isinstance(i, dict):
+            continue
+        cid = i.get("catalogo_id") or i.get("id")
+        if not cid:
+            continue
+        pack = i.get("pack_size") or i.get("unit") or ""
+        qty = int(i.get("cantidad") or i.get("qty") or 1)
+        pr = float(i.get("precio") or 0)
+        items_out.append({
+            "catalogo_id": cid,
+            "pack_size": pack,
+            "nombre": i.get("nombre") or i.get("producto") or "",
+            "marca": i.get("marca") or "",
+            "cantidad": qty,
+            "precio": pr,
+            "subtotal": float(i.get("subtotal") or round(pr * qty, 2)),
+        })
+    db.save_carrito(bodega_id, items_out)
+    return {"ok": True}
+
+
 @app.get("/api/carrito/{bodega_id}")
 async def get_carrito(bodega_id: str):
     cart = db.get_carrito(bodega_id)
@@ -1457,6 +1540,10 @@ async def catalogo_page():
 @app.get("/catalogo-v2")
 async def catalogo_v2_page():
     return FileResponse("static/catalogo_v2.html")
+
+@app.get("/flyer")
+async def flyer_page():
+    return FileResponse("static/flyer.html")
 
 @app.get("/api/cobranza")
 async def cobranza_pendiente():

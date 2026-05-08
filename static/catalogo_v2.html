@@ -26,9 +26,10 @@ html,body{height:100%;font-family:'Plus Jakarta Sans',sans-serif;background:var(
 .sumbar-r{padding:7px 16px;border-radius:var(--rs);background:var(--cta);color:var(--bg);font-size:12px;font-weight:700;border:none;cursor:pointer}
 .sumbar.hide{display:none}
 .search-w{padding:8px 16px 6px;position:relative}
-.search-i{width:100%;padding:10px 12px 10px 38px;border-radius:var(--rs);border:1.5px solid var(--brd);background:var(--card);color:var(--t1);font-size:13px;font-family:inherit;outline:none}
+.search-i{width:100%;padding:10px 12px 10px 48px;border-radius:var(--rs);border:1.5px solid var(--brd);background:var(--card);color:var(--t1);font-size:13px;font-family:inherit;outline:none}
 .search-i:focus{border-color:var(--accent)}.search-i::placeholder{color:var(--t3)}
-.s-icon{position:absolute;left:28px;top:50%;transform:translateY(-50%);color:var(--t3);font-size:15px;pointer-events:none}
+.s-icon{position:absolute;left:22px;top:50%;transform:translateY(-50%);color:var(--t3);pointer-events:none;display:flex;align-items:center;justify-content:center;width:26px;height:26px}
+.s-icon svg{width:26px;height:26px;stroke:currentColor;flex-shrink:0}
 .main{flex:1;overflow-y:auto;padding:4px 16px 20px;-webkit-overflow-scrolling:touch}
 .pc{background:var(--card);border-radius:var(--r);padding:14px;margin-bottom:8px;border:1px solid var(--brd)}
 .pc-brand{font-size:9px;color:var(--accent);font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px}
@@ -96,7 +97,7 @@ html,body{height:100%;font-family:'Plus Jakarta Sans',sans-serif;background:var(
 <div class="filt"><div class="fbtn on" id="fC" onclick="setF('cat')">Categoria</div><div class="fbtn" id="fM" onclick="setF('marca')">Marca</div></div>
 <div class="chips" id="cW"></div>
 <div class="sumbar hide" id="sB"><div class="sumbar-l" id="sL">0 items</div><button class="sumbar-r" onclick="openD()">Ver carrito</button><button class="btn-clear" onclick="clearCart()" style="background:transparent;border:1px solid #ff4444;color:#ff4444;padding:6px 14px;border-radius:20px;font-size:13px;cursor:pointer;margin-left:8px">Limpiar</button></div>
-<div class="search-w"><span class="s-icon">Q</span><input class="search-i" id="sI" type="text" placeholder="Buscar producto o marca..."></div>
+<div class="search-w"><span class="s-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4.3-4.3"/></svg></span><input class="search-i" id="sI" type="text" placeholder="Buscar producto o marca..." enterkeyhint="search" autocomplete="off"></div>
 <div class="main" id="mA"><div class="empty">Cargando productos...</div></div>
 </div>
 <div class="dov" id="dO" onclick="closeD()"></div>
@@ -110,10 +111,14 @@ var P=[],cart=[],linea=0,fm='cat',sel='Todos',step='cart',selUnits={};
 var CATS=['Todos'];
 var promosResult={items:[],ahorro_total:0,bonificaciones_aplicables:[],bonificaciones_proximas:[],valor_bonificaciones:0};
 var promoTimer=null;
+var carritoSyncTimer=null;
 
 function $(id){return document.getElementById(id)}
 function esc(s){return(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')}
-function escJS(s){return(s||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'")}
+/** Escape for strings inside onclick="...'here'..." — do not use esc() there: &#39; breaks after HTML decode */
+function escJS(s){return String(s==null?'':s).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/\r/g,'\\r').replace(/\n/g,'\\n')}
+/** Double-quoted HTML attributes: &-safe, no &#39; (dataset/apostrophe friendly) */
+function escAttr(s){return(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;')}
 function toast(m){var t=$('tt');t.textContent=m;t.classList.add('show');setTimeout(function(){t.classList.remove('show')},1500)}
 function fmt(n){return'S/'+n.toFixed(2)}
 function sendEvent(ev,meta){
@@ -126,6 +131,69 @@ function sendEvent(ev,meta){
  }catch(e){}
 }
 
+function cartToApiItems(){
+ return cart.map(function(c){
+  return{catalogo_id:c.id,pack_size:c.unit,nombre:c.nombre,marca:c.marca,cantidad:c.qty,precio:c.precio,subtotal:c.precio*c.qty};
+ });
+}
+
+function flushCartSyncNow(){
+ if(carritoSyncTimer){clearTimeout(carritoSyncTimer);carritoSyncTimer=null}
+ if(!BID)return;
+ try{
+  if(!cart.length){
+   fetch(API+'/api/carrito/clear',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({bodega_id:BID}),keepalive:true}).catch(function(){});
+   return;
+  }
+  fetch(API+'/api/carrito/save',{
+   method:'POST',
+   headers:{'Content-Type':'application/json'},
+   body:JSON.stringify({bodega_id:BID,items:cartToApiItems()}),
+   keepalive:true
+  }).catch(function(){});
+ }catch(e){}
+}
+
+function syncCartToServer(){
+ if(carritoSyncTimer)clearTimeout(carritoSyncTimer);
+ carritoSyncTimer=setTimeout(function(){
+  carritoSyncTimer=null;
+  if(!BID)return;
+  if(!cart.length){
+   fetch(API+'/api/carrito/clear',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({bodega_id:BID})}).catch(function(){});
+   return;
+  }
+  fetch(API+'/api/carrito/save',{
+   method:'POST',
+   headers:{'Content-Type':'application/json'},
+   body:JSON.stringify({bodega_id:BID,items:cartToApiItems()})
+  }).catch(function(){});
+ },400);
+}
+
+async function loadCartFromServer(){
+ try{
+  var sc=await fetch(API+'/api/carrito/'+BID).then(function(r){return r.json()}).catch(function(){return null});
+  if(!sc||!sc.items)return;
+  var si=typeof sc.items==='string'?JSON.parse(sc.items):sc.items;
+  if(!si||!si.length)return;
+  cart.length=0;
+  si.forEach(function(i){
+   var cid=i.catalogo_id||i.id;
+   if(!cid)return;
+   var u=i.pack_size||i.unit||'';
+   cart.push({id:cid,unit:u,precio:i.precio||i.precio_unitario||0,nombre:i.nombre||i.producto||'',marca:i.marca||'',qty:i.cantidad||i.qty||1});
+  });
+  cart.forEach(function(c){if(c.id)selUnits[c.id]=c.unit});
+  uC();evaluarPromos();
+  var fromRepeat=QS.get('repeat')==='1';
+  if(fromRepeat){
+   toast(cart.length+' producto(s) del pedido anterior');
+   setTimeout(function(){openD()},500);
+  }
+ }catch(e){console.log('No saved cart',e)}
+}
+
 async function init(){
  try{
   sendEvent('catalog_opened',{tipo_operacion:TIPO_OPERACION});
@@ -134,11 +202,7 @@ async function init(){
    fetch(API+'/api/bodegas/'+BID).then(function(r){return r.json()}).catch(function(){return null})]);
   P=r[0].filter(function(p){return p.activo});
   if(r[1]){linea=r[1].linea_disponible||0;$('bN').textContent=r[1].nombre_comercial||'';$('hL').textContent='S/'+linea.toFixed(2);document.getElementById('backBtn').style.display='inline-block'}
-  var shouldLoadCart=new URLSearchParams(location.search).get('repeat')==='1';
-  if(shouldLoadCart){try{var sc=await fetch(API+'/api/carrito/'+BID).then(function(r){return r.json()}).catch(function(){return null});
-  if(sc&&sc.items){var si=typeof sc.items==='string'?JSON.parse(sc.items):sc.items;
-  si.forEach(function(i){cart.push({id:i.catalogo_id,unit:i.pack_size,precio:i.precio||i.precio_unitario||0,nombre:i.nombre||i.producto||'',marca:i.marca||'',qty:i.cantidad||1})});
-  if(cart.length){uC();evaluarPromos();toast(cart.length+' producto(s) del pedido anterior');setTimeout(function(){openD()},500)}}}catch(e){console.log('No saved cart')}}
+  await loadCartFromServer();
   // Build categories from actual data
   var catSet={};P.forEach(function(p){var c=p.categoria||'Otros';catSet[c]=(catSet[c]||0)+1});
   CATS=['Todos'].concat(Object.keys(catSet).sort(function(a,b){return catSet[b]-catSet[a]}));
@@ -150,10 +214,10 @@ async function init(){
 function setF(m){fm=m;sel='Todos';$('fC').classList.toggle('on',m==='cat');$('fM').classList.toggle('on',m==='marca');bldC();rend()}
 
 function bldC(){
- if(fm==='cat'){$('cW').innerHTML=CATS.map(function(c){return'<div class="chip '+(c===sel?'on':'')+'" onclick="pick(\''+c+'\')">'+c+'</div>'}).join('')}
+ if(fm==='cat'){$('cW').innerHTML=CATS.map(function(c){return'<div class="chip '+(c===sel?'on':'')+'" onclick="pick(\''+escJS(c)+'\')">'+esc(c)+'</div>'}).join('')}
  else{var br={};P.forEach(function(p){var m=p.marca||'?';br[m]=(br[m]||0)+1});
   var s=['Todos'].concat(Object.keys(br).sort(function(a,b){return br[b]-br[a]}));
-  $('cW').innerHTML=s.map(function(b){return'<div class="chip '+(b===sel?'on':'')+'" onclick="pick(\''+esc(b)+'\')">'+b+'</div>'}).join('')}
+  $('cW').innerHTML=s.map(function(b){return'<div class="chip '+(b===sel?'on':'')+'" onclick="pick(\''+escJS(b)+'\')">'+esc(b)+'</div>'}).join('')}
 }
 function pick(v){sel=v;bldC();rend()}
 
@@ -216,22 +280,22 @@ function rend(){
   var qTotal=totalQtyForProduct(p.id);
   var pills=pillHTMLForProduct(p.id);
   return'<div class="pc"><div class="pc-brand">'+esc(p.marca||'')+'</div><div class="pc-name">'+esc(p.nombre||'')+'</div>'+
-   '<div class="pc-row"><div class="pc-units">'+us.map(function(u){return'<button class="ub '+(u[0]===su?'sel':'')+'" onclick="sU(\''+p.id+'\',\''+esc(u[0])+'\','+u[1]+')"><span class="ub-lbl">'+esc(u[0])+'</span><span class="ub-pr">'+fmt(u[1])+'</span></button>'}).join('')+'</div>'+
+   '<div class="pc-row"><div class="pc-units">'+us.map(function(u){return'<button class="ub '+(u[0]===su?'sel':'')+'" onclick="sU(\''+escJS(p.id)+'\',\''+escJS(u[0])+'\','+u[1]+')"><span class="ub-lbl">'+esc(u[0])+'</span><span class="ub-pr">'+fmt(u[1])+'</span></button>'}).join('')+'</div>'+
    '<div class="pc-qty">'+(qThisFormat>0?
-    '<button class="qb rm" onclick="cQ(\''+p.id+'\',-1,\''+su+'\')">'+(qThisFormat===1?'X':'-')+'</button><span class="qv">'+qThisFormat+'</span><button class="qb" onclick="cQ(\''+p.id+'\',1,\''+su+'\')">+</button>':
-    '<button class="qb add" data-id="'+p.id+'" data-su="'+esc(su)+'" data-pr="'+sp+'" data-nombre="'+esc(p.nombre)+'" data-marca="'+esc(p.marca)+'" onclick="aTCFromBtn(this)">+</button>'
+    '<button class="qb rm" onclick="cQ(\''+escJS(p.id)+'\',-1,\''+escJS(su)+'\')">'+(qThisFormat===1?'X':'-')+'</button><span class="qv">'+qThisFormat+'</span><button class="qb" onclick="cQ(\''+escJS(p.id)+'\',1,\''+escJS(su)+'\')">+</button>':
+    '<button class="qb add" data-id="'+escAttr(p.id)+'" data-su="'+escAttr(su)+'" data-pr="'+sp+'" data-nombre="'+escAttr(p.nombre)+'" data-marca="'+escAttr(p.marca)+'" onclick="aTCFromBtn(this)">+</button>'
    )+'</div></div>'+pills+'</div>';
  }).join('');
 }
 
 $('sI').addEventListener('input',function(){rend()});
 
-function aTC(id,u,pr,n,m){var key=id+'_'+u;var x=cart.find(function(c){return(c.id+'_'+c.unit)===key});if(x){x.qty++;x.precio=pr}else cart.push({id:id,unit:u,precio:pr,nombre:n,marca:m,qty:1});sendEvent('product_added',{catalogo_id:id,nombre:n,unidad:u,precio:pr,tipo_operacion:TIPO_OPERACION});toast(n.slice(0,20)+' agregado');uC();rend();evaluarPromos()}
+function aTC(id,u,pr,n,m){var key=id+'_'+u;var x=cart.find(function(c){return(c.id+'_'+c.unit)===key});if(x){x.qty++;x.precio=pr}else cart.push({id:id,unit:u,precio:pr,nombre:n,marca:m,qty:1});sendEvent('product_added',{catalogo_id:id,nombre:n,unidad:u,precio:pr,tipo_operacion:TIPO_OPERACION});toast(n.slice(0,20)+' agregado');uC();rend();evaluarPromos();syncCartToServer()}
 function aTCFromBtn(btn){aTC(btn.dataset.id,btn.dataset.su,parseFloat(btn.dataset.pr),btn.dataset.nombre,btn.dataset.marca)}
-function sU(id,u,pr){selUnits[id]=u;var i=cart.find(function(c){return c.id===id&&c.unit===u});if(i){i.precio=pr}rend()}
-function cQ(id,d,u){var key=id+'_'+(u||'');var i=cart.find(function(c){return(c.id+'_'+c.unit)===key});if(!i)return;i.qty+=d;if(i.qty<=0)cart=cart.filter(function(c){return(c.id+'_'+c.unit)!==key});uC();rend();evaluarPromos()}
+function sU(id,u,pr){selUnits[id]=u;var i=cart.find(function(c){return c.id===id&&c.unit===u});if(i){i.precio=pr;syncCartToServer()}rend()}
+function cQ(id,d,u){var key=id+'_'+(u||'');var i=cart.find(function(c){return(c.id+'_'+c.unit)===key});if(!i)return;i.qty+=d;if(i.qty<=0)cart=cart.filter(function(c){return(c.id+'_'+c.unit)!==key});uC();rend();evaluarPromos();syncCartToServer()}
 
-function clearCart(){cart=[];promosResult={items:[],ahorro_total:0,bonificaciones_aplicables:[],bonificaciones_proximas:[],valor_bonificaciones:0};uC();rend();toast('Carrito limpiado');fetch(API+'/api/carrito/clear',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({bodega_id:BID})}).catch(function(){})}
+function clearCart(){if(carritoSyncTimer){clearTimeout(carritoSyncTimer);carritoSyncTimer=null}cart=[];promosResult={items:[],ahorro_total:0,bonificaciones_aplicables:[],bonificaciones_proximas:[],valor_bonificaciones:0};uC();rend();toast('Carrito limpiado');fetch(API+'/api/carrito/clear',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({bodega_id:BID})}).catch(function(){})}
 function goBack(){window.close();window.location.href='https://wa.me/51986311567?text=MENU'}
 function uC(){
  var t=cart.reduce(function(s,c){return s+c.precio*c.qty},0),n=cart.reduce(function(s,c){return s+c.qty},0);
@@ -306,7 +370,7 @@ function rD(){
   $('dTl').textContent='Tu pedido';
   $('dI').innerHTML=cart.map(function(c,idx){
    return'<div class="di"><div class="di-row"><div class="din"><div class="dinn">'+esc(c.nombre)+'</div><div class="dinu">'+esc(c.unit)+' - '+fmt(c.precio)+'</div></div>'+
-   '<div class="pc-qty"><button class="qb rm" onclick="dQ(\''+c.id+'\',-1,\''+c.unit+'\')" style="width:26px;height:26px;font-size:12px">'+(c.qty===1?'X':'-')+'</button><span class="qv" style="width:26px;font-size:13px">'+c.qty+'</span><button class="qb" onclick="dQ(\''+c.id+'\',1,\''+c.unit+'\')" style="width:26px;height:26px;font-size:12px">+</button></div>'+
+   '<div class="pc-qty"><button class="qb rm" onclick="dQ(\''+escJS(c.id)+'\',-1,\''+escJS(c.unit)+'\')" style="width:26px;height:26px;font-size:12px">'+(c.qty===1?'X':'-')+'</button><span class="qv" style="width:26px;font-size:13px">'+c.qty+'</span><button class="qb" onclick="dQ(\''+escJS(c.id)+'\',1,\''+escJS(c.unit)+'\')" style="width:26px;height:26px;font-size:12px">+</button></div>'+
    '<div class="dis">'+fmt(c.precio*c.qty)+'</div></div>'+
    pillHTMLForCartItem(idx)+
    '</div>'}).join('');
@@ -356,6 +420,11 @@ async function cfmOrder(){
   cart=[];promosResult={items:[],ahorro_total:0,bonificaciones_aplicables:[],bonificaciones_proximas:[],valor_bonificaciones:0};uC();rend();
  }catch(e){b.disabled=false;b.textContent='Continuar pedido';toast('Error al enviar')}
 }
+
+document.addEventListener('visibilitychange',function(){
+ if(document.visibilityState==='hidden'){flushCartSyncNow()}
+});
+window.addEventListener('pagehide',flushCartSyncNow);
 
 init();
 </script>

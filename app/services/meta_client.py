@@ -19,6 +19,13 @@ import json
 
 logger = logging.getLogger("circa.meta")
 
+# Opción de lista "Ver opciones" → al elegirla el bot responde con CTA a /flyer
+FLYER_LIST_ROW = {
+    "id": "FLYER_PROMO",
+    "title": "Ver flyer",
+    "description": "Promos e información Circa",
+}
+
 # ── Config from env ──
 GRAPH_API_VERSION = "v23.0"
 GRAPH_API_URL = f"https://graph.facebook.com/{GRAPH_API_VERSION}"
@@ -340,6 +347,7 @@ async def send_menu(to: str, linea_disponible: float, preventa_pendiente: dict =
         {"id": "LINEA", "title": "📆 Comprar y pagar luego", "description": "Ver tu línea Circa"},
         {"id": "ESTADO", "title": "📦 Ver mis pedidos", "description": "Seguimiento y pagos"},
         {"id": "CONTACTO", "title": "💬 Hablar con Circa", "description": "Equipo Circa por WhatsApp"},
+        FLYER_LIST_ROW,
     ]
     
     if preventa_pendiente:
@@ -362,6 +370,26 @@ async def send_menu(to: str, linea_disponible: float, preventa_pendiente: dict =
         button_text="Ver opciones",
         sections=[{"title": "Menú", "rows": rows}]
     )
+
+
+async def send_flyer_link(to: str) -> dict | None:
+    """Mensaje con botón que abre la página del flyer (HTML en static/flyer.html, ruta /flyer)."""
+    base = os.getenv("APP_BASE_URL", "https://circa-production-c517.up.railway.app").rstrip("/")
+    url = f"{base}/flyer"
+    return await _send(to, {
+        "type": "interactive",
+        "interactive": {
+            "type": "cta_url",
+            "body": {"text": "📄 Aquí está el flyer con promos e información Circa. Ábrelo cuando quieras."},
+            "action": {
+                "name": "cta_url",
+                "parameters": {
+                    "display_text": "Abrir flyer",
+                    "url": url,
+                },
+            },
+        },
+    })
 
 
 async def send_welcome(to: str, nombre: str, linea: float, distribuidor: str):
@@ -640,11 +668,20 @@ async def send_contacto_circa(to: str, wa_link: str | None) -> dict | None:
     )
 
 
-async def send_catalogo_flow(to: str, bodega_id: str, tipo_operacion: str = "venta"):
+async def send_catalogo_flow(
+    to: str,
+    bodega_id: str,
+    tipo_operacion: str = "venta",
+    *,
+    load_saved_cart: bool = False,
+):
     """Send catalog as CTA URL button - opens in WhatsApp in-app browser."""
     base = os.getenv("APP_BASE_URL", "https://circa-production-c517.up.railway.app")
     t = "preventa" if tipo_operacion == "preventa" else "venta"
-    url = f"{base}/catalogo-v2?b={bodega_id}&t={t}"
+    q = f"b={bodega_id}&t={t}"
+    if load_saved_cart:
+        q += "&repeat=1"
+    url = f"{base}/catalogo-v2?{q}"
     texto = (
         "Arma tu pre-venta del catalogo.\n"
         "Busca por nombre o marca, elige cantidades y confirma."

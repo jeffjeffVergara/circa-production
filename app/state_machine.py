@@ -60,7 +60,7 @@ def _bot_wa_number() -> str:
     return TWILIO_FROM.replace("whatsapp:", "").replace("+", "").strip()
 
 def get_catalog_url(bodega_id: str) -> str:
-    return f"{_app_base_url()}/catalogo?b={bodega_id}"
+    return f"{_app_base_url()}/catalogo-v2?b={bodega_id}"
 
 def get_pin_url(bodega_id: str, mode: str = "confirm") -> str:
     return f"{_app_base_url()}/pin?b={bodega_id}&mode={mode}&to={_bot_wa_number()}"
@@ -703,7 +703,7 @@ En menos de 24 horas validamos tu solicitud y activamos tu línea. Empiezas comp
             if bodega.get("ultimo_pedido_items"):
                 items = json.loads(bodega["ultimo_pedido_items"]) if isinstance(bodega["ultimo_pedido_items"], str) else bodega["ultimo_pedido_items"]
                 db.save_carrito(bodega["id"], items)
-                url = get_catalog_url(bodega["id"]) + "&repeat=1"
+                url = get_catalog_url(bodega["id"]) + "&t=venta&repeat=1"
                 db.upsert_session(telefono, "catalogo", {"cart": items}, bodega["id"])
                 return [f"\U0001f4cb *Tu ultimo pedido esta listo.*\nAbre el catalogo para revisarlo y confirmar:\n\n\U0001f449 {url}"]
             return ["No tienes un pedido anterior. Escribe *PEDIDO* para empezar."]
