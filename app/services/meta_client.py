@@ -19,13 +19,6 @@ import json
 
 logger = logging.getLogger("circa.meta")
 
-# Opción de lista "Ver opciones" → al elegirla el bot responde con CTA a /flyer
-FLYER_LIST_ROW = {
-    "id": "FLYER_PROMO",
-    "title": "Ver flyer",
-    "description": "Promos e información Circa",
-}
-
 # ── Config from env ──
 GRAPH_API_VERSION = "v23.0"
 GRAPH_API_URL = f"https://graph.facebook.com/{GRAPH_API_VERSION}"
@@ -341,13 +334,12 @@ async def mark_as_read(message_id: str) -> dict | None:
 async def send_menu(to: str, linea_disponible: float, preventa_pendiente: dict = None):
     """Main menu (T12 v2 - sin tope, foco en utilidad). Si hay preventa DIMAX pendiente, primera opción."""
     rows_normales = [
-        {"id": "VER_PROMOS", "title": "🔥 Ver promos", "description": "Las promos del mes"},
+        {"id": "VER_PROMOS", "title": "🔥 Ver promos", "description": "Flyer y promos del mes"},
         {"id": "PEDIDO", "title": "🛒 Pedido / preventa", "description": "Catálogo completo"},
         {"id": "REPETIR", "title": "⚡ Repetir último pedido", "description": "Pide lo mismo de antes"},
         {"id": "LINEA", "title": "📆 Comprar y pagar luego", "description": "Ver tu línea Circa"},
         {"id": "ESTADO", "title": "📦 Ver mis pedidos", "description": "Seguimiento y pagos"},
         {"id": "CONTACTO", "title": "💬 Hablar con Circa", "description": "Equipo Circa por WhatsApp"},
-        FLYER_LIST_ROW,
     ]
     
     if preventa_pendiente:

@@ -97,6 +97,14 @@ def dispatch_signal(telefono: str, signal: dict):
         send_plazo(telefono, signal["monto"], signal["fee7"], signal["total7"], signal["fee15"], signal["total15"], signal["fee30"], signal["total30"])
     elif sig == "MENU":
         send_menu(telefono, signal["linea"])
+    elif sig == "FLYER_LINK":
+        base = os.getenv("APP_BASE_URL", "https://circa-production-c517.up.railway.app").rstrip("/")
+        send_whatsapp(
+            telefono,
+            "📄 *Flyer y promos Circa*\n\n"
+            f"Abre aquí: {base}/flyer\n\n"
+            "Cuando termines, escribe *MENU* para volver.",
+        )
     elif sig == "CONTACT_CIRCA":
         # Twilio (legacy): texto plano; Meta usa send_contacto_circa (CTA wa.me).
         link = signal.get("wa_link") or ""
@@ -512,15 +520,6 @@ async def meta_webhook_incoming(request: Request):
                     )
             except Exception as e:
                 logger.error(f"EDITAR error: {e}", exc_info=True)
-            if msg.get("message_id"):
-                await meta_client.mark_as_read(msg["message_id"])
-            continue
-
-        if btn == "FLYER_PROMO":
-            try:
-                await meta_client.send_flyer_link(telefono)
-            except Exception as e:
-                logger.error(f"FLYER_PROMO error: {e}", exc_info=True)
             if msg.get("message_id"):
                 await meta_client.mark_as_read(msg["message_id"])
             continue
@@ -1092,6 +1091,8 @@ async def meta_webhook_incoming(request: Request):
                         _bodega_menu = db.get_bodega_by_phone(telefono)
                         _pv_pend = db.get_preventa_pendiente(_bodega_menu["id"]) if _bodega_menu else None
                         await meta_client.send_menu(telefono, resp.get("linea", 500), preventa_pendiente=_pv_pend)
+                    elif signal == "FLYER_LINK":
+                        await meta_client.send_flyer_link(telefono)
                     elif signal == "LINEA_INFO":
                         await meta_client.send_linea_info(
                             telefono, resp.get("aprobada", 500),
