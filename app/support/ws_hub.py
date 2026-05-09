@@ -1,15 +1,16 @@
 """
 Realtime fan-out for the support console.
 
-Single-process hub suitable for one uvicorn worker. For multi-pod deployments,
-replace `emit()` internals with Redis Pub/Sub (or Supabase Realtime) — keep the
-same event envelope: ``{"event": str, "payload": dict}``.
+- Sin ``REDIS_URL``: envío directo a todos los WebSockets del proceso.
+- Con ``REDIS_URL``: ``emit`` publica en Redis; cada réplica reenvía a sus sockets locales
+  (ver ``realtime_redis.py`` + lifespan en ``main.py``).
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -38,28 +39,35 @@ class SupportRealtimeHub:
             except ValueError:
                 pass
 
-    async def emit(self, event: str, payload: dict) -> None:
-        """
-        Fan-out to every connected socket. Failed sends drop the socket.
-
-        Redis scaling sketch:
-          publish channel ``circa:support`` JSON ``{"event","payload"}``;
-          each pod subscribes and forwards to local `_connections`.
-        """
-        message = {"event": event, "payload": payload}
+    async def deliver_local(self, envelope: dict) -> None:
+        """Entrega un mensaje ya serializado ``{"event": str, "payload": dict}``."""
         async with self._lock:
             targets = list(self._connections)
 
         dead: list[WebSocket] = []
         for ws in targets:
             try:
-                await ws.send_json(message)
+                await ws.send_json(envelope)
             except Exception:
                 dead.append(ws)
 
         if dead:
             async with self._lock:
                 self._connections = [w for w in self._connections if w not in dead]
+
+    async def emit(self, event: str, payload: dict) -> None:
+        envelope = {"event": event, "payload": payload}
+        use_redis = bool(os.getenv("REDIS_URL", "").strip())
+        if use_redis:
+            try:
+                from app.support.realtime_redis import publish_support_event
+
+                await publish_support_event(envelope)
+                return
+            except Exception:
+                logger.exception("Redis publish failed; falling back to local fan-out")
+
+        await self.deliver_local(envelope)
 
 
 hub = SupportRealtimeHub()

@@ -234,14 +234,16 @@ def list_conversations(
         return []
 
 
-def list_messages(conversation_id: str, limit: int = 200) -> list[dict[str, Any]]:
+def list_messages(conversation_id: str, limit: int = 200, offset: int = 0) -> list[dict[str, Any]]:
     try:
+        lim = min(max(1, limit), 500)
+        off = max(0, offset)
         r = (
             sb.table("support_messages")
             .select("*")
             .eq("conversation_id", conversation_id)
             .order("created_at", desc=False)
-            .limit(limit)
+            .range(off, off + lim - 1)
             .execute()
         )
         return r.data or []

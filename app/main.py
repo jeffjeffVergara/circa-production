@@ -33,12 +33,35 @@ from app.services.fees import calculate_fee
 from pydantic import BaseModel
 from app.config import TWILIO_FROM
 from datetime import date, timedelta
+from contextlib import asynccontextmanager
 import logging, json, os
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("circa")
 
-app = FastAPI(title="Circa MVP", version="2.3.0")
+
+@asynccontextmanager
+async def _circa_lifespan(app: FastAPI):
+    task = None
+    try:
+        from app.support.realtime_redis import redis_pubsub_enabled, spawn_subscriber_if_needed
+        from app.support.ws_hub import hub
+
+        if redis_pubsub_enabled():
+            task = spawn_subscriber_if_needed(hub.deliver_local)
+            logger.info("Support realtime: Redis Pub/Sub bridge enabled")
+    except Exception as e:
+        logger.warning("lifespan init (support redis): %s", e)
+    yield
+    try:
+        from app.support.realtime_redis import shutdown_redis_async
+
+        await shutdown_redis_async(task)
+    except Exception as e:
+        logger.warning("lifespan shutdown (support redis): %s", e)
+
+
+app = FastAPI(title="Circa MVP", version="2.3.0", lifespan=_circa_lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 app.mount("/static", StaticFiles(directory="static"), name="static")
 app.include_router(distribuidor_router)

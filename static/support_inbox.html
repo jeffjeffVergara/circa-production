@@ -73,6 +73,8 @@ a{color:var(--accent)}
 .super-assign select{min-width:160px;padding:8px;border-radius:var(--rs);border:1px solid var(--brd);background:var(--bg);color:var(--t1);font-family:inherit}
 .toast{position:fixed;bottom:22px;right:22px;padding:12px 18px;border-radius:var(--rs);background:var(--card2);border:1px solid var(--brd);font-size:12px;font-weight:600;color:var(--t1);opacity:0;pointer-events:none;transition:opacity .2s;max-width:320px;z-index:50}
 .toast.show{opacity:1}
+.adv summary{cursor:pointer;font-size:12px;color:var(--t2);font-weight:600;margin-top:10px}
+.adv input{width:100%;padding:8px 10px;border-radius:var(--rs);border:1px solid var(--brd);background:var(--bg);color:var(--t1);font-family:inherit;font-size:12px}
 .ws-dot{width:8px;height:8px;border-radius:50%;background:var(--t3);display:inline-block;margin-right:6px}
 .ws-dot.ok{background:var(--cta);box-shadow:0 0 10px rgba(0,212,170,.5)}
 .ws-dot.bad{background:var(--danger)}
@@ -151,6 +153,19 @@ a{color:var(--accent)}
         <div class="messages" id="msgs"></div>
         <div class="composer">
           <textarea id="replyTa" placeholder="Escribe un mensaje para WhatsApp…"></textarea>
+          <details class="adv" id="advMedia">
+            <summary>Multimedia / plantilla Meta</summary>
+            <div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">
+              <label style="font-size:10px;color:var(--t3);text-transform:uppercase">URL imagen (HTTPS)</label>
+              <input id="replyImg" type="url" autocomplete="off" placeholder="https://…"/>
+              <label style="font-size:10px;color:var(--t3);text-transform:uppercase">URL documento PDF</label>
+              <input id="replyDoc" type="url" autocomplete="off" placeholder="https://…"/>
+              <label style="font-size:10px;color:var(--t3);text-transform:uppercase">Nombre archivo (opcional)</label>
+              <input id="replyDocFn" type="text" autocomplete="off" placeholder="factura.pdf"/>
+              <label style="font-size:10px;color:var(--t3);text-transform:uppercase">Nombre plantilla aprobada</label>
+              <input id="replyTpl" type="text" autocomplete="off" placeholder="solo si usas template Meta"/>
+            </div>
+          </details>
           <div class="composer-actions">
             <span style="font-size:11px;color:var(--t3)">Enter para enviar (Shift+Enter nueva línea)</span>
             <button type="button" class="primary" id="btnSend" style="padding:10px 20px;border-radius:var(--rs);border:none;background:var(--cta);color:#04251f;font-weight:800;cursor:pointer;font-family:inherit;font-size:13px">Enviar</button>
@@ -329,7 +344,7 @@ a{color:var(--accent)}
   }
 
   async function loadMessages(id){
-    var data=await api('GET','/api/support/conversations/'+encodeURIComponent(id)+'/messages');
+    var data=await api('GET','/api/support/conversations/'+encodeURIComponent(id)+'/messages?limit=300&offset=0');
     var list=data.messages||[];
     var box=document.getElementById('msgs');
     box.innerHTML='';
@@ -341,6 +356,9 @@ a{color:var(--accent)}
       else d.className='bubble '+(inward?'in':'out');
       var who=sk==='contact'?'Cliente':sk==='agent'?'Agente':sk==='bot'?'Bot':'Sistema';
       var body=esc(m.body||'');
+      var mt=(m.message_type||'').toLowerCase();
+      if(mt==='image'&&(m.media&&m.media.link)) body+='\n'+esc(String(m.media.link));
+      if(mt==='document'&&(m.media&&m.media.link)) body+='\n📎 '+esc(String(m.media.link));
       var ts=(m.created_at||'').replace('T',' ').slice(0,19);
       if(sk!=='system') d.innerHTML='<div class="who">'+esc(who)+'</div>'+body+'<div class="ts">'+esc(ts)+'</div>';
       else d.innerHTML=body+'<div class="ts">'+esc(ts)+'</div>';
@@ -352,10 +370,29 @@ a{color:var(--accent)}
   async function sendReply(){
     if(!selectedId)return;
     var t=document.getElementById('replyTa').value.trim();
-    if(!t)return toast('Escribe un mensaje');
+    var img=document.getElementById('replyImg').value.trim();
+    var doc=document.getElementById('replyDoc').value.trim();
+    var docFn=document.getElementById('replyDocFn').value.trim();
+    var tpl=document.getElementById('replyTpl').value.trim();
+    var payload={};
+    if(t) payload.text=t;
+    if(img) payload.image_url=img;
+    if(doc){
+      payload.document_url=doc;
+      if(docFn) payload.document_filename=docFn;
+    }
+    if(tpl) payload.template_name=tpl;
+    if(!payload.text&&!payload.image_url&&!payload.document_url&&!payload.template_name){
+      toast('Escribe texto, URL de imagen/documento o plantilla');
+      return;
+    }
     try{
-      await api('POST','/api/support/conversations/'+encodeURIComponent(selectedId)+'/reply',{text:t});
+      await api('POST','/api/support/conversations/'+encodeURIComponent(selectedId)+'/reply',payload);
       document.getElementById('replyTa').value='';
+      document.getElementById('replyImg').value='';
+      document.getElementById('replyDoc').value='';
+      document.getElementById('replyDocFn').value='';
+      document.getElementById('replyTpl').value='';
       await loadMessages(selectedId);
       await loadConversations();
       toast('Enviado');

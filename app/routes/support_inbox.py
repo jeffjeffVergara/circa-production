@@ -221,13 +221,19 @@ async def get_conv(conversation_id: str, request: Request, agent: dict = Depends
 
 
 @router.get("/conversations/{conversation_id}/messages")
-async def get_messages(conversation_id: str, agent: dict = Depends(verify_support_agent)):
+async def get_messages(
+    conversation_id: str,
+    agent: dict = Depends(verify_support_agent),
+    limit: int = Query(200, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+):
     conv = repo.fetch_conversation(conversation_id)
     if not conv:
         raise HTTPException(status_code=404, detail="Not found")
     if not _can_access_conversation(agent, conv):
         raise HTTPException(status_code=403, detail="Forbidden")
-    return {"messages": repo.list_messages(conversation_id)}
+    rows = repo.list_messages(conversation_id, limit=limit, offset=offset)
+    return {"messages": rows, "limit": limit, "offset": offset, "count": len(rows)}
 
 
 @router.post("/conversations/{conversation_id}/read")
