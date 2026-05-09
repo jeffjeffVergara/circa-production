@@ -21,9 +21,13 @@ html,body{height:100%;font-family:'Plus Jakarta Sans',sans-serif;background:var(
 .chips::-webkit-scrollbar{display:none}
 .chip{flex-shrink:0;padding:6px 14px;border-radius:20px;font-size:11px;font-weight:600;border:1.5px solid var(--brd);background:transparent;color:var(--t2);cursor:pointer;white-space:nowrap}
 .chip.on{background:var(--accent);color:var(--bg);border-color:var(--accent)}
-.sumbar{padding:8px 16px;display:flex;align-items:center;justify-content:space-between;background:var(--card);border-bottom:1px solid var(--brd)}
-.sumbar-l{font-size:12px;color:var(--t2)}.sumbar-l b{color:var(--accent)}
-.sumbar-r{padding:7px 16px;border-radius:var(--rs);background:var(--cta);color:var(--bg);font-size:12px;font-weight:700;border:none;cursor:pointer}
+.sumbar{padding:12px 16px;display:flex;flex-direction:column;gap:10px;background:linear-gradient(180deg,#152238 0%,var(--card) 100%);border-bottom:1px solid var(--brd);box-shadow:0 6px 20px rgba(0,0,0,.25)}
+.sumbar-top{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%}
+.sumbar-l{font-size:13px;color:var(--t2);font-weight:600;line-height:1.3}.sumbar-l b{color:var(--accent);font-size:14px}
+.sumbar-r{width:100%;padding:15px 18px;border-radius:14px;background:linear-gradient(135deg,#00e6b8 0%,var(--cta) 100%);color:#04251f;font-size:16px;font-weight:800;border:none;cursor:pointer;font-family:inherit;line-height:1.2;letter-spacing:.02em;box-shadow:0 6px 22px rgba(0,212,170,.45),inset 0 1px 0 rgba(255,255,255,.25);display:flex;align-items:center;justify-content:center;gap:10px;min-height:52px;-webkit-tap-highlight-color:transparent}
+.sumbar-r:active{transform:scale(.98);box-shadow:0 4px 14px rgba(0,212,170,.35)}
+.sumbar-r .sumbar-ico{font-size:22px;line-height:1}
+.btn-clear{flex-shrink:0;background:transparent!important;border:1.5px solid rgba(255,71,87,.55)!important;color:#ff6b7a!important;padding:8px 14px!important;border-radius:999px!important;font-size:12px!important;font-weight:700!important;cursor:pointer;font-family:inherit}
 .sumbar.hide{display:none}
 .search-w{padding:8px 16px 6px;position:relative}
 .search-i{width:100%;padding:10px 12px 10px 48px;border-radius:var(--rs);border:1.5px solid var(--brd);background:var(--card);color:var(--t1);font-size:13px;font-family:inherit;outline:none}
@@ -96,7 +100,7 @@ html,body{height:100%;font-family:'Plus Jakarta Sans',sans-serif;background:var(
 <div class="hdr"><a id="backBtn" href="https://wa.me/51986311567?text=MENU" style="display:none;color:#5B8AF5;font-size:22px;text-decoration:none;margin-right:10px">&#8592;</a><div class="hdr-logo">C</div><div class="hdr-info"><div class="hdr-t">Catalogo Circa</div><div class="hdr-s" id="bN">Cargando...</div></div><div class="hdr-line" id="hL">S/---</div></div>
 <div class="filt"><div class="fbtn on" id="fC" onclick="setF('cat')">Categoria</div><div class="fbtn" id="fM" onclick="setF('marca')">Marca</div></div>
 <div class="chips" id="cW"></div>
-<div class="sumbar hide" id="sB"><div class="sumbar-l" id="sL">0 items</div><button class="sumbar-r" onclick="openD()">Ver carrito</button><button class="btn-clear" onclick="clearCart()" style="background:transparent;border:1px solid #ff4444;color:#ff4444;padding:6px 14px;border-radius:20px;font-size:13px;cursor:pointer;margin-left:8px">Limpiar</button></div>
+<div class="sumbar hide" id="sB"><div class="sumbar-top"><div class="sumbar-l" id="sL">0 items</div><button type="button" class="btn-clear" onclick="clearCart()">Limpiar</button></div><button type="button" class="sumbar-r" onclick="openD()"><span class="sumbar-ico" aria-hidden="true">🛒</span><span>Ver carrito</span></button></div>
 <div class="search-w"><span class="s-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4.3-4.3"/></svg></span><input class="search-i" id="sI" type="text" placeholder="Buscar producto o marca..." enterkeyhint="search" autocomplete="off"></div>
 <div class="main" id="mA"><div class="empty">Cargando productos...</div></div>
 </div>
