@@ -145,9 +145,27 @@ def get_carrito(bodega_id: str):
     r = sb.table("carritos").select("*").eq("bodega_id", bodega_id).limit(1).execute()
     return r.data[0] if r.data else None
 
+def normalize_carrito_items(raw):
+    """carritos.items es jsonb: debe ser array; datos legacy pueden venir como string JSON dentro del jsonb."""
+    if raw is None:
+        return []
+    if isinstance(raw, list):
+        return raw
+    if isinstance(raw, str):
+        try:
+            parsed = json.loads(raw)
+            if isinstance(parsed, str):
+                parsed = json.loads(parsed)
+            return parsed if isinstance(parsed, list) else []
+        except Exception:
+            return []
+    return []
+
+
 def save_carrito(bodega_id: str, items: list):
     existing = get_carrito(bodega_id)
-    payload = {"bodega_id": bodega_id, "items": json.dumps(items), "updated_at": datetime.utcnow().isoformat()}
+    # Lista nativa → PostgREST guarda jsonb array (evita jsonb tipo "string" con dump doble)
+    payload = {"bodega_id": bodega_id, "items": items or [], "updated_at": datetime.utcnow().isoformat()}
     if existing:
         sb.table("carritos").update(payload).eq("id", existing["id"]).execute()
     else:

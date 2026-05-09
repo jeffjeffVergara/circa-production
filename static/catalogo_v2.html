@@ -176,7 +176,8 @@ async function loadCartFromServer(){
   var sc=await fetch(API+'/api/carrito/'+BID).then(function(r){return r.json()}).catch(function(){return null});
   if(!sc||!sc.items)return;
   var si=typeof sc.items==='string'?JSON.parse(sc.items):sc.items;
-  if(!si||!si.length)return;
+  for(var d=0;d<3&&typeof si==='string';d++){try{si=JSON.parse(si)}catch(e){return}}
+  if(!si||!Array.isArray(si)||!si.length)return;
   cart.length=0;
   si.forEach(function(i){
    var cid=i.catalogo_id||i.id;

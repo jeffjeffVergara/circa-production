@@ -1525,13 +1525,7 @@ async def get_carrito(bodega_id: str):
     cart = db.get_carrito(bodega_id)
     if not cart:
         return {"items": []}
-    items = cart.get("items", [])
-    if isinstance(items, str):
-        import json as _json
-        try:
-            cart["items"] = _json.loads(items)
-        except Exception:
-            cart["items"] = []
+    cart["items"] = db.normalize_carrito_items(cart.get("items"))
     return cart
 
 @app.get("/catalogo")
