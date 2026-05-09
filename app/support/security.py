@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import bcrypt
 import hashlib
+import hmac
 import logging
+import os
 import secrets
 from time import monotonic
 from typing import Any
@@ -14,8 +16,31 @@ from fastapi import Depends, Header, HTTPException, Request
 logger = logging.getLogger("circa.support.security")
 
 _RATE_BUCKETS: dict[str, list[float]] = {}
-_RL_LIMIT = int(__import__("os").getenv("SUPPORT_API_RATE_LIMIT", "120"))
-_RL_WINDOW_SEC = float(__import__("os").getenv("SUPPORT_API_RATE_WINDOW_SEC", "60"))
+_RL_LIMIT = int(os.getenv("SUPPORT_API_RATE_LIMIT", "120"))
+_RL_WINDOW_SEC = float(os.getenv("SUPPORT_API_RATE_WINDOW_SEC", "60"))
+
+# Fila en support_agents apuntada cuando el Bearer coincide con SUPPORT_BOOTSTRAP_SECRET.
+DEFAULT_SUPPORT_CONSOLE_AGENT_ID = "a0000000-0000-4000-8000-000000000001"
+
+
+def _bootstrap_secret() -> str:
+    return os.getenv("SUPPORT_BOOTSTRAP_SECRET", "").strip()
+
+
+def _secret_phrase_matches(provided: str, expected: str) -> bool:
+    """Comparación en tiempo constante; longitudes distintas → false (sin excepción)."""
+    if not expected or not provided:
+        return False
+    a = provided.encode("utf-8")
+    b = expected.encode("utf-8")
+    if len(a) != len(b):
+        return False
+    return hmac.compare_digest(a, b)
+
+
+def bootstrap_header_matches_secret(header_value: str) -> bool:
+    """Valida header ``X-Support-Bootstrap-Secret`` contra ``SUPPORT_BOOTSTRAP_SECRET``."""
+    return _secret_phrase_matches(header_value.strip(), _bootstrap_secret())
 
 
 def token_sha256_hex(raw_token: str) -> str:
@@ -80,7 +105,28 @@ def write_audit_log(
 
 
 def resolve_support_agent_from_token(raw_token: str) -> dict[str, Any]:
+    """
+    1) Si ``SUPPORT_BOOTSTRAP_SECRET`` está definido y el Bearer es exactamente esa palabra,
+       se autentica como el agente consola en BD (UUID ``SUPPORT_CONSOLE_AGENT_ID``).
+    2) Si no, validación legacy por token por agente (SHA-256 + bcrypt).
+    """
     from app.services import db
+
+    phrase = raw_token.strip()
+    boot = _bootstrap_secret()
+    if boot and _secret_phrase_matches(phrase, boot):
+        cid = os.getenv("SUPPORT_CONSOLE_AGENT_ID", DEFAULT_SUPPORT_CONSOLE_AGENT_ID).strip()
+        r = db.sb.table("support_agents").select("*").eq("id", cid).limit(1).execute()
+        if not r.data:
+            logger.error(
+                "SUPPORT_BOOTSTRAP_SECRET matched but support_agents.id=%s is missing (run migration 20260509)",
+                cid,
+            )
+            raise HTTPException(
+                status_code=503,
+                detail="Support console agent row missing; apply migration 20260509_support_console_agent.sql",
+            )
+        return r.data[0]
 
     sha = token_sha256_hex(raw_token)
     r = (
@@ -116,6 +162,8 @@ async def verify_support_agent(
 
     try:
         from datetime import datetime, timezone
+
+        from app.services import db
 
         now = datetime.now(timezone.utc).isoformat()
         db.sb.table("support_agents").update({"last_seen_at": now, "updated_at": now}).eq(

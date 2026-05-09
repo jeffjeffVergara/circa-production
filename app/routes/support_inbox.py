@@ -62,8 +62,10 @@ class TypingBody(BaseModel):
 async def verify_bootstrap_secret(
     x_support_bootstrap_secret: str = Header(..., alias="X-Support-Bootstrap-Secret"),
 ) -> None:
-    expected = os.getenv("SUPPORT_BOOTSTRAP_SECRET", "").strip()
-    if not expected or x_support_bootstrap_secret.strip() != expected:
+    """Misma palabra que ``Bearer`` / consola: ``SUPPORT_BOOTSTRAP_SECRET`` (comparación estricta)."""
+    from app.support.security import bootstrap_header_matches_secret
+
+    if not bootstrap_header_matches_secret(x_support_bootstrap_secret):
         raise HTTPException(status_code=403, detail="Invalid bootstrap secret")
 
 
@@ -83,7 +85,7 @@ async def bootstrap_agent(
     body: BootstrapAgentBody,
     _: None = Depends(verify_bootstrap_secret),
 ):
-    """One-time agent onboarding (protected by ``SUPPORT_BOOTSTRAP_SECRET``)."""
+    """Alta de agentes adicionales (legacy). Header = misma palabra secreta que el acceso Bearer a la consola."""
     from app.services import db
 
     raw, sha, hashed = mint_agent_credentials()

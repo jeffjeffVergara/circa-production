@@ -86,9 +86,9 @@ a{color:var(--accent)}
 
 <section class="login" id="login">
   <h1>Soporte Circa</h1>
-  <p>Pega tu token de agente (Bearer). Se guarda solo en este navegador.</p>
-  <label for="tok">Token API</label>
-  <input id="tok" type="password" autocomplete="off" placeholder="••••••••"/>
+  <p>Usa la palabra configurada en el servidor como <code>SUPPORT_BOOTSTRAP_SECRET</code> (Bearer). Solo se guarda en este navegador.</p>
+  <label for="tok">Palabra de acceso</label>
+  <input id="tok" type="password" autocomplete="off" placeholder="SUPPORT_BOOTSTRAP_SECRET"/>
   <button type="button" id="btnLogin">Entrar</button>
   <p class="err" id="loginErr"></p>
 </section>
