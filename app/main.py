@@ -9,6 +9,7 @@ from fastapi.responses import PlainTextResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from app.routes.distribuidor import router as distribuidor_router
+from app.routes.support_inbox import router as support_inbox_router
 from twilio.twiml.messaging_response import MessagingResponse
 from app.state_machine import handle_message
 from app.services.twilio_client import (
@@ -41,6 +42,7 @@ app = FastAPI(title="Circa MVP", version="2.3.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 app.mount("/static", StaticFiles(directory="static"), name="static")
 app.include_router(distribuidor_router)
+app.include_router(support_inbox_router)
 
 
 def _bot_wa_number() -> str:
@@ -397,11 +399,15 @@ async def meta_webhook_verify(request: Request):
 @app.post("/webhook/meta")
 async def meta_webhook_incoming(request: Request):
     """Handle incoming messages from Meta Cloud API."""
-    from app.services.meta_webhook import parse_incoming, verify_signature
+    from app.services.meta_webhook import parse_incoming, parse_status_updates, verify_signature
     from app.services import meta_client
     from app.services.analytics import track_message
+    from app.support.service import apply_wa_status
     
     body = await request.json()
+
+    for st in parse_status_updates(body):
+        await apply_wa_status(st)
     
     # Parse incoming messages
     messages = parse_incoming(body)
@@ -436,6 +442,21 @@ async def meta_webhook_incoming(request: Request):
         # Handle image (selfie for biometria)
         if msg["type"] == "image" and msg["media_id"]:
             media_url = msg["media_id"]  # Pass media_id to state machine
+
+        # Human support inbox: bot + commerce handlers stand down while agent owns thread
+        from app.support.webhook_gate import process_meta_inbound
+
+        sup_decision = await process_meta_inbound(
+            telefono=telefono,
+            body_text=body_text,
+            msg=msg,
+            bodega_id=bodega_id_msg,
+            contact_name=msg.get("name") or "",
+        )
+        if sup_decision.skip_remaining_handlers:
+            if msg.get("message_id"):
+                await meta_client.mark_as_read(msg["message_id"])
+            continue
         
         # Handle Flow response
         if body_text == "__FLOW_RESPONSE__" and msg["flow_data"]:
@@ -1539,6 +1560,13 @@ async def catalogo_v2_page():
 @app.get("/flyer")
 async def flyer_page():
     return FileResponse("static/flyer.html")
+
+
+@app.get("/support")
+async def support_inbox_page():
+    """Consola web interna de soporte humano (WhatsApp shared inbox)."""
+    return FileResponse("static/support_inbox.html")
+
 
 @app.get("/api/cobranza")
 async def cobranza_pendiente():

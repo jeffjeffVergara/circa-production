@@ -207,6 +207,33 @@ def parse_incoming(body: dict) -> list[dict]:
     return messages
 
 
+def parse_status_updates(body: dict) -> list[dict]:
+    """
+    Extract WhatsApp message delivery/status rows from the same webhook payload as inbound messages.
+
+    Each item: ``message_id``, ``status`` (sent | delivered | read | failed | ...), ``recipient_id``, ``timestamp``.
+    """
+    out: list[dict] = []
+
+    if body.get("object") != "whatsapp_business_account":
+        return out
+
+    for entry in body.get("entry", []):
+        for change in entry.get("changes", []):
+            value = change.get("value", {})
+            for st in value.get("statuses", []) or []:
+                out.append(
+                    {
+                        "message_id": st.get("id", ""),
+                        "status": st.get("status", ""),
+                        "recipient_id": st.get("recipient_id", ""),
+                        "timestamp": st.get("timestamp", ""),
+                    }
+                )
+
+    return out
+
+
 async def download_media(media_id: str) -> bytes | None:
     """
     Download media file from Meta's servers.

@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Circa · Soporte humano</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0a1628;--card:#111d32;--card2:#182944;--accent:#00c2ff;--cta:#00d4aa;
+  --danger:#ff4757;--warn:#ffa502;--t1:#e4eaf0;--t2:#7a8fa0;--t3:#4a5e70;--brd:#1a2e45;
+  --r:12px;--rs:8px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Plus Jakarta Sans',system-ui,sans-serif;background:var(--bg);color:var(--t1);min-height:100vh;line-height:1.45}
+a{color:var(--accent)}
+.login{max-width:420px;margin:8vh auto;padding:28px;background:var(--card);border-radius:var(--r);border:1px solid var(--brd)}
+.login h1{font-size:20px;margin-bottom:8px}
+.login p{font-size:13px;color:var(--t2);margin-bottom:16px}
+.login label{display:block;font-size:11px;font-weight:700;color:var(--t2);margin-bottom:6px;text-transform:uppercase;letter-spacing:.04em}
+.login input{width:100%;padding:12px 14px;border-radius:var(--rs);border:1px solid var(--brd);background:var(--bg);color:var(--t1);font-family:inherit;font-size:14px}
+.login button{margin-top:16px;width:100%;padding:14px;border:none;border-radius:var(--rs);background:var(--cta);color:#04251f;font-weight:800;font-size:14px;cursor:pointer;font-family:inherit}
+.login .err{font-size:12px;color:var(--danger);margin-top:10px;display:none}
+.login .err.show{display:block}
+.layout{display:none;flex-direction:column;height:100vh}
+.layout.on{display:flex}
+.top{display:flex;align-items:center;gap:14px;padding:12px 18px;background:linear-gradient(135deg,#0d2137,#0a1a30);border-bottom:1px solid var(--brd);flex-wrap:wrap}
+.top h1{font-size:15px;font-weight:800;letter-spacing:.02em}
+.top .pill{font-size:11px;padding:4px 10px;border-radius:999px;background:rgba(0,194,255,.12);color:var(--accent);font-weight:700}
+.metrics{font-size:11px;color:var(--t2);display:flex;gap:12px;flex-wrap:wrap}
+.metrics b{color:var(--t1)}
+.row{display:flex;flex:1;min-height:0}
+.sidebar{width:min(360px,38vw);border-right:1px solid var(--brd);display:flex;flex-direction:column;background:var(--bg)}
+.side-h{padding:10px 14px;border-bottom:1px solid var(--brd);display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.side-h select,.side-h button{padding:8px 10px;border-radius:var(--rs);border:1px solid var(--brd);background:var(--card);color:var(--t1);font-family:inherit;font-size:12px;font-weight:600}
+.side-h button{background:var(--card2);cursor:pointer}
+.cb{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--t2);user-select:none}
+.cb input{width:14px;height:14px}
+.conv-list{flex:1;overflow-y:auto}
+.cv{padding:12px 14px;border-bottom:1px solid var(--brd);cursor:pointer;display:flex;justify-content:space-between;gap:8px;align-items:flex-start}
+.cv:hover{background:var(--card)}
+.cv.on{background:rgba(0,194,255,.08);border-left:3px solid var(--accent)}
+.cv-ph{font-size:12px;font-weight:700;color:var(--t1);word-break:break-all}
+.cv-meta{font-size:10px;color:var(--t3);margin-top:4px}
+.st{font-size:10px;font-weight:800;text-transform:uppercase;padding:3px 8px;border-radius:6px;white-space:nowrap}
+.st-BOT{background:#2a3548;color:var(--t2)}
+.st-WAITING_AGENT{background:rgba(255,165,2,.15);color:var(--warn)}
+.st-HUMAN{background:rgba(0,212,170,.15);color:var(--cta)}
+.st-PAUSED{background:rgba(162,89,255,.15);color:#c792ea}
+.st-CLOSED{background:#2a3548;color:var(--t3)}
+.un{font-size:11px;font-weight:800;background:var(--danger);color:#fff;min-width:20px;height:20px;border-radius:999px;display:flex;align-items:center;justify-content:center;padding:0 6px}
+.panel{flex:1;display:flex;flex-direction:column;min-width:0;background:var(--bg)}
+.panel-empty{flex:1;display:flex;align-items:center;justify-content:center;color:var(--t3);font-size:14px}
+.thread-h{padding:12px 18px;border-bottom:1px solid var(--brd);display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between}
+.thread-h strong{font-size:14px}
+.thread-actions{display:flex;gap:8px;flex-wrap:wrap}
+.thread-actions button,.composer-actions button{padding:8px 12px;border-radius:var(--rs);border:1px solid var(--brd);background:var(--card2);color:var(--t1);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit}
+.thread-actions button.primary{background:var(--cta);border-color:transparent;color:#04251f}
+.thread-actions button.danger{border-color:rgba(255,71,87,.5);color:#ff6b7a;background:transparent}
+.thread-meta{font-size:11px;color:var(--t2);width:100%}
+.messages{flex:1;overflow-y:auto;padding:16px 18px;display:flex;flex-direction:column;gap:10px}
+.bubble{max-width:85%;padding:10px 14px;border-radius:14px;font-size:13px;white-space:pre-wrap;word-break:break-word}
+.bubble.in{align-self:flex-start;background:var(--card);border:1px solid var(--brd)}
+.bubble.out{align-self:flex-end;background:rgba(0,194,255,.12);border:1px solid rgba(0,194,255,.25)}
+.bubble.sys{align-self:center;background:var(--card2);font-size:11px;color:var(--t2);max-width:92%}
+.bubble .who{font-size:10px;font-weight:800;color:var(--accent);margin-bottom:6px;text-transform:uppercase;letter-spacing:.04em}
+.bubble .ts{font-size:10px;color:var(--t3);margin-top:8px}
+.composer{border-top:1px solid var(--brd);padding:14px 18px;background:var(--card)}
+.composer textarea{width:100%;min-height:72px;padding:12px;border-radius:var(--rs);border:1px solid var(--brd);background:var(--bg);color:var(--t1);font-family:inherit;font-size:13px;resize:vertical}
+.composer-actions{display:flex;justify-content:space-between;align-items:center;margin-top:10px;gap:10px;flex-wrap:wrap}
+.super-assign{display:none;align-items:center;gap:8px;font-size:12px;color:var(--t2)}
+.super-assign.on{display:flex}
+.super-assign select{min-width:160px;padding:8px;border-radius:var(--rs);border:1px solid var(--brd);background:var(--bg);color:var(--t1);font-family:inherit}
+.toast{position:fixed;bottom:22px;right:22px;padding:12px 18px;border-radius:var(--rs);background:var(--card2);border:1px solid var(--brd);font-size:12px;font-weight:600;color:var(--t1);opacity:0;pointer-events:none;transition:opacity .2s;max-width:320px;z-index:50}
+.toast.show{opacity:1}
+.ws-dot{width:8px;height:8px;border-radius:50%;background:var(--t3);display:inline-block;margin-right:6px}
+.ws-dot.ok{background:var(--cta);box-shadow:0 0 10px rgba(0,212,170,.5)}
+.ws-dot.bad{background:var(--danger)}
+@media(max-width:860px){
+  .row{flex-direction:column}
+  .sidebar{width:100%;max-height:42vh;border-right:none;border-bottom:1px solid var(--brd)}
+}
+</style>
+</head>
+<body>
+
+<section class="login" id="login">
+  <h1>Soporte Circa</h1>
+  <p>Pega tu token de agente (Bearer). Se guarda solo en este navegador.</p>
+  <label for="tok">Token API</label>
+  <input id="tok" type="password" autocomplete="off" placeholder="••••••••"/>
+  <button type="button" id="btnLogin">Entrar</button>
+  <p class="err" id="loginErr"></p>
+</section>
+
+<div class="layout" id="app">
+  <header class="top">
+    <h1>Soporte humano</h1>
+    <span class="pill" id="whoPill">—</span>
+    <span style="flex:1"></span>
+    <label style="font-size:12px;color:var(--t2);display:flex;align-items:center;gap:8px">
+      <span class="ws-dot" id="wsDot"></span>
+      <span id="wsTxt">WS</span>
+    </label>
+    <label style="font-size:12px;color:var(--t2);display:flex;align-items:center;gap:8px">
+      Estado
+      <select id="presence">
+        <option value="offline">Fuera de línea</option>
+        <option value="online" selected>En línea</option>
+        <option value="busy">Ocupado</option>
+      </select>
+    </label>
+    <button type="button" id="btnLogout" style="padding:8px 12px;border-radius:8px;border:1px solid var(--brd);background:transparent;color:var(--t2);font-weight:700;cursor:pointer;font-family:inherit;font-size:12px">Salir</button>
+  </header>
+  <div class="metrics" id="metricsBar" style="padding:6px 18px;border-bottom:1px solid var(--brd)"></div>
+  <div class="row">
+    <aside class="sidebar">
+      <div class="side-h">
+        <select id="filtState">
+          <option value="">Todos los estados</option>
+          <option value="WAITING_AGENT">En cola</option>
+          <option value="HUMAN">Con agente</option>
+          <option value="PAUSED">Pausado</option>
+          <option value="BOT">BOT</option>
+          <option value="CLOSED">Cerrados</option>
+        </select>
+        <label class="cb" id="lblScope" style="display:none"><input type="checkbox" id="scopeAll"/> Ver todas</label>
+        <button type="button" id="btnReload">Actualizar</button>
+      </div>
+      <div class="conv-list" id="convList"></div>
+    </aside>
+    <main class="panel" id="panel">
+      <div class="panel-empty" id="panelEmpty">Selecciona una conversación</div>
+      <div id="panelThread" style="display:none;flex:1;flex-direction:column;min-height:0">
+        <div class="thread-h">
+          <div>
+            <strong id="thPhone">—</strong>
+            <div class="thread-meta" id="thMeta"></div>
+          </div>
+          <div class="thread-actions">
+            <button type="button" class="primary" id="btnClaim">Tomar caso</button>
+            <button type="button" id="btnRead">Marcar leído</button>
+            <button type="button" class="danger" id="btnClose">Cerrar</button>
+          </div>
+          <div class="super-assign" id="superAssign">
+            <span>Asignar a</span>
+            <select id="assignPick"></select>
+            <button type="button" id="btnAssign">Asignar</button>
+          </div>
+        </div>
+        <div class="messages" id="msgs"></div>
+        <div class="composer">
+          <textarea id="replyTa" placeholder="Escribe un mensaje para WhatsApp…"></textarea>
+          <div class="composer-actions">
+            <span style="font-size:11px;color:var(--t3)">Enter para enviar (Shift+Enter nueva línea)</span>
+            <button type="button" class="primary" id="btnSend" style="padding:10px 20px;border-radius:var(--rs);border:none;background:var(--cta);color:#04251f;font-weight:800;cursor:pointer;font-family:inherit;font-size:13px">Enviar</button>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  var LS='circa_support_token_v1';
+  var me=null;
+  var agents=[];
+  var conversations=[];
+  var selectedId=null;
+  var ws=null;
+  var typingTimer=null;
+
+  function esc(s){
+    if(s==null)return'';
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+  function toast(msg){
+    var t=document.getElementById('toast');
+    t.textContent=msg;
+    t.classList.add('show');
+    clearTimeout(toast._x);
+    toast._x=setTimeout(function(){t.classList.remove('show');},2800);
+  }
+  function token(){return localStorage.getItem(LS)||'';}
+  function headers(withJson){
+    var h={};
+    var tk=token();
+    if(tk) h['Authorization']='Bearer '+tk;
+    if(withJson) h['Content-Type']='application/json';
+    return h;
+  }
+  async function api(method,path,body){
+    var has=(arguments.length>=3)&&(body!==undefined);
+    var r=await fetch(path,{method:method,headers:headers(has),body:has?JSON.stringify(body):undefined});
+    var txt=await r.text();
+    var data=null;
+    try{data=txt?JSON.parse(txt):null}catch(e){data={detail:txt}}
+    if(!r.ok){
+      var d=(data&&data.detail)!=null?data.detail:r.status;
+      throw new Error(typeof d==='string'?d:JSON.stringify(d));
+    }
+    return data;
+  }
+
+  function showLogin(){
+    document.getElementById('login').style.display='block';
+    document.getElementById('app').classList.remove('on');
+    disconnectWs();
+  }
+  function showApp(){
+    document.getElementById('login').style.display='none';
+    document.getElementById('app').classList.add('on');
+  }
+
+  function disconnectWs(){
+    try{if(ws) ws.close()}catch(e){}
+    ws=null;
+    document.getElementById('wsDot').className='ws-dot bad';
+    document.getElementById('wsTxt').textContent='WS off';
+  }
+  function connectWs(){
+    disconnectWs();
+    var tk=token();
+    if(!tk)return;
+    var proto=location.protocol==='https:'?'wss:':'ws:';
+    var url=proto+'//'+location.host+'/api/support/ws?token='+encodeURIComponent(tk);
+    ws=new WebSocket(url);
+    ws.onopen=function(){
+      document.getElementById('wsDot').className='ws-dot ok';
+      document.getElementById('wsTxt').textContent='WS';
+    };
+    ws.onclose=function(){
+      document.getElementById('wsDot').className='ws-dot bad';
+      document.getElementById('wsTxt').textContent='WS off';
+    };
+    ws.onmessage=function(ev){
+      try{
+        var m=JSON.parse(ev.data);
+        var evn=m.event||'';
+        if(['new_message','conversation_assigned','conversation_closed','conversation_updated','unread_update'].indexOf(evn)>=0){
+          loadConversations().then(function(){if(selectedId) loadMessages(selectedId);});
+        }
+        if(evn==='typing'&&m.payload&&m.payload.conversation_id===selectedId){
+          /* opcional: indicador ligero */
+        }
+      }catch(e){}
+    };
+  }
+
+  async function loadMe(){
+    me=await api('GET','/api/support/agents/me');
+    document.getElementById('whoPill').textContent=(me.display_name||'Agente')+' · '+me.role;
+    document.getElementById('presence').value=me.status||'online';
+    var sup=me.role==='supervisor';
+    document.getElementById('lblScope').style.display=sup?'flex':'none';
+    document.getElementById('superAssign').classList.toggle('on',sup);
+    if(sup){
+      agents=await api('GET','/api/support/agents');
+      var sel=document.getElementById('assignPick');
+      sel.innerHTML='';
+      agents.forEach(function(a){
+        var o=document.createElement('option');
+        o.value=a.id;
+        o.textContent=a.display_name+(a.role==='supervisor'?' (sup)':'');
+        sel.appendChild(o);
+      });
+    }
+  }
+
+  async function loadMetrics(){
+    try{
+      var x=await api('GET','/api/support/metrics/summary');
+      var m=x.metrics||{};
+      document.getElementById('metricsBar').innerHTML=
+        '<span><b>Activas panel</b> '+(m.active_panel_count!=null?m.active_panel_count:'—')+'</span>'+
+        '<span><b>En cola</b> '+(m.waiting_agent_count!=null?m.waiting_agent_count:'—')+'</span>'+
+        '<span><b>Cerradas hoy</b> '+(m.closed_today_count!=null?m.closed_today_count:'—')+'</span>'+
+        '<span><b>TTR medio (s)</b> '+(m.avg_first_response_sec!=null?m.avg_first_response_sec:'—')+'</span>';
+    }catch(e){document.getElementById('metricsBar').innerHTML='';}
+  }
+
+  function stateClass(st){return 'st st-'+(st||'BOT');}
+
+  async function loadConversations(){
+    var st=document.getElementById('filtState').value;
+    var scope=document.getElementById('scopeAll').checked?'all':'mine';
+    var qs='?scope='+encodeURIComponent(scope)+'&limit=80';
+    if(st) qs+='&state='+encodeURIComponent(st);
+    var data=await api('GET','/api/support/conversations'+qs);
+    conversations=data.conversations||[];
+    renderList();
+  }
+
+  function renderList(){
+    var el=document.getElementById('convList');
+    el.innerHTML='';
+    if(!conversations.length){
+      el.innerHTML='<div style="padding:20px;color:var(--t3);font-size:13px">Sin conversaciones</div>';
+      return;
+    }
+    conversations.forEach(function(c){
+      var div=document.createElement('div');
+      div.className='cv'+(c.id===selectedId?' on':'');
+      div.dataset.id=c.id;
+      var un=c.unread_for_agents>0?'<span class="un">'+(c.unread_for_agents>99?'99+':c.unread_for_agents)+'</span>':'';
+      div.innerHTML='<div><div class="cv-ph">'+esc(c.telefono_e164)+'</div>'+
+        '<div class="cv-meta">'+(esc(c.contact_name)||'')+(c.bodega_id?' · bodega':'')+'</div></div>'+
+        '<div style="text-align:right"><span class="'+stateClass(c.state)+'">'+(c.state||'')+'</span>'+un+'</div>';
+      div.onclick=function(){selectConv(c.id);};
+      el.appendChild(div);
+    });
+  }
+
+  async function selectConv(id){
+    selectedId=id;
+    renderList();
+    var c=conversations.filter(function(x){return x.id===id})[0];
+    document.getElementById('panelEmpty').style.display='none';
+    document.getElementById('panelThread').style.display='flex';
+    document.getElementById('thPhone').textContent=c?c.telefono_e164:'—';
+    document.getElementById('thMeta').textContent=c?'Estado: '+(c.state||'')+
+      (c.assigned_agent_id?' · asignado':' · sin asignar')+
+      (c.sla_due_at?' · SLA '+c.sla_due_at:''):'';
+    document.getElementById('btnClaim').style.display=(c&&c.state==='WAITING_AGENT')?'inline-block':'none';
+    await loadMessages(id);
+  }
+
+  async function loadMessages(id){
+    var data=await api('GET','/api/support/conversations/'+encodeURIComponent(id)+'/messages');
+    var list=data.messages||[];
+    var box=document.getElementById('msgs');
+    box.innerHTML='';
+    list.forEach(function(m){
+      var d=document.createElement('div');
+      var sk=m.sender_kind||'contact';
+      var inward=m.direction==='inbound';
+      if(sk==='system') d.className='bubble sys';
+      else d.className='bubble '+(inward?'in':'out');
+      var who=sk==='contact'?'Cliente':sk==='agent'?'Agente':sk==='bot'?'Bot':'Sistema';
+      var body=esc(m.body||'');
+      var ts=(m.created_at||'').replace('T',' ').slice(0,19);
+      if(sk!=='system') d.innerHTML='<div class="who">'+esc(who)+'</div>'+body+'<div class="ts">'+esc(ts)+'</div>';
+      else d.innerHTML=body+'<div class="ts">'+esc(ts)+'</div>';
+      box.appendChild(d);
+    });
+    box.scrollTop=box.scrollHeight;
+  }
+
+  async function sendReply(){
+    if(!selectedId)return;
+    var t=document.getElementById('replyTa').value.trim();
+    if(!t)return toast('Escribe un mensaje');
+    try{
+      await api('POST','/api/support/conversations/'+encodeURIComponent(selectedId)+'/reply',{text:t});
+      document.getElementById('replyTa').value='';
+      await loadMessages(selectedId);
+      await loadConversations();
+      toast('Enviado');
+    }catch(e){toast('Error: '+e.message);}
+  }
+
+  function wire(){
+    document.getElementById('btnLogin').onclick=async function(){
+      var v=document.getElementById('tok').value.trim();
+      document.getElementById('loginErr').classList.remove('show');
+      if(!v){document.getElementById('loginErr').textContent='Token vacío';document.getElementById('loginErr').classList.add('show');return;}
+      localStorage.setItem(LS,v);
+      try{
+        await loadMe();
+        showApp();
+        await loadMetrics();
+        await loadConversations();
+        connectWs();
+      }catch(e){
+        localStorage.removeItem(LS);
+        document.getElementById('loginErr').textContent=e.message||'Token inválido';
+        document.getElementById('loginErr').classList.add('show');
+      }
+    };
+    document.getElementById('btnLogout').onclick=function(){
+      localStorage.removeItem(LS);
+      showLogin();
+    };
+    document.getElementById('btnReload').onclick=function(){loadConversations();loadMetrics();};
+    document.getElementById('filtState').onchange=function(){loadConversations();};
+    document.getElementById('scopeAll').onchange=function(){loadConversations();};
+    document.getElementById('presence').onchange=async function(){
+      try{
+        await api('PATCH','/api/support/agents/me/status',{status:this.value});
+        toast('Estado actualizado');
+      }catch(e){toast(e.message);}
+    };
+    document.getElementById('btnSend').onclick=sendReply;
+    document.getElementById('replyTa').onkeydown=function(e){
+      if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendReply();}
+      if(selectedId){
+        clearTimeout(typingTimer);
+        typingTimer=setTimeout(function(){
+          try{api('POST','/api/support/conversations/'+encodeURIComponent(selectedId)+'/typing',{typing:true});}catch(err){}
+        },400);
+      }
+    };
+    document.getElementById('btnClaim').onclick=async function(){
+      if(!selectedId)return;
+      try{
+        await api('POST','/api/support/conversations/'+encodeURIComponent(selectedId)+'/claim');
+        toast('Caso asignado a ti');
+        await loadConversations();
+        selectConv(selectedId);
+      }catch(e){toast(e.message);}
+    };
+    document.getElementById('btnRead').onclick=async function(){
+      if(!selectedId)return;
+      try{
+        await api('POST','/api/support/conversations/'+encodeURIComponent(selectedId)+'/read',{});
+        await loadConversations();
+      }catch(e){toast(e.message);}
+    };
+    document.getElementById('btnClose').onclick=async function(){
+      if(!selectedId)return;
+      if(!confirm('¿Cerrar conversación y devolver al bot?'))return;
+      try{
+        await api('POST','/api/support/conversations/'+encodeURIComponent(selectedId)+'/close',{reason:'closed_console',notify_customer:true});
+        toast('Cerrada');
+        selectedId=null;
+        document.getElementById('panelThread').style.display='none';
+        document.getElementById('panelEmpty').style.display='flex';
+        await loadConversations();
+      }catch(e){toast(e.message);}
+    };
+    document.getElementById('btnAssign').onclick=async function(){
+      if(!selectedId)return;
+      var aid=document.getElementById('assignPick').value;
+      try{
+        await api('POST','/api/support/conversations/'+encodeURIComponent(selectedId)+'/assign',{agent_id:aid});
+        toast('Asignado');
+        await loadConversations();
+        selectConv(selectedId);
+      }catch(e){toast(e.message);}
+    };
+  }
+
+  wire();
+  if(token()){
+    document.getElementById('tok').value='••••••••';
+    loadMe().then(function(){
+      showApp();
+      return Promise.all([loadMetrics(),loadConversations()]);
+    }).then(function(){connectWs();}).catch(function(){showLogin();});
+  }else showLogin();
+})();
+</script>
+</body>
+</html>
