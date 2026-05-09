@@ -175,6 +175,55 @@ function syncCartToServer(){
  },400);
 }
 
+function parseProductUnidades(p){
+ var un=p&&p.unidades||{};
+ if(typeof un==='string'){try{un=JSON.parse(un)}catch(e){un={}}}
+ return un&&typeof un==='object'?un:{};
+}
+
+/** Alinea pack_size guardado con las claves reales de catalogo_distribuidor.unidades (ej. "12" → "CJA x 12"). */
+function matchUnitKey(rawUnit, un){
+ var keys=Object.keys(un);
+ if(!keys.length)return rawUnit==null?'':String(rawUnit);
+ var ru=rawUnit==null?'':String(rawUnit).trim();
+ if(ru&&keys.indexOf(ru)>=0)return ru;
+ var rul=ru.toLowerCase();
+ var i;
+ for(i=0;i<keys.length;i++){
+  if(keys[i].toLowerCase()===rul)return keys[i];
+ }
+ var num=parseInt(ru,10);
+ if(!isNaN(num)&&num>0){
+  for(i=0;i<keys.length;i++){
+   var k=keys[i];
+   var m=k.match(/x\s*(\d+)/i);
+   if(m&&parseInt(m[1],10)===num)return k;
+   var tail=k.match(/(\d+)\s*$/);
+   if(tail&&parseInt(tail[1],10)===num)return k;
+  }
+ }
+ for(i=0;i<keys.length;i++){
+  if(keys[i].toUpperCase().indexOf(ru.toUpperCase())===0)return keys[i];
+ }
+ return keys[0];
+}
+
+function normalizeLoadedCartUnits(){
+ if(!P||!P.length||!cart.length)return;
+ cart.forEach(function(c){
+  var p=P.find(function(x){return String(x.id)===String(c.id)});
+  if(!p)return;
+  var un=parseProductUnidades(p);
+  var mu=matchUnitKey(c.unit, un);
+  if(mu&&un[mu]!=null){
+   c.unit=mu;
+   var pr=parseFloat(un[mu]);
+   if(!isNaN(pr))c.precio=pr;
+  }
+ });
+ cart.forEach(function(c){if(c.id!=null)selUnits[String(c.id)]=c.unit});
+}
+
 async function loadCartFromServer(){
  try{
   var sc=await fetch(API+'/api/carrito/'+BID).then(function(r){return r.json()}).catch(function(){return null});
@@ -186,10 +235,10 @@ async function loadCartFromServer(){
   si.forEach(function(i){
    var cid=i.catalogo_id||i.id;
    if(!cid)return;
-   var u=i.pack_size||i.unit||'';
-   cart.push({id:cid,unit:u,precio:i.precio||i.precio_unitario||0,nombre:i.nombre||i.producto||'',marca:i.marca||'',qty:i.cantidad||i.qty||1});
+   var u=i.pack_size!=null&&i.pack_size!==''?i.pack_size:(i.unit!=null&&i.unit!==''?i.unit:(i.formato||''));
+   cart.push({id:String(cid),unit:u,precio:parseFloat(i.precio||i.precio_unitario||0)||0,nombre:i.nombre||i.producto||'',marca:i.marca||'',qty:parseInt(i.cantidad||i.qty||1,10)||1});
   });
-  cart.forEach(function(c){if(c.id)selUnits[c.id]=c.unit});
+  normalizeLoadedCartUnits();
   uC();evaluarPromos();
   var fromRepeat=QS.get('repeat')==='1';
   if(fromRepeat){
@@ -236,7 +285,7 @@ function filt(){
 
 // Devuelve total de unidades de un producto en el cart (sumando todas las variantes de unidad)
 function totalQtyForProduct(pid){
- return cart.filter(function(c){return c.id===pid}).reduce(function(s,c){return s+c.qty},0);
+ return cart.filter(function(c){return String(c.id)===String(pid)}).reduce(function(s,c){return s+c.qty},0);
 }
 
 // HTML de las pills (verde = aplicado, naranja = siguiente escalón) por catalogo_id
@@ -244,7 +293,7 @@ function pillHTMLForProduct(pid){
  if(!promosResult||!promosResult.items||!promosResult.items.length)return '';
  // Buscar TODOS los items del cart con este pid (puede haber varios formatos)
  var idxs=[];
- cart.forEach(function(c,i){if(c.id===pid)idxs.push(i)});
+ cart.forEach(function(c,i){if(String(c.id)===String(pid))idxs.push(i)});
  if(!idxs.length)return '';
  var html='';
  // Mostramos las pills del primer item que tenga descuento o siguiente escalón
@@ -277,9 +326,9 @@ function rend(){
   // Determinar formato seleccionado (UND default si existe)
   var defU=us[0][0];
   us.forEach(function(u){if(u[0].toUpperCase().indexOf('UND')===0)defU=u[0]});
-  var su=selUnits[p.id]||defU;
-  // Buscar en cart por id+unit (FIX: su ya está definido aquí, ANTES de buscar)
-  var ci=cart.find(function(c){return c.id===p.id&&c.unit===su});
+  var su=selUnits[String(p.id)]||defU;
+  // Buscar en cart por id+unit — IDs como string para coincidir con carrito hidratado
+  var ci=cart.find(function(c){return String(c.id)===String(p.id)&&c.unit===su});
   var sp=un[su]||us[0][1];
   var qThisFormat=ci?ci.qty:0;
   var qTotal=totalQtyForProduct(p.id);
@@ -295,10 +344,17 @@ function rend(){
 
 $('sI').addEventListener('input',function(){rend()});
 
-function aTC(id,u,pr,n,m){var key=id+'_'+u;var x=cart.find(function(c){return(c.id+'_'+c.unit)===key});if(x){x.qty++;x.precio=pr}else cart.push({id:id,unit:u,precio:pr,nombre:n,marca:m,qty:1});sendEvent('product_added',{catalogo_id:id,nombre:n,unidad:u,precio:pr,tipo_operacion:TIPO_OPERACION});toast(n.slice(0,20)+' agregado');uC();rend();evaluarPromos();syncCartToServer()}
+function aTC(id,u,pr,n,m){
+ id=String(id);
+ var key=id+'_'+u;var x=cart.find(function(c){return String(c.id)+'_'+c.unit===key});
+ if(x){x.qty++;x.precio=pr}else cart.push({id:id,unit:u,precio:pr,nombre:n,marca:m,qty:1});
+ sendEvent('product_added',{catalogo_id:id,nombre:n,unidad:u,precio:pr,tipo_operacion:TIPO_OPERACION});toast(n.slice(0,20)+' agregado');uC();rend();evaluarPromos();syncCartToServer()}
 function aTCFromBtn(btn){aTC(btn.dataset.id,btn.dataset.su,parseFloat(btn.dataset.pr),btn.dataset.nombre,btn.dataset.marca)}
-function sU(id,u,pr){selUnits[id]=u;var i=cart.find(function(c){return c.id===id&&c.unit===u});if(i){i.precio=pr;syncCartToServer()}rend()}
-function cQ(id,d,u){var key=id+'_'+(u||'');var i=cart.find(function(c){return(c.id+'_'+c.unit)===key});if(!i)return;i.qty+=d;if(i.qty<=0)cart=cart.filter(function(c){return(c.id+'_'+c.unit)!==key});uC();rend();evaluarPromos();syncCartToServer()}
+function sU(id,u,pr){selUnits[String(id)]=u;var i=cart.find(function(c){return String(c.id)===String(id)&&c.unit===u});if(i){i.precio=pr;syncCartToServer()}rend()}
+function cQ(id,d,u){
+ id=String(id);var key=id+'_'+(u||'');
+ var i=cart.find(function(c){return String(c.id)+'_'+c.unit===key});
+ if(!i)return;i.qty+=d;if(i.qty<=0)cart=cart.filter(function(c){return String(c.id)+'_'+c.unit!==key});uC();rend();evaluarPromos();syncCartToServer()}
 
 function clearCart(){if(carritoSyncTimer){clearTimeout(carritoSyncTimer);carritoSyncTimer=null}cart=[];promosResult={items:[],ahorro_total:0,bonificaciones_aplicables:[],bonificaciones_proximas:[],valor_bonificaciones:0};uC();rend();toast('Carrito limpiado');fetch(API+'/api/carrito/clear',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({bodega_id:BID})}).catch(function(){})}
 function goBack(){window.close();window.location.href='https://wa.me/51986311567?text=MENU'}
