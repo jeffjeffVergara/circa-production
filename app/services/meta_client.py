@@ -605,13 +605,22 @@ async def send_cuenta_activa(to: str, linea: float):
 
 async def send_linea_info(to: str, aprobada: float, disponible: float, scoring: float):
     """Show credit line details."""
-    barra = "█" * int(disponible/aprobada*10) + "░" * (10 - int(disponible/aprobada*10))
+    la = float(aprobada or 0)
+    ld_raw = float(disponible or 0)
+    # Si la BD quedó inconsistente (p. ej. liberación admin sin tope), no mostrar disponible > aprobada.
+    ld = min(ld_raw, la) if la > 0 else ld_raw
+    if la > 0:
+        ratio = min(1.0, max(0.0, ld / la))
+        filled = int(ratio * 10)
+    else:
+        filled = 0
+    barra = "█" * filled + "░" * (10 - filled)
     return await send_buttons(
         to=to,
         body=(
             f"💰 *Tu línea Circa*\n\n"
-            f"Línea aprobada: S/{aprobada:.0f}\n"
-            f"Disponible para pedir: *S/{disponible:.0f}*\n"
+            f"Línea aprobada: S/{la:.0f}\n"
+            f"Disponible para pedir: *S/{ld:.0f}*\n"
             f"[{barra}]\n"
             f"Confianza Circa: {scoring:.0f}/100 (según tu historial con el distribuidor)"
         ),

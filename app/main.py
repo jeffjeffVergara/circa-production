@@ -131,7 +131,7 @@ def dispatch_signal(telefono: str, signal: dict):
             "Cuando termines, escribe *MENU* para volver.",
         )
     elif sig == "CONTACT_CIRCA":
-        # Twilio (legacy): texto plano; Meta usa send_contacto_circa (CTA wa.me).
+        # Twilio (legacy): texto plano. Si SUPPORT_INBOX_DISABLED, fallback wa.me (CIRCA_SOPORTE_WHATSAPP).
         link = signal.get("wa_link") or ""
         if link:
             send_whatsapp(
@@ -181,6 +181,24 @@ async def twilio_webhook(
     )
 
     try:
+        # Misma cola de soporte humano que Meta (inbox interno), antes del state machine.
+        tel_sup = telefono.strip()
+        if not tel_sup.startswith("+"):
+            tel_sup = f"+{tel_sup}"
+        bodega_tw = db.get_bodega_by_phone(telefono) or db.get_bodega_by_phone(tel_sup)
+        from app.support.webhook_gate import process_meta_inbound
+
+        sup_tw = await process_meta_inbound(
+            telefono=tel_sup,
+            body_text=body,
+            msg={"message_id": "", "type": "text", "list_id": body},
+            bodega_id=bodega_tw.get("id") if bodega_tw else None,
+            contact_name=None,
+        )
+        if sup_tw.skip_remaining_handlers:
+            twiml = MessagingResponse()
+            return PlainTextResponse(str(twiml), media_type="text/xml")
+
         responses = handle_message(telefono, body, media_url)
 
         for resp in responses:

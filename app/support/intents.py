@@ -7,6 +7,27 @@ import re
 
 _WSPLIT = re.compile(r"[a-záéíóúñü]+", re.IGNORECASE)
 
+# IDs de lista/botones Meta (body = id) y atajos equivalentes al menú "Hablar con Circa".
+_MENU_HANDOVER_IDS = frozenset(
+    {
+        "contacto",
+        "soporte",
+        "help",
+        "contactar",
+        "6",  # compat: opción numérica antigua del menú
+    }
+)
+
+# Frases alineadas con app.state_machine._TEXTO_PIDE_CONTACTO_CIRCA (normalizadas en minúsculas).
+_LEGACY_CONTACT_PHRASES = frozenset(
+    {
+        "no entiendo",
+        "no te entiendo",
+        "no lo entiendo",
+        "no entiendes",
+    }
+)
+
 
 def detect_handover(text: str) -> bool:
     """
@@ -16,6 +37,14 @@ def detect_handover(text: str) -> bool:
     raw = (text or "").strip().lower()
     if not raw:
         return False
+
+    # Menú Circa (ids de filas) y frases que antes derivaban a wa.me: van al inbox interno.
+    if raw in _MENU_HANDOVER_IDS:
+        return True
+    if "hablar con circa" in raw:
+        return True
+    if raw in _LEGACY_CONTACT_PHRASES:
+        return True
 
     tokens = {t.lower() for t in _WSPLIT.findall(raw)}
 

@@ -721,10 +721,18 @@ async def admin_verificar_pago(pedido_id: str, payload: dict, admin: bool = Depe
     
     # Restore bodega line
     if bodega_id and monto_financiado > 0:
-        bod = _sb_get("bodegas", {"select":"linea_disponible,telefono_whatsapp,nombre_comercial","id":f"eq.{bodega_id}"})
+        bod = _sb_get(
+            "bodegas",
+            {
+                "select": "linea_disponible,linea_aprobada,telefono_whatsapp,nombre_comercial",
+                "id": f"eq.{bodega_id}",
+            },
+        )
         if bod:
             nueva_linea = float(bod[0].get("linea_disponible") or 0) + monto_financiado
-            nueva_linea = min(nueva_linea, bod[0].get('linea_aprobada', nueva_linea))  # Cap
+            lap = float(bod[0].get("linea_aprobada") or 0)
+            if lap > 0:
+                nueva_linea = min(nueva_linea, lap)
             _sb_patch("bodegas", {"linea_disponible": nueva_linea}, {"id": f"eq.{bodega_id}"})
             
             # Notify bodega
