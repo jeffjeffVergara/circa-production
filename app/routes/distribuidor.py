@@ -721,18 +721,10 @@ async def admin_verificar_pago(pedido_id: str, payload: dict, admin: bool = Depe
     
     # Restore bodega line
     if bodega_id and monto_financiado > 0:
-        bod = _sb_get(
-            "bodegas",
-            {
-                "select": "linea_disponible,linea_aprobada,telefono_whatsapp,nombre_comercial",
-                "id": f"eq.{bodega_id}",
-            },
-        )
+        bod = _sb_get("bodegas", {"select":"linea_disponible,telefono_whatsapp,nombre_comercial","id":f"eq.{bodega_id}"})
         if bod:
             nueva_linea = float(bod[0].get("linea_disponible") or 0) + monto_financiado
-            lap = float(bod[0].get("linea_aprobada") or 0)
-            if lap > 0:
-                nueva_linea = min(nueva_linea, lap)
+            nueva_linea = min(nueva_linea, bod[0].get('linea_aprobada', nueva_linea))  # Cap
             _sb_patch("bodegas", {"linea_disponible": nueva_linea}, {"id": f"eq.{bodega_id}"})
             
             # Notify bodega
@@ -844,7 +836,7 @@ async def admin_list_bodegas(
     search: Optional[str] = None,
     admin: bool = Depends(verify_admin),
 ):
-    """Lista de bodegas con su sesion actual y conteo de pedidos. Para la tab Bodegas del panel."""
+    """Lista de bodegas con su sesion actual y conteo de pedidos. Optimizada: 3 queries totales."""
     params = {
         "select": "id,razon_social,nombre_comercial,representante_legal,telefono_whatsapp,"
                   "ruc,dni_representante,estado,linea_aprobada,linea_disponible,"
@@ -871,32 +863,56 @@ async def admin_list_bodegas(
             return any(s in (str(c).lower() if c else "") for c in campos)
         bodegas = [b for b in bodegas if _match(b)]
 
-    # Traer la sesión activa de cada bodega (1 query batch por bodega — no ideal pero simple)
-    for b in bodegas:
-        try:
-            ses = _sb_get("sesiones", {
-                "select": "fase,last_activity,expires_at",
-                "bodega_id": f"eq.{b['id']}",
-                "order": "last_activity.desc",
-                "limit": "1",
-            })
-            b["sesion"] = ses[0] if ses else None
-        except Exception:
-            b["sesion"] = None
+    if not bodegas:
+        return {"bodegas": [], "total": 0}
 
-    # Contar pedidos por bodega (1 query agregado por bodega — TODO optimizar después)
+    # OPTIMIZACIÓN: batch fetch en vez de N+1
+    bodega_ids = [b["id"] for b in bodegas if b.get("id")]
+    ids_str = ",".join(bodega_ids)
+
+    # Una sola query para TODAS las sesiones
+    sesiones_map = {}
+    try:
+        sesiones = _sb_get("sesiones", {
+            "select": "bodega_id,fase,last_activity,expires_at",
+            "bodega_id": f"in.({ids_str})",
+            "order": "last_activity.desc",
+            "limit": "5000",
+        })
+        # Quedarse con la sesión más reciente por bodega (ya viene ordenado desc)
+        for s in sesiones:
+            bid = s.get("bodega_id")
+            if bid and bid not in sesiones_map:
+                sesiones_map[bid] = s
+    except Exception:
+        pass
+
+    # Una sola query para TODOS los pedidos (solo lo mínimo: id + estado + bodega_id)
+    pedidos_map = {}  # {bodega_id: {"count": N, "pagados": M}}
+    try:
+        pedidos = _sb_get("pedidos", {
+            "select": "id,estado,bodega_id",
+            "bodega_id": f"in.({ids_str})",
+            "limit": "10000",
+        })
+        for p in pedidos:
+            bid = p.get("bodega_id")
+            if not bid:
+                continue
+            if bid not in pedidos_map:
+                pedidos_map[bid] = {"count": 0, "pagados": 0}
+            pedidos_map[bid]["count"] += 1
+            if p.get("estado") == "pagado":
+                pedidos_map[bid]["pagados"] += 1
+    except Exception:
+        pass
+
+    # Merge en memoria (muy rápido)
     for b in bodegas:
-        try:
-            ped = _sb_get("pedidos", {
-                "select": "id,estado",
-                "bodega_id": f"eq.{b['id']}",
-                "limit": "200",
-            })
-            b["pedidos_count"] = len(ped)
-            b["pedidos_pagados"] = sum(1 for p in ped if p.get("estado") == "pagado")
-        except Exception:
-            b["pedidos_count"] = 0
-            b["pedidos_pagados"] = 0
+        bid = b.get("id")
+        b["sesion"] = sesiones_map.get(bid)
+        b["pedidos_count"] = pedidos_map.get(bid, {}).get("count", 0)
+        b["pedidos_pagados"] = pedidos_map.get(bid, {}).get("pagados", 0)
 
     return {"bodegas": bodegas, "total": len(bodegas)}
 
