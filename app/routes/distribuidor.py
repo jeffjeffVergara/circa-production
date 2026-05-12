@@ -294,6 +294,29 @@ async def verify_admin(x_admin_token: str = Header(..., alias="X-Admin-Token")):
     return True
 
 
+# ──────────────────────────────────────────────────────────────────────
+# Helper: filtrar por bodegas de prueba vs reales
+# Acepta: test='real'|'false' (solo reales con es_test=false)
+#         test='test'|'true'  (solo pruebas con es_test=true)
+#         test=None|'all'     (sin filtro — comportamiento original)
+# ──────────────────────────────────────────────────────────────────────
+def _bodega_ids_por_test(test_param):
+    """Devuelve set de bodega_ids matching el filtro test/real, o None si no hay filtro."""
+    if not test_param or str(test_param).lower() in ("all", "todas", "todos"):
+        return None
+    is_test = str(test_param).lower() in ("test", "true", "prueba", "pruebas", "1")
+    es_test_val = "true" if is_test else "false"
+    try:
+        rows = _sb_get("bodegas", {
+            "select": "id",
+            "es_test": f"eq.{es_test_val}",
+            "limit": "2000"
+        })
+        return set(r.get("id") for r in rows if r.get("id"))
+    except Exception:
+        return None  # si la columna no existe todavía, no filtrar
+
+
 def _days_ago_iso(days: int) -> str:
     from datetime import timedelta
     return (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
@@ -304,14 +327,19 @@ async def admin_list_pedidos(
     distribuidor: Optional[str] = None,
     estado: Optional[str] = None,
     tipo: Optional[str] = None,
+    test: Optional[str] = None,
     admin: bool = Depends(verify_admin),
 ):
-    """List all orders with full details — admin view."""
+    """List all orders with full details — admin view. Filtra por test/real."""
     params = {"select":"*","order":"created_at.desc","limit":"1000"}
     if estado: params["estado"] = f"eq.{estado}"
     if tipo in ("venta", "preventa"):
         params["tipo_operacion"] = f"eq.{tipo}"
     pedidos = _sb_get("pedidos", params)
+    # NUEVO: filtrar por test/real
+    ids_filter = _bodega_ids_por_test(test)
+    if ids_filter is not None:
+        pedidos = [p for p in pedidos if p.get("bodega_id") in ids_filter]
     # Fetch all bodegas and distribuidores
     bodega_ids = list(set(p.get("bodega_id","") for p in pedidos if p.get("bodega_id")))
     dist_ids = list(set(p.get("distribuidor_id","") for p in pedidos if p.get("distribuidor_id")))
@@ -382,9 +410,21 @@ async def admin_aceptar_preventa(pedido_id: str, admin: bool = Depends(verify_ad
     return {"ok": True, "pedido_id": pedido_id, "estado": "preventa_aceptada", "numero": p.get("numero")}
 
 @router.get("/admin/resumen")
-async def admin_resumen(admin: bool = Depends(verify_admin)):
-    """Dashboard summary for Circa admin."""
-    pedidos = _sb_get("pedidos", {"select":"estado,monto_productos,monto_financiado,monto_contado,fee_monto,total","limit":"500"})
+async def admin_resumen(
+    test: Optional[str] = None,
+    admin: bool = Depends(verify_admin),
+):
+    """Dashboard summary for Circa admin. Filtra por bodegas reales/test si test=real|test."""
+    # NUEVO: agregamos bodega_id al SELECT para poder filtrar por es_test
+    pedidos = _sb_get("pedidos", {
+        "select": "estado,monto_productos,monto_financiado,monto_contado,fee_monto,total,bodega_id",
+        "limit": "500"
+    })
+    # NUEVO: filtrar por test/real si corresponde
+    ids_filter = _bodega_ids_por_test(test)
+    if ids_filter is not None:
+        pedidos = [p for p in pedidos if p.get("bodega_id") in ids_filter]
+
     estados = {}
     total_financiado = 0
     total_fee = 0
@@ -402,18 +442,29 @@ async def admin_resumen(admin: bool = Depends(verify_admin)):
         "total_fee_circa": round(total_fee, 2),
         "total_contado": round(total_contado, 2),
         "circa_cobra_bodegas": round(total_financiado + total_fee, 2),
+        "filtro_aplicado": test or "todas",
     }
 
 
 @router.get("/admin/analytics-resumen")
-async def admin_analytics_resumen(admin: bool = Depends(verify_admin)):
-    """Light analytics dashboard for pilot event/message tracking."""
+async def admin_analytics_resumen(
+    test: Optional[str] = None,
+    admin: bool = Depends(verify_admin),
+):
+    """Light analytics dashboard for pilot event/message tracking. Filtra por test/real."""
     since_7d = _days_ago_iso(7)
     since_30d = _days_ago_iso(30)
 
-    events_7d = _sb_get("events", {"select": "event_type,created_at", "created_at": f"gte.{since_7d}", "limit": "5000"})
+    events_7d = _sb_get("events", {"select": "event_type,created_at,bodega_id", "created_at": f"gte.{since_7d}", "limit": "5000"})
     events_30d = _sb_get("events", {"select": "event_type,created_at,bodega_id", "created_at": f"gte.{since_30d}", "limit": "20000"})
-    msgs_7d = _sb_get("messages", {"select": "direction,bodega_id", "created_at": f"gte.{since_7d}", "limit": "10000"})
+    msgs_7d = _sb_get("messages", {"select": "direction,bodega_id,created_at", "created_at": f"gte.{since_7d}", "limit": "10000"})
+    
+    # NUEVO: filtrar por test/real
+    ids_filter = _bodega_ids_por_test(test)
+    if ids_filter is not None:
+        events_7d = [e for e in events_7d if e.get("bodega_id") in ids_filter]
+        events_30d = [e for e in events_30d if e.get("bodega_id") in ids_filter]
+        msgs_7d = [m for m in msgs_7d if m.get("bodega_id") in ids_filter]
 
     def _cnt(rows, ev):
         return sum(1 for r in rows if r.get("event_type") == ev)
@@ -501,9 +552,10 @@ async def admin_cobranzas(
     estado: Optional[str] = None,
     fecha_desde: Optional[str] = None,
     fecha_hasta: Optional[str] = None,
+    test: Optional[str] = None,
     admin: bool = Depends(verify_admin),
 ):
-    """List all orders with delivery status + payment tracking."""
+    """List all orders with delivery status + payment tracking. Filtra por test/real."""
     from datetime import datetime, timedelta
     
     params = {
@@ -513,6 +565,10 @@ async def admin_cobranzas(
         "limit": "500"
     }
     pedidos = _sb_get("pedidos", params)
+    # NUEVO: filtrar por test/real
+    ids_filter = _bodega_ids_por_test(test)
+    if ids_filter is not None:
+        pedidos = [p for p in pedidos if p.get("bodega_id") in ids_filter]
     
     # Bodegas
     bodega_ids = list(set(p.get("bodega_id","") for p in pedidos if p.get("bodega_id")))
@@ -690,11 +746,16 @@ async def admin_verificar_pago(pedido_id: str, payload: dict, admin: bool = Depe
 async def admin_export_pagos(
     fecha_desde: Optional[str] = None,
     fecha_hasta: Optional[str] = None,
+    test: Optional[str] = None,
     admin: bool = Depends(verify_admin),
 ):
-    """Resumen consolidado de pagos a distribuidores por rango de fechas."""
+    """Resumen consolidado de pagos a distribuidores por rango de fechas. Filtra por test/real."""
     params = {"select":"*","estado":"in.(entregado,pagado,despachado,en_camino)","order":"created_at.desc","limit":"1000"}
     pedidos = _sb_get("pedidos", params)
+    # NUEVO: filtrar por test/real
+    ids_filter = _bodega_ids_por_test(test)
+    if ids_filter is not None:
+        pedidos = [p for p in pedidos if p.get("bodega_id") in ids_filter]
     
     # Filter by date
     from datetime import datetime
@@ -730,6 +791,182 @@ async def admin_export_pagos(
             except: p["bodega"] = {}
     
     return {"grupos": list(grupos.values()), "total_pedidos": len(filtered)}
+
+# ============================================================
+# NUEVOS ENDPOINTS — Fase 2 Panel Admin (12 mayo 2026)
+# ============================================================
+
+@router.get("/admin/alerts/sobregiro")
+async def admin_alerts_sobregiro(
+    test: Optional[str] = None,
+    admin: bool = Depends(verify_admin),
+):
+    """🟥 Alerta de bodegas con linea_disponible > linea_aprobada (sobregiro / riesgo de compliance)."""
+    bodegas = _sb_get("bodegas", {
+        "select": "id,razon_social,nombre_comercial,telefono_whatsapp,representante_legal,"
+                  "linea_aprobada,linea_disponible,es_test,distribuidor_id",
+        "limit": "2000",
+    })
+    # Filtrar por sobregiro
+    sobregiro = []
+    for b in bodegas:
+        aprobada = float(b.get("linea_aprobada") or 0)
+        disponible = float(b.get("linea_disponible") or 0)
+        if disponible > aprobada:
+            b["sobregiro"] = round(disponible - aprobada, 2)
+            b["pct_sobre"] = round((disponible - aprobada) / aprobada * 100, 1) if aprobada > 0 else 0
+            sobregiro.append(b)
+    # Filtrar por test/real si corresponde
+    if test:
+        is_test = str(test).lower() in ("test", "true", "prueba", "pruebas", "1")
+        sobregiro = [b for b in sobregiro if bool(b.get("es_test")) == is_test]
+    # Ordenar por monto de sobregiro descendente
+    sobregiro.sort(key=lambda b: b.get("sobregiro", 0), reverse=True)
+    return {
+        "alertas": sobregiro,
+        "total": len(sobregiro),
+        "monto_total_sobregiro": round(sum(b.get("sobregiro", 0) for b in sobregiro), 2),
+    }
+
+
+@router.get("/admin/bodegas")
+async def admin_list_bodegas(
+    test: Optional[str] = None,
+    estado: Optional[str] = None,
+    search: Optional[str] = None,
+    admin: bool = Depends(verify_admin),
+):
+    """Lista de bodegas con su sesion actual y conteo de pedidos. Para la tab Bodegas del panel."""
+    params = {
+        "select": "id,razon_social,nombre_comercial,representante_legal,telefono_whatsapp,"
+                  "ruc,dni_representante,estado,linea_aprobada,linea_disponible,"
+                  "distribuidor_id,created_at,es_test",
+        "order": "created_at.desc",
+        "limit": "2000",
+    }
+    if estado:
+        params["estado"] = f"eq.{estado}"
+    if test:
+        is_test_str = "true" if str(test).lower() in ("test", "true", "prueba", "pruebas", "1") else "false"
+        params["es_test"] = f"eq.{is_test_str}"
+    bodegas = _sb_get("bodegas", params)
+
+    # Filtrar por search (razón social, comercial, teléfono, RUC, DNI, representante)
+    if search:
+        s = search.lower()
+        def _match(b):
+            campos = [
+                b.get("razon_social"), b.get("nombre_comercial"),
+                b.get("telefono_whatsapp"), b.get("ruc"),
+                b.get("dni_representante"), b.get("representante_legal"),
+            ]
+            return any(s in (str(c).lower() if c else "") for c in campos)
+        bodegas = [b for b in bodegas if _match(b)]
+
+    # Traer la sesión activa de cada bodega (1 query batch por bodega — no ideal pero simple)
+    for b in bodegas:
+        try:
+            ses = _sb_get("sesiones", {
+                "select": "fase,last_activity,expires_at",
+                "bodega_id": f"eq.{b['id']}",
+                "order": "last_activity.desc",
+                "limit": "1",
+            })
+            b["sesion"] = ses[0] if ses else None
+        except Exception:
+            b["sesion"] = None
+
+    # Contar pedidos por bodega (1 query agregado por bodega — TODO optimizar después)
+    for b in bodegas:
+        try:
+            ped = _sb_get("pedidos", {
+                "select": "id,estado",
+                "bodega_id": f"eq.{b['id']}",
+                "limit": "200",
+            })
+            b["pedidos_count"] = len(ped)
+            b["pedidos_pagados"] = sum(1 for p in ped if p.get("estado") == "pagado")
+        except Exception:
+            b["pedidos_count"] = 0
+            b["pedidos_pagados"] = 0
+
+    return {"bodegas": bodegas, "total": len(bodegas)}
+
+
+@router.get("/admin/bodega/{bodega_id}")
+async def admin_bodega_detalle(
+    bodega_id: str,
+    admin: bool = Depends(verify_admin),
+):
+    """Drill-down de una bodega: datos + sesion + timeline de eventos + pedidos."""
+    # 1. Datos de la bodega
+    rows = _sb_get("bodegas", {"select": "*", "id": f"eq.{bodega_id}"})
+    if not rows:
+        raise HTTPException(status_code=404, detail="Bodega no encontrada")
+    bodega = rows[0]
+
+    # 2. Sesión actual
+    try:
+        ses = _sb_get("sesiones", {
+            "select": "*",
+            "bodega_id": f"eq.{bodega_id}",
+            "order": "last_activity.desc",
+            "limit": "1",
+        })
+        bodega["sesion"] = ses[0] if ses else None
+    except Exception:
+        bodega["sesion"] = None
+
+    # 3. Timeline de eventos (últimos 50)
+    try:
+        eventos = _sb_get("events", {
+            "select": "*",
+            "bodega_id": f"eq.{bodega_id}",
+            "order": "created_at.desc",
+            "limit": "50",
+        })
+    except Exception:
+        eventos = []
+
+    # 4. Pedidos de la bodega
+    try:
+        pedidos = _sb_get("pedidos", {
+            "select": "id,numero,estado,origen,monto_productos,monto_financiado,"
+                      "monto_contado,total_pedido,fee_monto,created_at,pagado_at,"
+                      "fecha_vencimiento,metodo_pago,dimax_pedido_id",
+            "bodega_id": f"eq.{bodega_id}",
+            "order": "created_at.desc",
+            "limit": "100",
+        })
+    except Exception:
+        pedidos = []
+
+    # 5. Distribuidor de la bodega
+    distribuidor = {}
+    if bodega.get("distribuidor_id"):
+        try:
+            d = _sb_get("distribuidores", {"select": "*", "id": f"eq.{bodega['distribuidor_id']}"})
+            if d: distribuidor = d[0]
+        except Exception:
+            pass
+
+    return {
+        "bodega": bodega,
+        "distribuidor": distribuidor,
+        "eventos": eventos,
+        "pedidos": pedidos,
+        "stats": {
+            "total_pedidos": len(pedidos),
+            "pedidos_pagados": sum(1 for p in pedidos if p.get("estado") == "pagado"),
+            "pedidos_preventa_cancelada": sum(1 for p in pedidos if p.get("estado") == "preventa_cancelada"),
+            "monto_financiado_pendiente": round(sum(
+                float(p.get("monto_financiado") or 0)
+                for p in pedidos
+                if p.get("estado") not in ("pagado", "preventa_cancelada", "rechazado")
+            ), 2),
+        }
+    }
+
 
 # ============================================================
 # Endpoint: Importar preventas desde DIMAX (Sprint 28-abr-2026)
