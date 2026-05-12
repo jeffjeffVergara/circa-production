@@ -118,6 +118,60 @@ tr:hover td{background:var(--card-hover)}
     display:none
   }
 }
+
+/* ====== FASE 3: Toggle Real/Test, alerta sobregiro, tab Bodegas ====== */
+.mode-toggle{display:flex;background:var(--bg);border:1px solid var(--border);border-radius:999px;padding:3px;gap:0}
+.mode-toggle button{background:transparent;border:none;color:var(--muted);padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;border-radius:999px;transition:all .15s}
+.mode-toggle button.active{background:var(--blue);color:#fff;box-shadow:0 2px 8px rgba(37,99,235,.4)}
+.mode-toggle button:not(.active):hover{color:var(--text)}
+.mode-toggle .cnt{margin-left:6px;background:rgba(255,255,255,.18);padding:1px 7px;border-radius:8px;font-size:10px;font-weight:700}
+.mode-toggle button:not(.active) .cnt{background:var(--border);color:var(--muted)}
+
+/* Alerta sobregiro */
+.alert-sobregiro{background:linear-gradient(90deg,rgba(239,68,68,.12),rgba(239,68,68,.04));border:1px solid var(--red);border-left:4px solid var(--red);border-radius:10px;padding:16px 20px;margin-bottom:20px}
+.alert-sobregiro.empty{display:none}
+.alert-sobregiro h3{color:var(--red);font-size:14px;font-weight:700;margin-bottom:8px;display:flex;align-items:center;gap:10px}
+.alert-sobregiro .alert-cnt{background:var(--red);color:#fff;padding:2px 10px;border-radius:12px;font-size:11px;font-weight:700}
+.alert-sobregiro-row{display:grid;grid-template-columns:1fr 100px 100px 130px;gap:12px;padding:10px 0;border-top:1px solid var(--border);align-items:center;font-size:13px}
+.alert-sobregiro-row:first-of-type{border-top:1px solid var(--red);margin-top:8px}
+.alert-sobregiro .badge-test{background:rgba(249,115,22,.15);color:var(--orange);font-size:10px;padding:1px 6px;border-radius:6px;margin-left:6px}
+
+/* Bodegas tab */
+.search-bar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;align-items:center}
+.search-bar input{padding:9px 14px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;min-width:280px}
+.search-bar input:focus{outline:none;border-color:var(--blue)}
+.bodegas-table th, .bodegas-table td{font-size:13px}
+.bodegas-table tbody tr{cursor:pointer;transition:background .15s}
+.bodegas-table tbody tr:hover{background:var(--card-hover)}
+.status-dot{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600}
+.status-dot::before{content:'';width:8px;height:8px;border-radius:50%;background:currentColor}
+.status-active{color:var(--green)}
+.status-warning{color:var(--yellow)}
+.status-stale{color:var(--muted)}
+.status-no-session{color:var(--muted);opacity:.6}
+
+/* Modal bodega detalle */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.65);backdrop-filter:blur(4px);z-index:1000;display:none;align-items:flex-start;justify-content:center;padding:40px 20px;overflow-y:auto}
+.modal-overlay.open{display:flex}
+.modal-box{background:var(--card);border:1px solid var(--border);border-radius:14px;width:100%;max-width:920px;max-height:calc(100vh - 80px);overflow:hidden;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.6)}
+.modal-head{padding:18px 22px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:flex-start;gap:16px}
+.modal-head h2{font-size:18px;font-weight:700;color:var(--text);margin:0}
+.modal-head .sub{color:var(--muted);font-size:12px;margin-top:4px}
+.modal-close{background:transparent;border:none;color:var(--muted);font-size:22px;cursor:pointer;padding:0 8px;line-height:1}
+.modal-close:hover{color:var(--text)}
+.modal-body{padding:18px 22px;overflow-y:auto;flex:1}
+.info-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px}
+.info-card{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 12px}
+.info-label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}
+.info-value{font-size:15px;font-weight:600}
+.section-label{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin:20px 0 10px;border-left:2px solid var(--blue);padding-left:8px}
+.timeline{position:relative;padding-left:22px}
+.timeline::before{content:'';position:absolute;left:6px;top:4px;bottom:4px;width:1px;background:var(--border)}
+.timeline-item{position:relative;padding:6px 0}
+.timeline-item::before{content:'';position:absolute;left:-19px;top:11px;width:8px;height:8px;background:var(--blue);border-radius:50%;border:2px solid var(--card)}
+.timeline-time{font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
+.timeline-event{font-size:13px;font-weight:500;margin-top:1px}
+.timeline-detail{font-size:11px;color:var(--muted);margin-top:1px}
 </style>
 </head>
 <body>
@@ -141,6 +195,10 @@ tr:hover td{background:var(--card-hover)}
 <div class="header-sub" id="fechaHeader"></div>
 </div>
 <div class="header-right">
+<div class="mode-toggle" id="modeToggle" title="Filtra bodegas reales vs de prueba en todo el panel">
+<button class="active" data-mode="real" onclick="setMode('real')">🏪 Reales <span class="cnt" id="cntReales">—</span></button>
+<button data-mode="test" onclick="setMode('test')">🧪 Pruebas <span class="cnt" id="cntTests">—</span></button>
+</div>
 <button class="btn btn-secondary btn-small" onclick="refreshAll()">🔄 Actualizar</button>
 <button class="btn btn-outline btn-small" onclick="logout()">Salir</button>
 </div>
@@ -150,6 +208,7 @@ tr:hover td{background:var(--card-hover)}
 
 <div class="tabs">
 <button class="tab active" onclick="showTab('dashboard')" id="tab-dashboard">📊 Dashboard</button>
+<button class="tab" onclick="showTab('bodegas')" id="tab-bodegas">🏪 Bodegas</button>
 <button class="tab" onclick="showTab('pagos')" id="tab-pagos">💸 Pagos a distribuidores</button>
 <button class="tab" onclick="showTab('cobranzas')" id="tab-cobranzas">💰 Cobranzas</button>
 <button class="tab" onclick="showTab('pedidos')" id="tab-pedidos">📋 Todos los pedidos</button>
@@ -157,6 +216,13 @@ tr:hover td{background:var(--card-hover)}
 
 <!-- DASHBOARD TAB -->
 <div id="view-dashboard">
+
+<!-- Alerta sobregiro (compliance) - NUEVO Fase 3 -->
+<div class="alert-sobregiro empty" id="sobregiroAlert">
+<h3>🟥 Bodegas con sobregiro de línea — RIESGO COMPLIANCE <span class="alert-cnt" id="sobregiroCnt">0</span></h3>
+<div id="sobregiroBody"></div>
+</div>
+
 <div class="kpi-grid">
 <div class="kpi"><div class="kpi-label">A pagar hoy a distribuidores</div><div class="kpi-value blue" id="kpiPagar">S/0.00</div></div>
 <div class="kpi"><div class="kpi-label">Pedidos activos</div><div class="kpi-value green" id="kpiActivos">0</div></div>
@@ -253,6 +319,46 @@ tr:hover td{background:var(--card-hover)}
 </div>
 
 </div>
+
+<!-- BODEGAS TAB (NUEVO) -->
+<div id="view-bodegas" style="display:none">
+<div class="section">
+<h2>🏪 Bodegas <span style="font-size:12px;color:var(--muted);font-weight:400" id="bodegasInfoLine">cargando...</span></h2>
+<div class="search-bar">
+<input type="text" id="bodegasSearch" placeholder="Buscar razón social, dueño, DNI, RUC o teléfono..." onkeyup="loadBodegas()">
+<select id="bodegasFiltroEstado" onchange="loadBodegas()" style="padding:9px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px">
+<option value="">Todos los estados</option>
+<option value="activo">Activos</option>
+<option value="inactivo">Inactivos</option>
+<option value="suspendido">Suspendidos</option>
+<option value="bloqueado">Bloqueados</option>
+</select>
+</div>
+<div class="table-wrap">
+<table class="bodegas-table">
+<thead><tr>
+<th></th><th>Bodega / Dueño</th><th>Teléfono</th><th>Fase bot</th><th>Última actividad</th><th>Línea (disp/aprob)</th><th>Pedidos</th><th></th>
+</tr></thead>
+<tbody id="bodegasBody"><tr><td colspan="8" class="empty">Cargando...</td></tr></tbody>
+</table>
+</div>
+</div>
+</div>
+
+</div>
+
+<!-- MODAL DETALLE BODEGA (NUEVO) -->
+<div class="modal-overlay" id="bodegaModal" onclick="if(event.target===this) closeBodegaModal()">
+<div class="modal-box">
+<div class="modal-head">
+<div>
+<h2 id="bodegaModalTitle">Bodega</h2>
+<div class="sub" id="bodegaModalSubtitle">—</div>
+</div>
+<button class="modal-close" onclick="closeBodegaModal()">×</button>
+</div>
+<div class="modal-body" id="bodegaModalBody">Cargando...</div>
+</div>
 </div>
 
 <div id="modalContainer"></div>
@@ -288,17 +394,26 @@ function logout(){
 }
 
 function showTab(name){
-  ['dashboard','pagos','cobranzas','pedidos'].forEach(function(t){
-    document.getElementById('view-'+t).style.display = (t===name ? 'block':'none');
-    document.getElementById('tab-'+t).classList.toggle('active', t===name);
+  ['dashboard','bodegas','pagos','cobranzas','pedidos'].forEach(function(t){
+    var el = document.getElementById('view-'+t);
+    if(el) el.style.display = (t===name ? 'block':'none');
+    var tb = document.getElementById('tab-'+t);
+    if(tb) tb.classList.toggle('active', t===name);
   });
   if(name==='pagos') loadPagos();
   if(name==='cobranzas') loadCobranzas();
   if(name==='pedidos') loadPedidos();
   if(name==='dashboard') refreshAll();
+  if(name==='bodegas') loadBodegas();
 }
 
 function api(path){
+  // NUEVO: aplica filtro Real/Test global a TODOS los endpoints /admin/
+  if(path.indexOf('/admin/') !== -1 && path.indexOf('test=') === -1){
+    var mode = window.MODE_FILTER || localStorage.getItem('circa_mode') || 'real';
+    var sep = path.indexOf('?') === -1 ? '?' : '&';
+    path = path + sep + 'test=' + mode;
+  }
   return fetch(path, {headers:{'X-Admin-Token': TOKEN}}).then(r=>{
     if(!r.ok) throw new Error('Error '+r.status);
     return r.json();
@@ -330,6 +445,10 @@ function refreshAll(){
     sel.innerHTML = '<option value="">Todos los distribuidores</option>' + Array.from(dists).map(function(d){return '<option value="'+d+'">'+d+'</option>'}).join('');
   }).catch(console.error);
 
+  // NUEVO Fase 3: cargar alerta sobregiro y conteos del toggle
+  loadSobregiroAlert();
+  loadModeCounts();
+  
   api('/api/distribuidor/admin/analytics-resumen').then(function(a){
     var f = a.funnel || {};
     var m = a.messages || {};
@@ -625,6 +744,212 @@ if(savedToken){
   document.getElementById('tokenInput').value = savedToken;
   login();
 }
+
+
+// ============================================================
+// FASE 3: Toggle Real/Test, alerta sobregiro, tab Bodegas
+// ============================================================
+
+function setMode(mode){
+  window.MODE_FILTER = mode;
+  localStorage.setItem('circa_mode', mode);
+  document.querySelectorAll('#modeToggle button').forEach(function(b){
+    b.classList.toggle('active', b.dataset.mode === mode);
+  });
+  refreshAll();
+  // Re-load la tab actual si no es dashboard
+  var activeTab = document.querySelector('.tab.active');
+  if(activeTab){
+    var id = activeTab.id.replace('tab-','');
+    if(id !== 'dashboard') showTab(id);
+  }
+}
+
+function loadModeCounts(){
+  // Cuenta cuántas reales y cuántas tests hay (para los chips del toggle)
+  // Hacemos 2 llamadas independientes con test=all para contar
+  var prev = window.MODE_FILTER;
+  window.MODE_FILTER = 'real';
+  fetch('/api/distribuidor/admin/bodegas?test=real&estado=', {headers:{'X-Admin-Token':TOKEN}})
+    .then(r=>r.json()).then(d=>{
+      document.getElementById('cntReales').textContent = d.total || 0;
+    }).catch(()=>{});
+  fetch('/api/distribuidor/admin/bodegas?test=test&estado=', {headers:{'X-Admin-Token':TOKEN}})
+    .then(r=>r.json()).then(d=>{
+      document.getElementById('cntTests').textContent = d.total || 0;
+    }).catch(()=>{});
+  window.MODE_FILTER = prev;
+}
+
+function loadSobregiroAlert(){
+  api('/api/distribuidor/admin/alerts/sobregiro').then(function(d){
+    var box = document.getElementById('sobregiroAlert');
+    var cnt = document.getElementById('sobregiroCnt');
+    var body = document.getElementById('sobregiroBody');
+    var alertas = d.alertas || [];
+    if(!alertas.length){
+      box.classList.add('empty');
+      return;
+    }
+    box.classList.remove('empty');
+    cnt.textContent = alertas.length + ' · S/ ' + (d.monto_total_sobregiro||0).toFixed(2);
+    body.innerHTML = alertas.map(function(b){
+      var name = b.nombre_comercial || b.razon_social || '?';
+      var test = b.es_test ? '<span class="badge-test">TEST</span>' : '';
+      return '<div class="alert-sobregiro-row">'+
+        '<div><strong>'+name+'</strong>'+test+'<div style="font-size:11px;color:var(--muted);margin-top:2px">'+(b.telefono_whatsapp||'')+'</div></div>'+
+        '<div style="text-align:right">aprob<br><strong>S/ '+(b.linea_aprobada||0).toFixed(2)+'</strong></div>'+
+        '<div style="text-align:right;color:var(--red)">disp<br><strong>S/ '+(b.linea_disponible||0).toFixed(2)+'</strong></div>'+
+        '<div style="text-align:right;color:var(--red)"><strong>+ S/ '+(b.sobregiro||0).toFixed(2)+'</strong><div style="font-size:11px">+'+(b.pct_sobre||0)+'%</div></div>'+
+      '</div>';
+    }).join('');
+  }).catch(function(e){ console.error('Sobregiro error', e); });
+}
+
+function loadBodegas(){
+  var search = document.getElementById('bodegasSearch').value;
+  var estado = document.getElementById('bodegasFiltroEstado').value;
+  var url = '/api/distribuidor/admin/bodegas?';
+  if(search) url += 'search='+encodeURIComponent(search)+'&';
+  if(estado) url += 'estado='+estado;
+  api(url).then(function(d){
+    var bodegas = d.bodegas || [];
+    document.getElementById('bodegasInfoLine').textContent =
+      '· '+bodegas.length+' bodegas · filtro: '+(window.MODE_FILTER||'real');
+    if(!bodegas.length){
+      document.getElementById('bodegasBody').innerHTML =
+        '<tr><td colspan="8" class="empty">Sin bodegas para los filtros aplicados</td></tr>';
+      return;
+    }
+    document.getElementById('bodegasBody').innerHTML = bodegas.map(function(b){
+      var name = b.nombre_comercial || b.razon_social || '?';
+      var dueno = b.representante_legal || '';
+      var tel = b.telefono_whatsapp || '';
+      var ses = b.sesion || {};
+      var fase = ses.fase || '—';
+      var la = ses.last_activity;
+      var hace = la ? hacecuanto(la) : '<span class="status-no-session">nunca</span>';
+      var clase = 'status-stale';
+      if(la){
+        var horas = (new Date() - new Date(la)) / 1000 / 3600;
+        if(horas < 24) clase = 'status-active';
+        else if(horas < 168) clase = 'status-warning';
+      } else { clase = 'status-no-session'; }
+      var statusLabel = la ? (clase==='status-active'?'activa':(clase==='status-warning'?'demora':'inactiva')) : 'sin sesión';
+      var disp = (b.linea_disponible||0).toFixed(0);
+      var aprob = (b.linea_aprobada||0).toFixed(0);
+      var pedCount = b.pedidos_count || 0;
+      var pedPagados = b.pedidos_pagados || 0;
+      return '<tr onclick="openBodegaDetail(\''+b.id+'\')">'+
+        '<td><span class="status-dot '+clase+'">'+statusLabel+'</span></td>'+
+        '<td><div style="font-weight:600">'+name+'</div><div style="font-size:11px;color:var(--muted)">'+dueno+'</div></td>'+
+        '<td style="color:var(--muted);font-size:12px">'+tel+'</td>'+
+        '<td><span style="color:var(--blue-light);font-size:12px">'+fase+'</span></td>'+
+        '<td style="font-size:12px">'+hace+'</td>'+
+        '<td style="font-size:12px">S/'+disp+' / '+aprob+'</td>'+
+        '<td style="font-size:12px">'+pedCount+(pedPagados>0?' <span style="color:var(--green)">('+pedPagados+' ✓)</span>':'')+'</td>'+
+        '<td style="color:var(--muted)">›</td>'+
+      '</tr>';
+    }).join('');
+  }).catch(function(e){
+    document.getElementById('bodegasBody').innerHTML =
+      '<tr><td colspan="8" class="empty">Error: '+e.message+'</td></tr>';
+  });
+}
+
+function hacecuanto(iso){
+  if(!iso) return '—';
+  var d = new Date(iso);
+  var diff = (new Date() - d) / 1000;
+  if(diff < 60) return 'hace '+Math.round(diff)+'s';
+  if(diff < 3600) return 'hace '+Math.round(diff/60)+' min';
+  if(diff < 86400) return 'hace '+Math.round(diff/3600)+' h';
+  if(diff < 86400*7) return 'hace '+Math.round(diff/86400)+' días';
+  return d.toLocaleDateString('es-PE',{day:'2-digit',month:'short',year:'2-digit'});
+}
+
+function openBodegaDetail(id){
+  document.getElementById('bodegaModal').classList.add('open');
+  document.getElementById('bodegaModalBody').innerHTML = '<div class="empty">Cargando…</div>';
+  api('/api/distribuidor/admin/bodega/'+id).then(function(d){
+    var b = d.bodega || {};
+    var ses = b.sesion || {};
+    var pedidos = d.pedidos || [];
+    var eventos = d.eventos || [];
+    var stats = d.stats || {};
+    var name = b.nombre_comercial || b.razon_social || '?';
+    document.getElementById('bodegaModalTitle').textContent = name;
+    document.getElementById('bodegaModalSubtitle').textContent =
+      (b.representante_legal||'') + ' · ' + (b.telefono_whatsapp||'') +
+      (b.es_test ? ' · 🧪 BODEGA TEST' : '');
+
+    var infoGrid =
+      '<div class="info-grid">'+
+        '<div class="info-card"><div class="info-label">Estado</div><div class="info-value" style="color:var(--green)">'+(b.estado||'-')+'</div></div>'+
+        '<div class="info-card"><div class="info-label">Fase bot</div><div class="info-value" style="color:var(--blue-light)">'+(ses.fase||'sin sesión')+'</div></div>'+
+        '<div class="info-card"><div class="info-label">Línea disponible</div><div class="info-value">S/ '+(b.linea_disponible||0).toFixed(2)+'</div></div>'+
+        '<div class="info-card"><div class="info-label">Línea aprobada</div><div class="info-value">S/ '+(b.linea_aprobada||0).toFixed(2)+'</div></div>'+
+      '</div>'+
+      '<div class="info-grid">'+
+        '<div class="info-card"><div class="info-label">RUC</div><div class="info-value" style="font-size:13px">'+(b.ruc||'-')+'</div></div>'+
+        '<div class="info-card"><div class="info-label">DNI dueño</div><div class="info-value" style="font-size:13px">'+(b.dni_representante||'-')+'</div></div>'+
+        '<div class="info-card"><div class="info-label">Pedidos totales</div><div class="info-value">'+stats.total_pedidos+' <span style="font-size:11px;color:var(--green)">('+(stats.pedidos_pagados||0)+' pagados)</span></div></div>'+
+        '<div class="info-card"><div class="info-label">Financiado pendiente</div><div class="info-value" style="color:var(--orange)">S/ '+(stats.monto_financiado_pendiente||0).toFixed(2)+'</div></div>'+
+      '</div>';
+
+    var timelineHtml = '<div class="section-label">Timeline de eventos (últimos 50)</div>';
+    if(!eventos.length){
+      timelineHtml += '<div class="empty" style="padding:20px">Sin eventos registrados</div>';
+    } else {
+      timelineHtml += '<div class="timeline">' + eventos.map(function(ev){
+        var t = ev.created_at ? new Date(ev.created_at).toLocaleString('es-PE') : '';
+        return '<div class="timeline-item">'+
+          '<div class="timeline-time">'+t+'</div>'+
+          '<div class="timeline-event">'+(ev.event_type||'evento')+'</div>'+
+          (ev.payload ? '<div class="timeline-detail">'+JSON.stringify(ev.payload).slice(0,200)+'</div>' : '')+
+        '</div>';
+      }).join('') + '</div>';
+    }
+
+    var pedidosHtml = '<div class="section-label">Pedidos ('+pedidos.length+')</div>';
+    if(!pedidos.length){
+      pedidosHtml += '<div class="empty" style="padding:20px">Sin pedidos</div>';
+    } else {
+      pedidosHtml += '<table style="width:100%;font-size:12px"><thead><tr><th>Número</th><th>Estado</th><th>Origen</th><th>Total</th><th>Financiado</th><th>Creado</th></tr></thead><tbody>';
+      pedidosHtml += pedidos.map(function(p){
+        return '<tr><td class="mono">'+(p.numero||'—')+'</td>'+
+          '<td>'+(p.estado||'-')+'</td>'+
+          '<td style="color:var(--muted);font-size:11px">'+(p.origen||'-')+'</td>'+
+          '<td class="mono">S/ '+(p.monto_productos||0).toFixed(2)+'</td>'+
+          '<td class="mono">S/ '+(p.monto_financiado||0).toFixed(2)+'</td>'+
+          '<td style="font-size:11px">'+(p.created_at?new Date(p.created_at).toLocaleDateString('es-PE'):'-')+'</td>'+
+        '</tr>';
+      }).join('');
+      pedidosHtml += '</tbody></table>';
+    }
+
+    document.getElementById('bodegaModalBody').innerHTML = infoGrid + timelineHtml + pedidosHtml;
+  }).catch(function(e){
+    document.getElementById('bodegaModalBody').innerHTML = '<div class="empty">Error: '+e.message+'</div>';
+  });
+}
+
+function closeBodegaModal(){
+  document.getElementById('bodegaModal').classList.remove('open');
+}
+
+// Inicialización del toggle al cargar
+(function initMode(){
+  var saved = localStorage.getItem('circa_mode') || 'real';
+  window.MODE_FILTER = saved;
+  // Actualizar UI del toggle cuando esté disponible
+  document.addEventListener('DOMContentLoaded', function(){
+    document.querySelectorAll('#modeToggle button').forEach(function(b){
+      b.classList.toggle('active', b.dataset.mode === saved);
+    });
+  });
+})();
+
 </script>
 </body>
 </html>
