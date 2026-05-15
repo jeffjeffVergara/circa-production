@@ -708,7 +708,7 @@ En menos de 24 horas validamos tu solicitud y activamos tu línea. Empiezas comp
                 db.save_carrito(bodega["id"], items)
                 url = get_catalog_url(bodega["id"]) + "&t=venta&repeat=1"
                 db.upsert_session(telefono, "catalogo", {"cart": items}, bodega["id"])
-                return [f"\U0001f4cb *Tu ultimo pedido esta listo.*\nAbre el catalogo para revisarlo y confirmar:\n\n\U0001f449 {url}"]
+                return [f"📋 Visualiza tu último pedido *Aquí*.\n\n👉 {url}"]
             return ["No tienes un pedido anterior. Escribe *PEDIDO* para empezar."]
 
         if body_n in ("LINEA", "2", "linea"):

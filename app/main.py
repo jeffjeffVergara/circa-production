@@ -851,7 +851,7 @@ async def meta_webhook_incoming(request: Request):
                         db.save_carrito(bodega_rep["id"], items)
                         await meta_client.send_text(
                             telefono,
-                            "📋 Tu último pedido está listo. Ábrelo en el catálogo para revisarlo y confirmar.",
+                            "📋 Visualiza tu último pedido *Aquí*.",
                         )
                         await meta_client.send_catalogo_flow(
                             telefono,
