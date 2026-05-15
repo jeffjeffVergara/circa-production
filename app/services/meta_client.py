@@ -669,12 +669,23 @@ async def send_contacto_circa(to: str, wa_link: str | None) -> dict | None:
     )
 
 
+CATALOGO_CTA_BODY_VENTA = (
+    "¡Vamos con tu pedido!\n"
+    "Abre el catálogo, busca por nombre o marca, elige cantidades y cuando estés listo lo confirmas."
+)
+CATALOGO_CTA_BODY_PREVENTA = (
+    "¡Sigamos con tu pre-venta!\n"
+    "Entra al catálogo, arma tu lista y confírmala cuando te cuadre todo."
+)
+
+
 async def send_catalogo_flow(
     to: str,
     bodega_id: str,
     tipo_operacion: str = "venta",
     *,
     load_saved_cart: bool = False,
+    catalog_prompt: str | None = None,
 ):
     """Send catalog as CTA URL button - opens in WhatsApp in-app browser."""
     base = os.getenv("APP_BASE_URL", "https://circa-production-c517.up.railway.app")
@@ -683,12 +694,10 @@ async def send_catalogo_flow(
     if load_saved_cart:
         q += "&repeat=1"
     url = f"{base}/catalogo-v2?{q}"
-    texto = (
-        "Arma tu pre-venta del catalogo.\n"
-        "Busca por nombre o marca, elige cantidades y confirma."
-        if t == "preventa"
-        else "Arma tu pedido del catalogo.\nBusca por nombre o marca, elige cantidades y confirma."
-    )
+    if catalog_prompt and catalog_prompt.strip():
+        texto = catalog_prompt.strip()
+    else:
+        texto = CATALOGO_CTA_BODY_PREVENTA if t == "preventa" else CATALOGO_CTA_BODY_VENTA
     return await _send(to, {
         "type": "interactive",
         "interactive": {
@@ -699,7 +708,7 @@ async def send_catalogo_flow(
             "action": {
                 "name": "cta_url",
                 "parameters": {
-                    "display_text": "Abrir catalogo",
+                    "display_text": "Abrir catálogo",
                     "url": url
                 }
             }

@@ -691,7 +691,10 @@ En menos de 24 horas validamos tu solicitud y activamos tu línea. Empiezas comp
             url = get_catalog_url(bodega["id"]) + "&t=venta"
             db.upsert_session(telefono, "catalogo", {"cart": []}, bodega["id"])
             return [
-                f"📦 *Catálogo de productos*\n\nAbre el catálogo, arma tu pedido y confirma:\n👉 {url}\n\nFiltra por *categoría* o *marca*.\nPrecios por pack (6, 12 o 24u).\nEl tag indica el vendedor.\n\nCuando termines, presiona *Financiar con Circa* en la web."
+                f"📦 *¡Vamos con tu pedido!*\n\n"
+                f"Abre el catálogo, arma tu lista y confírmala cuando estés listo:\n👉 {url}\n\n"
+                f"Filtra por *categoría* o *marca*. Precios por pack (6, 12 o 24u).\n"
+                f"El tag indica el vendedor.\n\nCuando termines, presiona *Financiar con Circa* en la web."
             ]
 
         if body_n in ("PREVENTA", "PRE-VENTA", "PRE VENTA", "5"):
@@ -699,7 +702,9 @@ En menos de 24 horas validamos tu solicitud y activamos tu línea. Empiezas comp
             url = get_catalog_url(bodega["id"]) + "&t=preventa"
             db.upsert_session(telefono, "catalogo", {"cart": [], "tipo_operacion": "preventa"}, bodega["id"])
             return [
-                f"🗓️ *Pre-venta*\n\nAbre el catálogo, arma tu pre-venta y confirma:\n👉 {url}\n\nTu solicitud quedará en estado *preventa_confirmada* hasta ser aceptada."
+                f"🗓️ *¡Sigamos con tu pre-venta!*\n\n"
+                f"Entra al catálogo, arma tu solicitud y confírmala aquí:\n👉 {url}\n\n"
+                f"Tu solicitud quedará en estado *preventa_confirmada* hasta ser aceptada."
             ]
 
         if body_n in ("REPETIR", "4"):
@@ -708,7 +713,11 @@ En menos de 24 horas validamos tu solicitud y activamos tu línea. Empiezas comp
                 db.save_carrito(bodega["id"], items)
                 url = get_catalog_url(bodega["id"]) + "&t=venta&repeat=1"
                 db.upsert_session(telefono, "catalogo", {"cart": items}, bodega["id"])
-                return [f"📋 Visualiza tu último pedido *Aquí*.\n\n👉 {url}"]
+                return [
+                    "¡Listo! 👋 Ya te cargamos tu último pedido.\n\n"
+                    "Revísalo en el catálogo, cambia lo que quieras y confírmalo cuando estés listo:\n\n"
+                    f"👉 {url}"
+                ]
             return ["No tienes un pedido anterior. Escribe *PEDIDO* para empezar."]
 
         if body_n in ("LINEA", "2", "linea"):

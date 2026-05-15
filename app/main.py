@@ -578,7 +578,19 @@ async def meta_webhook_incoming(request: Request):
                     )
                     tipo_op = "preventa" if po.data and po.data[0].get("tipo_operacion") == "preventa" else "venta"
                     await meta_client.send_catalogo_flow(
-                        telefono, bod_id, tipo_operacion=tipo_op, load_saved_cart=True
+                        telefono,
+                        bod_id,
+                        tipo_operacion=tipo_op,
+                        load_saved_cart=True,
+                        catalog_prompt=(
+                            "¡Aquí seguimos!\n"
+                            "Tu pre-venta te está esperando en el catálogo: revísala con calma y confírmala cuando quieras."
+                            if tipo_op == "preventa"
+                            else (
+                                "¡Seguimos donde lo dejaste!\n"
+                                "Tu pedido sigue en el carrito: ábrelo, retoca lo que necesites y confirma cuando estés listo."
+                            )
+                        ),
                     )
             except Exception as e:
                 logger.error(f"EDITAR error: {e}", exc_info=True)
@@ -851,13 +863,17 @@ async def meta_webhook_incoming(request: Request):
                         db.save_carrito(bodega_rep["id"], items)
                         await meta_client.send_text(
                             telefono,
-                            "📋 Visualiza tu último pedido *Aquí*.",
+                            "¡Listo! 👋 Ya te cargamos tu último pedido.\nAbajo tienes el botón para abrirlo en el catálogo.",
                         )
                         await meta_client.send_catalogo_flow(
                             telefono,
                             bodega_rep["id"],
                             tipo_operacion="venta",
                             load_saved_cart=True,
+                            catalog_prompt=(
+                                "¡Aquí está tu último pedido, tal como lo pediste!\n"
+                                "Revísalo con tranquilidad, cambia lo que quieras y confírmalo cuando te encaje."
+                            ),
                         )
                     else:
                         await meta_client.send_text(
