@@ -703,8 +703,8 @@ En menos de 24 horas validamos tu solicitud y activamos tu línea. Empiezas comp
             ]
 
         if body_n in ("REPETIR", "4"):
-            if bodega.get("ultimo_pedido_items"):
-                items = json.loads(bodega["ultimo_pedido_items"]) if isinstance(bodega["ultimo_pedido_items"], str) else bodega["ultimo_pedido_items"]
+            items = db.get_items_para_repetir(bodega)
+            if items:
                 db.save_carrito(bodega["id"], items)
                 url = get_catalog_url(bodega["id"]) + "&t=venta&repeat=1"
                 db.upsert_session(telefono, "catalogo", {"cart": items}, bodega["id"])

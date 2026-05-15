@@ -846,23 +846,7 @@ async def meta_webhook_incoming(request: Request):
                 if not bodega_rep:
                     await meta_client.send_text(telefono, "Escribe MENU para empezar.")
                 else:
-                    items = None
-                    upi = bodega_rep.get("ultimo_pedido_items")
-                    if upi:
-                        items = json.loads(upi) if isinstance(upi, str) else upi
-                    if not items:
-                        last = (
-                            db.sb.table("pedidos")
-                            .select("items_json")
-                            .eq("bodega_id", bodega_rep["id"])
-                            .not_.is_("items_json", "null")
-                            .order("created_at", desc=True)
-                            .limit(1)
-                            .execute()
-                        )
-                        if last.data and last.data[0].get("items_json"):
-                            raw = last.data[0]["items_json"]
-                            items = json.loads(raw) if isinstance(raw, str) else raw
+                    items = db.get_items_para_repetir(bodega_rep)
                     if items:
                         db.save_carrito(bodega_rep["id"], items)
                         await meta_client.send_text(
@@ -1015,6 +999,7 @@ async def meta_webhook_incoming(request: Request):
                                         new_ld = min(new_ld, lap)
                                         db.sb.table("bodegas").update(
                                             {"linea_disponible": new_ld}).eq("id", bod_id).execute()
+                                        db.snapshot_ultimo_pedido_venta(bod_id, pedido_id)
                                         from app.services.analytics import track_event
                                         track_event(
                                             "order_confirmed" if tipo_op == "venta" else "preventa_confirmada",
@@ -1064,6 +1049,7 @@ async def meta_webhook_incoming(request: Request):
                                         "monto_financiado": 0, "monto_contado": round(monto, 2),
                                         "total": round(monto, 2), "estado": _confirmed_status_for(tipo_op),
                                     }).eq("id", pedido_id).execute()
+                                    db.snapshot_ultimo_pedido_venta(bod_id, pedido_id)
                                     from app.services.analytics import track_event
                                     track_event(
                                         "order_confirmed" if tipo_op == "venta" else "preventa_confirmada",

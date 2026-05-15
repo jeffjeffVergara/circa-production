@@ -254,6 +254,9 @@ def _verify_pin_for_payment(pin: str, bodega_id: str) -> dict:
             }).eq("id", pedido_id).execute()
             msg = f"Pedido #{num} confirmado\nContado: S/{monto:.2f}"
         
+        if tipo_operacion != "preventa":
+            db.snapshot_ultimo_pedido_venta(bodega_id, pedido_id)
+
         # Mark session as done - WA message will be sent by webhook handler
         db.sb.table("sesiones").update({"fase": "menu", "datos": json.dumps({"num": num, "pedido_id": pedido_id, "dias": dias, "monto": monto, "fee": fee, "rate": rate})}).eq("telefono", telefono).execute()
         

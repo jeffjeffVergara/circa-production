@@ -1,10 +1,12 @@
 """Supabase client wrapper for all DB operations."""
+import json
+import logging
 from supabase import create_client
 from app.config import SUPABASE_URL, SUPABASE_KEY, now_peru
 from datetime import datetime, timedelta, date
-import json
 
 sb = create_client(SUPABASE_URL, SUPABASE_KEY)
+logger_db = logging.getLogger("circa.db")
 
 # ── SESIONES ──────────────────────────────────
 def get_session(telefono: str):
@@ -173,6 +175,93 @@ def save_carrito(bodega_id: str, items: list):
 
 def clear_carrito(bodega_id: str):
     sb.table("carritos").delete().eq("bodega_id", bodega_id).execute()
+
+
+# Estados de pedidos **venta** ya confirmados (excluye borrador y todo preventa por tipo_operacion).
+ESTADOS_REPETIR_VENTA = (
+    "confirmado",
+    "recibido",
+    "en_preparacion",
+    "despachado",
+    "en_camino",
+    "entregado",
+    "pagado",
+    "pago_reportado",
+)
+
+def snapshot_ultimo_pedido_venta(bodega_id: str, pedido_id: str) -> None:
+    """
+    Tras confirmar venta con PIN (WhatsApp / Flow): guarda items_json en bodegas.
+    Evita que REPETIR tome una preventa o un borrador más reciente.
+    """
+    if not bodega_id or not pedido_id:
+        return
+    try:
+        row = (
+            sb.table("pedidos")
+            .select("items_json, tipo_operacion")
+            .eq("id", pedido_id)
+            .limit(1)
+            .execute()
+            .data
+        )
+        if not row:
+            return
+        r0 = row[0]
+        if r0.get("tipo_operacion") == "preventa":
+            return
+        raw = r0.get("items_json")
+        if raw is None:
+            return
+        items = json.loads(raw) if isinstance(raw, str) else raw
+        if not isinstance(items, list) or not items:
+            return
+        sb.table("bodegas").update(
+            {"ultimo_pedido_items": json.dumps(items, ensure_ascii=False)}
+        ).eq("id", bodega_id).execute()
+    except Exception as e:
+        logger_db.warning("snapshot_ultimo_pedido_venta: %s", e)
+
+
+def get_items_para_repetir(bodega_row: dict):
+    """
+    Ítems para REPETIR último pedido: snapshot en bodega; si falta, última venta confirmada.
+    """
+    bodega_id = (bodega_row or {}).get("id")
+    if not bodega_id:
+        return None
+    upi = bodega_row.get("ultimo_pedido_items")
+    if upi:
+        try:
+            items = json.loads(upi) if isinstance(upi, str) else upi
+            if isinstance(items, list) and items:
+                return items
+        except (json.JSONDecodeError, TypeError):
+            pass
+    try:
+        rows = (
+            sb.table("pedidos")
+            .select("items_json")
+            .eq("bodega_id", bodega_id)
+            .eq("tipo_operacion", "venta")
+            .not_.is_("items_json", "null")
+            .in_("estado", list(ESTADOS_REPETIR_VENTA))
+            .order("created_at", desc=True)
+            .limit(1)
+            .execute()
+            .data
+        )
+        if not rows:
+            return None
+        raw = rows[0].get("items_json")
+        if raw is None:
+            return None
+        items = json.loads(raw) if isinstance(raw, str) else raw
+        return items if isinstance(items, list) and items else None
+    except Exception as e:
+        logger_db.warning("get_items_para_repetir: %s", e)
+        return None
+
 
 # ── PEDIDOS ───────────────────────────────────
 def create_pedido(bodega_id: str, distribuidor_id: str, items: list, 

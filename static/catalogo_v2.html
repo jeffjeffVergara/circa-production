@@ -101,7 +101,7 @@ html,body{height:100%;font-family:'Plus Jakarta Sans',sans-serif;background:var(
 <div class="filt"><div class="fbtn on" id="fC" onclick="setF('cat')">Categoria</div><div class="fbtn" id="fM" onclick="setF('marca')">Marca</div></div>
 <div class="chips" id="cW"></div>
 <div class="sumbar hide" id="sB"><div class="sumbar-top"><div class="sumbar-l" id="sL">0 items</div><button type="button" class="btn-clear" onclick="clearCart()">Limpiar</button></div><button type="button" class="sumbar-r" onclick="openD()"><span class="sumbar-ico" aria-hidden="true">🛒</span><span>Ver carrito</span></button></div>
-<div class="search-w"><span class="s-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4.3-4.3"/></svg></span><input class="search-i" id="sI" type="text" placeholder="Buscar producto o marca..." enterkeyhint="search" autocomplete="off"></div>
+<div class="search-w"><span class="s-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4.3-4.3"/></svg></span><input class="search-i" id="sI" type="text" placeholder="Buscar: varias palabras, sin tildes..." enterkeyhint="search" autocomplete="off"></div>
 <div class="main" id="mA"><div class="empty">Cargando productos...</div></div>
 </div>
 <div class="dov" id="dO" onclick="closeD()"></div>
@@ -275,12 +275,74 @@ function bldC(){
 }
 function pick(v){sel=v;bldC();rend()}
 
+/** Quita tildes para comparar "café" con "cafe". */
+function stripDiacritics(s){
+ try{return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'')}catch(e){return String(s||'')}
+}
+/** Texto listo para buscar: minúsculas, sin acentos, solo letras/números y espacios. */
+function normBusqueda(s){
+ return stripDiacritics(String(s||'').toLowerCase()).replace(/[^a-z0-9\s]/g,' ').replace(/\s+/g,' ').trim()
+}
+/** Distancia Levenshtein con tope (barato para catálogos &lt; ~500 ítems). */
+function levDist(a,b,max){
+ max=max==null?2:max;
+ var n=a.length,m=b.length,i,j,prev,row,rowMin;
+ if(!n)return m<=max?m:max+1;
+ if(!m)return n<=max?n:max+1;
+ if(Math.abs(n-m)>max)return max+1;
+ prev=new Array(m+1);
+ for(j=0;j<=m;j++)prev[j]=j;
+ for(i=1;i<=n;i++){
+  row=new Array(m+1);row[0]=i;rowMin=i;
+  var ai=a.charAt(i-1);
+  for(j=1;j<=m;j++){
+   var cost=ai===b.charAt(j-1)?0:1;
+   var v=Math.min(prev[j]+1,row[j-1]+1,prev[j-1]+cost);
+   row[j]=v;if(v<rowMin)rowMin=v;
+  }
+  if(rowMin>max)return max+1;
+  prev=row;
+ }
+ return prev[m]<=max?prev[m]:max+1;
+}
+/** ¿Coincide una palabra buscada con el texto del producto (flexible)? */
+function coincideToken(token,hayFull,hayWords){
+ if(!token)return true;
+ if(hayFull.indexOf(token)>=0)return true;
+ var wi,wl=hayWords.length,w,tlen=token.length;
+ for(wi=0;wi<wl;wi++){
+  w=hayWords[wi];if(!w)continue;
+  if(w.indexOf(token)>=0)return true;
+  if(token.indexOf(w)>=0&&w.length>=3)return true;
+  if(tlen>=3&&w.length>=tlen&&w.indexOf(token)===0)return true;
+  if(tlen>=4&&w.length>=4){
+   var mx=tlen<=5?1:2;
+   if(levDist(token,w,mx)<=mx)return true;
+  }
+ }
+ return false;
+}
+
 function filt(){
- var q=$('sI').value.toLowerCase().trim();
+ var qRaw=$('sI').value.trim();
+ var qNorm=normBusqueda(qRaw);
+ var tokens=qNorm?qNorm.split(/\s+/).filter(function(t){return t.length>=2}):[];
  return P.filter(function(p){
   var mc=sel==='Todos'||(fm==='cat'?(p.categoria||'').toLowerCase()===sel.toLowerCase():(p.marca||'').toLowerCase()===sel.toLowerCase());
-  var mq=!q||(p.nombre||'').toLowerCase().indexOf(q)>=0||(p.marca||'').toLowerCase().indexOf(q)>=0;
-  return mc&&mq});
+  if(!mc)return false;
+  if(!tokens.length){
+   if(!qNorm)return true;
+   var hayOne=normBusqueda((p.nombre||'')+' '+(p.marca||'')+' '+(p.categoria||''));
+   return hayOne.indexOf(qNorm)>=0;
+  }
+  var hay=normBusqueda((p.nombre||'')+' '+(p.marca||'')+' '+(p.categoria||''));
+  var words=hay.split(/\s+/).filter(function(x){return x.length>0});
+  var ti;
+  for(ti=0;ti<tokens.length;ti++){
+   if(!coincideToken(tokens[ti],hay,words))return false;
+  }
+  return true;
+ });
 }
 
 // Devuelve total de unidades de un producto en el cart (sumando todas las variantes de unidad)

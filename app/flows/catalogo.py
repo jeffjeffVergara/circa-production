@@ -89,7 +89,7 @@ async def handle_catalogo(flow_data: dict) -> dict:
     if selected == "CHECKOUT":
         return await _do_checkout(bodega_id, session)
 
-    if selected == "IGNORADO_PAY_CASH":
+    if selected in ("IGNORADO_PAY_CASH", "PAY_CASH"):
         session["pay"] = "contado"
         session["fee_rate"] = 0
         session["plazo"] = 0
@@ -602,9 +602,9 @@ async def _send_payment_options(phone, pedido_id, total, items_text, bodega_id=N
         await meta_client.send_text(phone, header)
 
         rows = []
+        rows.append({"id": f"CONTADO_{pid}", "title": f"\U0001f4b5 Pago todo hoy", "description": f"S/{total:.2f} al contado"})
         for t in reversed(tiers):
             rows.append({"id": t["id"], "title": t["title"], "description": t["description"]})
-        rows.append({"id": f"CONTADO_{pid}", "title": f"\U0001f4b5 Pago todo hoy", "description": f"S/{total:.2f} al contado"})
         rows.append({"id": f"EDITAR_{pid}", "title": "\u270f\ufe0f Editar carrito", "description": "Volver al catalogo"})
 
         await meta_client.send_list(
@@ -627,8 +627,7 @@ async def _send_payment_options(phone, pedido_id, total, items_text, bodega_id=N
     else:
         # Has linea but no tiers fit (total < 100)
         await meta_client.send_text(phone, header)
-        rows = [{"id": f"EDITAR_{pid}", "title": "Editar carrito", "description": "Volver al catalogo"}]
-        rows.append({"id": f"CONTADO_{pid}", "title": f"Pago todo hoy S/{total:.0f}", "description": "Sin financiamiento"})
+        rows = [{"id": f"CONTADO_{pid}", "title": f"Pago todo hoy S/{total:.0f}", "description": "Sin financiamiento"}]
         if total <= linea:
             fee = max(round(total * fee_rate, 2), 3.0)
             paga_7d = round(total + fee, 2)
@@ -638,6 +637,7 @@ async def _send_payment_options(phone, pedido_id, total, items_text, bodega_id=N
                 "title": "Pago total a 7 días",
                 "description": desc7[:72],
             })
+        rows.append({"id": f"EDITAR_{pid}", "title": "Editar carrito", "description": "Volver al catalogo"})
         await meta_client.send_list(
             to=phone,
             body=f"Como quieres pagar?",
@@ -652,8 +652,8 @@ async def _send_payment_options(phone, pedido_id, total, items_text, bodega_id=N
 def _build_payment(bodega_id, session):
     total = sum(i.get("sub", 0) for i in session.get("cart", []))
     items = [
-        {"id": "PAY_CIRCA", "main-content": {"title": "Pagar con Circa", "description": "Plazos 7 a 30 días"}},
         {"id": "PAY_CASH", "main-content": {"title": "Pagar al contado", "description": "Sin fee adicional"}},
+        {"id": "PAY_CIRCA", "main-content": {"title": "Pagar con Circa", "description": "Plazos 7 a 30 días"}},
         {"id": "BACK_CART", "main-content": {"title": "Volver al carrito", "description": f"Total: S/{total:.2f}"}},
     ]
     return _make_response(items, bodega_id)
