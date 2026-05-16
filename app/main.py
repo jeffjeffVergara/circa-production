@@ -870,10 +870,7 @@ async def meta_webhook_incoming(request: Request):
                             bodega_rep["id"],
                             tipo_operacion="venta",
                             load_saved_cart=True,
-                            catalog_prompt=(
-                                "¡Aquí está tu último pedido, tal como lo pediste!\n"
-                                "Revísalo con tranquilidad, cambia lo que quieras y confírmalo cuando te encaje."
-                            ),
+                            catalog_prompt="👇",
                         )
                     else:
                         await meta_client.send_text(

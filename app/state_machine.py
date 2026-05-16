@@ -715,7 +715,7 @@ En menos de 24 horas validamos tu solicitud y activamos tu línea. Empiezas comp
                 db.upsert_session(telefono, "catalogo", {"cart": items}, bodega["id"])
                 return [
                     "¡Listo! 👋 Ya te cargamos tu último pedido.\n\n"
-                    "Revísalo en el catálogo, cambia lo que quieras y confírmalo cuando estés listo:\n\n"
+                    "Abre el catálogo aquí:\n\n"
                     f"👉 {url}"
                 ]
             return ["No tienes un pedido anterior. Escribe *PEDIDO* para empezar."]
