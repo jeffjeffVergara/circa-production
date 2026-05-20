@@ -12,6 +12,7 @@ import logging
 from datetime import datetime, date, timedelta
 from app.services import db, meta_client
 from app.services.financing import generate_reminders_schedule
+from app.services.fees import total_pagar_desde_pedido
 
 logger = logging.getLogger("circa.cobranza")
 
@@ -268,15 +269,29 @@ async def get_pending_payments(bodega_id: str) -> list[dict]:
         "estado", ["activo", "verificando", "vencido"]
     ).order("fecha_vencimiento").execute().data
     
-    return [
-        {
-            "pedido_numero": f.get("pedidos", {}).get("numero", ""),
+    out = []
+    for f in financiamientos:
+        pedido = f.get("pedidos") or {}
+        if isinstance(pedido, list):
+            pedido = pedido[0] if pedido else {}
+        p_row = {
+            "monto_financiado": f.get("monto_principal"),
+            "fee_monto": (f.get("monto_total") or 0) - (f.get("monto_principal") or 0),
+            "fecha_vencimiento": f.get("fecha_vencimiento"),
+            "monto_total_credito": f.get("monto_total"),
+        }
+        if pedido:
+            p_row.update(pedido)
+        tp = total_pagar_desde_pedido(p_row)
+        out.append({
+            "pedido_numero": pedido.get("numero", "") if pedido else "",
             "monto_total": f["monto_total"],
+            "mora_monto": tp["mora_monto"],
+            "total_pagar": tp["total_pagar"],
             "fecha_vencimiento": f["fecha_vencimiento"],
             "estado": f["estado"],
             "dias_restantes": (
                 datetime.strptime(f["fecha_vencimiento"], "%Y-%m-%d").date() - date.today()
-            ).days,
-        }
-        for f in financiamientos
-    ]
+            ).days if f.get("fecha_vencimiento") else None,
+        })
+    return out

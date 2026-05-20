@@ -468,7 +468,7 @@ Durante esta sesión cometí varios errores de asunción de nombres. Evitar:
 - `app/flows/crypto.py` (4K) — RSA encryption Flows
 - `app/services/db.py` — helpers Supabase
 - `app/services/meta_client.py` — cliente Meta Graph API
-- `app/services/fees.py` — cálculo de fees (MIN_FEE = 3.00)
+- `app/services/fees.py` — comisión por plan (7d 1.4%, 15d 3%, 30d 6%, mín. S/1) + mora 0.03%/día post-vencimiento; `pedidos.fee_regimen` (`legacy_v20260428` | `plan_fijo_v20260520`)
 - `app/services/financing.py`
 - `app/services/identity.py` — ApiInti
 - `app/services/vision.py` — Claude Vision

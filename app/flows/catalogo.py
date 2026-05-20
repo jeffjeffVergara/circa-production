@@ -22,8 +22,7 @@ def _sanitize(text, max_len=30):
     t = t.replace("·", "-").replace("—", "-").replace("—", "-").replace("·", "-")
     return t[:max_len]
 
-FEE_RATE = 0.03
-MIN_FEE = 3.0
+from app.services import fees as circa_fees
 
 CATEGORIES = [
     {"id": "Abarrotes",           "emoji": "🛒"},
@@ -101,10 +100,12 @@ async def handle_catalogo(flow_data: dict) -> dict:
 
     if selected.startswith("PLAZO_"):
         dias = int(selected.split("_")[1])
-        rates = {7: 0.03, 15: 0.05, 30: 0.07}
+        q = circa_fees.calcular_comision_por_plan(
+            sum(i.get("sub", 0) for i in session.get("cart", [])), dias
+        )
         session["pay"] = "circa"
         session["plazo"] = dias
-        session["fee_rate"] = rates.get(dias, 0.05)
+        session["fee_rate"] = q["rate"]
         _save_session(bodega_id, session)
         return _build_confirm(bodega_id, session)
 
@@ -476,7 +477,7 @@ def _build_cart(bodega_id, session):
         "main-content": {"title": "Agregar mas productos", "description": ""},
     })
 
-    fee = max(total * FEE_RATE, MIN_FEE)
+    fee = circa_fees.calcular_comision_por_plan(total, 7)["fee"]
     items.append({
         "id": "CHECKOUT",
         "main-content": {
@@ -575,12 +576,10 @@ async def _send_payment_options(phone, pedido_id, total, items_text, bodega_id=N
     fecha_pago = (datetime.now() + timedelta(days=7)).strftime("%d/%m/%Y")
     
     # Fixed financing tiers: S/100, S/200, S/300
-    fee_rate = 0.03
     tiers = []
     for monto_fin in [100, 200, 300, 400, 500]:
         if monto_fin <= linea and monto_fin <= total:
-            fee = round(monto_fin * fee_rate, 2)
-            if fee < 3: fee = 3.0
+            fee = circa_fees.calcular_comision_por_plan(monto_fin, 7)["fee"]
             paga_hoy = round(total - monto_fin, 2)
             paga_7d = round(monto_fin + fee, 2)
             tiers.append({
@@ -629,7 +628,7 @@ async def _send_payment_options(phone, pedido_id, total, items_text, bodega_id=N
         await meta_client.send_text(phone, header)
         rows = [{"id": f"CONTADO_{pid}", "title": f"Pago todo hoy S/{total:.0f}", "description": "Sin financiamiento"}]
         if total <= linea:
-            fee = max(round(total * fee_rate, 2), 3.0)
+            fee = circa_fees.calcular_comision_por_plan(total, 7)["fee"]
             paga_7d = round(total + fee, 2)
             desc7 = f"Hoy S/0, cuota S/{paga_7d:.2f} el {fecha_pago} (fee S/{fee:.2f})"
             rows.append({
@@ -660,13 +659,13 @@ def _build_payment(bodega_id, session):
 
 def _build_plazos(bodega_id, session):
     total = sum(i.get("sub", 0) for i in session.get("cart", []))
-    f7 = max(total * 0.03, MIN_FEE)
-    f15 = max(total * 0.05, MIN_FEE)
-    f30 = max(total * 0.07, MIN_FEE)
+    q7 = circa_fees.calcular_comision_por_plan(total, 7)
+    q15 = circa_fees.calcular_comision_por_plan(total, 15)
+    q30 = circa_fees.calcular_comision_por_plan(total, 30)
     items = [
-        {"id": "PLAZO_7", "main-content": {"title": "7 días", "description": f"Cargo Circa S/{f7:.2f} · Total S/{total+f7:.2f}"}},
-        {"id": "PLAZO_15", "main-content": {"title": "15 días", "description": f"Cargo Circa S/{f15:.2f} · Total S/{total+f15:.2f}"}},
-        {"id": "PLAZO_30", "main-content": {"title": "30 días", "description": f"Cargo Circa S/{f30:.2f} · Total S/{total+f30:.2f}"}},
+        {"id": "PLAZO_7", "main-content": {"title": "7 días", "description": f"Cargo Circa S/{q7['fee']:.2f} ({q7['rate_pct']}) · Total S/{q7['total']:.2f}"}},
+        {"id": "PLAZO_15", "main-content": {"title": "15 días", "description": f"Cargo Circa S/{q15['fee']:.2f} ({q15['rate_pct']}) · Total S/{q15['total']:.2f}"}},
+        {"id": "PLAZO_30", "main-content": {"title": "30 días", "description": f"Cargo Circa S/{q30['fee']:.2f} ({q30['rate_pct']}) · Total S/{q30['total']:.2f}"}},
         {"id": "BACK_PAY", "main-content": {"title": "Opciones de pago", "description": ""}},
     ]
     return _make_response(items, bodega_id)
@@ -675,7 +674,7 @@ def _build_confirm(bodega_id, session):
     cart = session.get("cart", [])
     total = sum(i.get("sub", 0) for i in cart)
     fee_rate = session.get("fee_rate", 0)
-    fee = max(total * fee_rate, 5) if fee_rate > 0 else 0
+    fee = circa_fees.calcular_comision_por_plan(total, plazo)["fee"] if fee_rate > 0 and plazo else 0
     pay = session.get("pay", "contado")
     plazo = session.get("plazo", 0)
     items = []

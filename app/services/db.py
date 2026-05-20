@@ -266,12 +266,14 @@ def get_items_para_repetir(bodega_row: dict):
 # ── PEDIDOS ───────────────────────────────────
 def create_pedido(bodega_id: str, distribuidor_id: str, items: list, 
                   monto_productos: float, monto_financiado: float, monto_contado: float,
-                  fee_tasa: float, fee_monto: float, plazo_dias: int):
+                  fee_tasa: float, fee_monto: float, plazo_dias: int,
+                  fee_regimen: str | None = None):
     # Generate order number
     numero = sb.rpc("gen_numero_pedido").execute().data
     fecha_venc = None  # Se calcula al marcar entregado
     
-    pedido = sb.table("pedidos").insert({
+    from app.services.fees import fee_regimen_para_pedido_nuevo
+    payload = {
         "numero": numero,
         "bodega_id": bodega_id,
         "distribuidor_id": distribuidor_id,
@@ -285,7 +287,10 @@ def create_pedido(bodega_id: str, distribuidor_id: str, items: list,
         "fecha_vencimiento": fecha_venc,
         "estado": "confirmado",
         "confirmado_at": datetime.utcnow().isoformat(),
-    }).execute().data[0]
+    }
+    if fee_regimen or (fee_monto and fee_monto > 0):
+        payload["fee_regimen"] = fee_regimen or fee_regimen_para_pedido_nuevo()
+    pedido = sb.table("pedidos").insert(payload).execute().data[0]
     
     # Insert items
     for item in items:

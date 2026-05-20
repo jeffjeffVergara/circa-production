@@ -29,7 +29,7 @@ from app.services.twilio_client import (
     CATEGORY_SENDERS,
 )
 from app.services import db
-from app.services.fees import calculate_fee
+from app.services.fees import calculate_fee, format_rate_pct, fee_regimen_para_pedido_nuevo
 from pydantic import BaseModel
 from app.config import TWILIO_FROM
 from datetime import date, timedelta
@@ -289,9 +289,9 @@ Contacto: contacto@circa.pe | +51 986 311 567
 async def terms():
     return PlainTextResponse("""
 CONDICIONES DEL SERVICIO — CIRCA (PALI S.A.C.)
-Última actualización: 28 de abril de 2026
+Última actualización: 20 de mayo de 2026
 
-Circa es una plataforma de crédito embebido para bodegas peruanas operada por PALI S.A.C. Al usar el servicio, el usuario acepta las condiciones del contrato de línea de crédito revolving, incluyendo tasas según día de pago (3% del día 1 al 7, 5% del día 8 al 15, 7% del día 16 al 30), interés moratorio (0.03% diario a partir del día 31), y las políticas de cobranza. El servicio está sujeto a las leyes de la República del Perú, jurisdicción de Lima.
+Circa es una plataforma de crédito embebido para bodegas peruanas operada por PALI S.A.C. Al usar el servicio, el usuario acepta las condiciones del contrato de línea de crédito revolving. En nuevas operaciones, la comisión se fija al confirmar el pedido según el plan elegido: 7 días (1.4%), 15 días (3%), 30 días (6%), con comisión mínima de S/1.00 por operación. El pago dentro del plazo no modifica el monto acordado. Tras el vencimiento del plan, aplica mora de 0.03% diaria sobre el saldo adeudado. Las operaciones ya originadas conservan los montos acordados en su confirmación. Jurisdicción: Lima, Perú.
 
 Contacto: contacto@circa.pe | +51 986 311 567
 """, media_type="text/plain; charset=utf-8")
@@ -708,8 +708,9 @@ async def meta_webhook_incoming(request: Request):
                     total = float(pedido.get("total_pedido") or pedido.get("monto_productos") or 0)
                     contado = round(total - fin_amt, 2)
                     dias = 7
-                    rate = 0.03
-                    fee = max(round(fin_amt * rate, 2), 3.0)
+                    _qf = calculate_fee(fin_amt, dias)
+                    rate = _qf["rate"]
+                    fee = _qf["fee"]
                     fecha_venc = (datetime.now() + timedelta(days=dias)).strftime("%d/%m/%Y")
                     db.sb.table("sesiones").delete().eq("telefono", telefono).execute()
                     db.sb.table("sesiones").insert({
@@ -769,9 +770,9 @@ async def meta_webhook_incoming(request: Request):
                         body=f"Financiar: *S/{fin_amt:.2f}*\nAl contado: S/{contado:.2f}\n\nElige plazo:",
                         button_text="Ver plazos",
                         sections=[{"title": "Plazo de pago", "rows": [
-                            {"id": f"PAY7_{pid}", "title": "7 días (3%)", "description": f"Cargo Circa S/{fee7:.2f} · Total S/{fin_amt+fee7:.2f}"},
-                            {"id": f"PAY15_{pid}", "title": "15 días (5%)", "description": f"Cargo Circa S/{fee15:.2f} · Total S/{fin_amt+fee15:.2f}"},
-                            {"id": f"PAY30_{pid}", "title": "30 días (7%)", "description": f"Cargo Circa S/{fee30:.2f} · Total S/{fin_amt+fee30:.2f}"},
+                            {"id": f"PAY7_{pid}", "title": f"7 días ({format_rate_pct(calculate_fee(fin_amt, 7)['rate'])})", "description": f"Cargo Circa S/{fee7:.2f} · Total S/{fin_amt+fee7:.2f}"},
+                            {"id": f"PAY15_{pid}", "title": f"15 días ({format_rate_pct(calculate_fee(fin_amt, 15)['rate'])})", "description": f"Cargo Circa S/{fee15:.2f} · Total S/{fin_amt+fee15:.2f}"},
+                            {"id": f"PAY30_{pid}", "title": f"30 días ({format_rate_pct(calculate_fee(fin_amt, 30)['rate'])})", "description": f"Cargo Circa S/{fee30:.2f} · Total S/{fin_amt+fee30:.2f}"},
                         ]}],
                     )
                 else:
@@ -885,11 +886,11 @@ async def meta_webhook_incoming(request: Request):
         if btn.startswith("PAY7_") or btn.startswith("PAY15_") or btn.startswith("PAY30_"):
             pedido_short = btn.split("_", 1)[1]
             if btn.startswith("PAY7"):
-                dias, rate = 7, 0.03
+                dias = 7
             elif btn.startswith("PAY15"):
-                dias, rate = 15, 0.05
+                dias = 15
             else:
-                dias, rate = 30, 0.07
+                dias = 30
             try:
                 # Find pedido by bodega phone (most recent borrador)
                 bod = db.sb.table("bodegas").select("id").eq("telefono_whatsapp", telefono).limit(1).execute()
@@ -933,7 +934,7 @@ async def meta_webhook_incoming(request: Request):
                         telefono,
                         f"💳 *Circa {dias} dias*\n"
                         f"Financiar: S/{monto:.2f}\n"
-                        f"Fee ({int(rate*100)}%): S/{fee:.2f}\n"
+                        f"Comisión Circa ({format_rate_pct(rate)}): S/{fee:.2f}\n"
                         f"*TOTAL: S/{monto+fee:.2f}*\n"
                         f"Vence: {venc}"
                     )
@@ -1003,8 +1004,10 @@ async def meta_webhook_incoming(request: Request):
                                         db.sb.table("pedidos").update({
                                             "numero": num,
                                             "fee_tasa": rate, "fee_monto": fee,
+                                            "fee_regimen": fee_regimen_para_pedido_nuevo(),
                                             "monto_financiado": round(monto, 2), "plazo_dias": dias,
                                             "monto_contado": round(contado, 2),
+                                            "monto_total_credito": round(monto + fee, 2),
                                             "total": round(monto + fee, 2), "estado": _confirmed_status_for(tipo_op),
                                         }).eq("id", pedido_id).execute()
                                         lap = float(bod_line.data[0].get("linea_aprobada") or ld)
@@ -1042,7 +1045,7 @@ async def meta_webhook_incoming(request: Request):
                                             f"Financiado con Circa\n\n"
                                             f"Nro: *#{num}*\n"
                                             f"Financiado: *S/{monto:.2f}*\n"
-                                            f"Cargo Circa ({int(rate * 100)}%): S/{fee:.2f}\n"
+                                            f"Comisión Circa ({format_rate_pct(rate)}): S/{fee:.2f}\n"
                                             f"Total a pagar a Circa: *S/{monto + fee:.2f}*\n"
                                             f"Al distribuidor (contado): S/{contado:.2f}\n"
                                             f"Plazo: {dias} días\n"
@@ -1405,6 +1408,7 @@ async def verify_pin_web(data: PinVerification):
             fee_tasa=term["rate"],
             fee_monto=term["fee"],
             plazo_dias=term["days"],
+            fee_regimen=fee_regimen_para_pedido_nuevo(),
         )
         db.update_pedido_estado(pedido["id"], "aprobado", "pin_web")
         db.clear_carrito(bodega["id"])

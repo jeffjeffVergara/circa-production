@@ -46,7 +46,7 @@ def msg_contrato(linea: float) -> str:
         "*Resumen de términos:*\n"
         f"• Línea de crédito revolving de hasta S/{linea:.2f}\n"
         "• Se renueva al pagar, sin nuevo contrato\n"
-        "• Tasas: 5% – 15% según monto y plazo\n"
+        "• Comisión por plan: 7d 1.4%, 15d 3%, 30d 6% (mín. S/1)\n"
         "• Plazos: 7, 15 o 30 días\n"
         "• El dinero va directo al proveedor\n"
         "• Sin costo de apertura ni mantenimiento\n\n"

@@ -588,22 +588,17 @@ async def admin_cobranzas(
             if rows: dist_map[did] = rows[0]
         except: pass
     
+    from app.services.fees import total_pagar_desde_pedido, resolver_fecha_vencimiento_pedido
+
     hoy = datetime.utcnow().date()
     resultado = []
     for p in pedidos:
         plazo = p.get("plazo_dias") or 0
         fecha_entregado = p.get("fecha_entregado") or p.get("created_at")
-        
-        if fecha_entregado and plazo > 0:
-            try:
-                fe = datetime.fromisoformat(fecha_entregado.replace("Z","+00:00")).date()
-                venc = fe + timedelta(days=plazo)
-                dias_restantes = (venc - hoy).days
-            except:
-                venc = None
-                dias_restantes = None
+        venc = resolver_fecha_vencimiento_pedido(p, hoy)
+        if venc is not None:
+            dias_restantes = (venc - hoy).days
         else:
-            venc = None
             dias_restantes = None
         
         # Status
@@ -620,6 +615,7 @@ async def admin_cobranzas(
         else:
             status_cobranza = "al_dia"
         
+        tp = total_pagar_desde_pedido(p, hoy=hoy)
         item = {
             "pedido_id": p["id"],
             "numero": p.get("numero", ""),
@@ -627,7 +623,9 @@ async def admin_cobranzas(
             "distribuidor": dist_map.get(p.get("distribuidor_id"), {}),
             "monto_financiado": float(p.get("monto_financiado") or 0),
             "fee": float(p.get("fee_monto") or 0),
-            "total_pagar": float(p.get("monto_total_credito") or p.get("total") or (float(p.get("monto_financiado") or 0) + float(p.get("fee_monto") or 0))),
+            "mora_monto": tp["mora_monto"],
+            "credito_fijo": tp["credito_fijo"],
+            "total_pagar": tp["total_pagar"],
             "plazo_dias": plazo,
             "fecha_entregado": fecha_entregado,
             "fecha_vencimiento": venc.isoformat() if venc else None,
@@ -635,6 +633,7 @@ async def admin_cobranzas(
             "status_cobranza": status_cobranza,
             "estado": p.get("estado"),
             "fecha_pagado": p.get("fecha_pagado"),
+            "fee_regimen": p.get("fee_regimen"),
         }
         
         # Filters

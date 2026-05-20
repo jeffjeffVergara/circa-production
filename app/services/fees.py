@@ -1,51 +1,218 @@
 """
-Circa fee calculation — flat rates by term, minimum S/3.00.
+Circa — comisión por plan (congelada al confirmar) + mora post-vencimiento.
 
-Rates (per contract Contrato_Circa_vsrev.docx):
-  7 días  → 3%
-  15 días → 5%
-  30 días → 7%
+Contrato vigente (nuevas operaciones desde 20/05/2026):
+  Plan 7 días  → 1.4%
+  Plan 15 días → 3%
+  Plan 30 días → 6%
+  Comisión mínima: S/1.00 por operación
+  Mora: 0.03% diaria sobre saldo adeudado después del vencimiento del plan
 
-Minimum fee: S/3.00
+Pedidos legacy (fee_regimen != plan_fijo_v20260520): usar fee_tasa/fee_monto persistidos.
 """
 
-FEE_TABLE = {
-    7:  0.03,   # 3%
-    15: 0.05,   # 5%
-    30: 0.07,   # 7%
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import date, datetime, timedelta
+from decimal import Decimal, ROUND_HALF_UP
+from typing import Optional
+from zoneinfo import ZoneInfo
+
+TZ_PERU = ZoneInfo("America/Lima")
+
+FEE_REGIME_LEGACY = "legacy_v20260428"
+FEE_REGIME_CURRENT = "plan_fijo_v20260520"
+
+# Legacy (solo pedidos originados antes del corte; no usar en nuevos pedidos)
+LEGACY_FEE_TABLE = {7: Decimal("0.03"), 15: Decimal("0.05"), 30: Decimal("0.07")}
+LEGACY_MIN_FEE = Decimal("3.00")
+
+MORA_DAILY_RATE = Decimal("0.0003")
+MIN_COMMISSION = Decimal("1.00")
+VALID_PLAZOS = (7, 15, 30)
+
+
+@dataclass(frozen=True)
+class PaymentPlan:
+    days: int
+    fee_percentage: Decimal
+    label: str
+
+
+PAYMENT_PLANS: dict[int, PaymentPlan] = {
+    7: PaymentPlan(7, Decimal("0.014"), "Plan 7 días"),
+    15: PaymentPlan(15, Decimal("0.03"), "Plan 15 días"),
+    30: PaymentPlan(30, Decimal("0.06"), "Plan 30 días"),
 }
 
-MIN_FEE = 3.00
+# Compat aliases (evitar hardcodes en imports viejos)
+FEE_TABLE = {d: float(p.fee_percentage) for d, p in PAYMENT_PLANS.items()}
+MIN_FEE = float(MIN_COMMISSION)
+MORA_RATE_DIARIA = float(MORA_DAILY_RATE)
 
 
-def get_fee_rate(amount: float, days: int) -> float:
-    """Return flat rate for the given term. Defaults to 7% if unknown term."""
-    return FEE_TABLE.get(days, 0.07)
+def _d(value) -> Decimal:
+    return Decimal(str(value))
 
 
-def calculate_fee(amount: float, days: int) -> dict:
-    """Calculate fee for a given amount and term, enforcing minimum S/3."""
-    rate = get_fee_rate(amount, days)
-    fee = round(amount * rate, 2)
-    fee = max(fee, MIN_FEE)
-    total = round(amount + fee, 2)
+def _money(value: Decimal) -> float:
+    return float(value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+
+
+def hoy_peru() -> date:
+    return datetime.now(TZ_PERU).date()
+
+
+def format_rate_pct(rate: float | Decimal) -> str:
+    pct = float(rate) * 100
+    rounded = round(pct, 2)
+    if abs(rounded - round(rounded)) < 0.05:
+        return f"{int(round(rounded))}%"
+    return f"{rounded:.1f}%"
+
+
+def obtener_plan(plazo_dias: int) -> PaymentPlan:
+    plan = PAYMENT_PLANS.get(int(plazo_dias))
+    if not plan:
+        raise ValueError(f"Plazo inválido: {plazo_dias}. Use 7, 15 o 30.")
+    return plan
+
+
+def calcular_comision_por_plan(monto_financiado: float, plazo_dias: int) -> dict:
+    """Comisión fija según plan elegido al originar (no depende del día de pago)."""
+    plan = obtener_plan(plazo_dias)
+    monto = _d(monto_financiado)
+    fee = (monto * plan.fee_percentage).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    fee = max(fee, MIN_COMMISSION)
+    total = (monto + fee).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    rate = plan.fee_percentage
     return {
-        "rate": rate,
-        "rate_pct": f"{rate * 100:.1f}%",
-        "fee": fee,
-        "total": total,
-        "amount": amount,
-        "days": days,
+        "rate": float(rate),
+        "rate_pct": format_rate_pct(rate),
+        "fee": _money(fee),
+        "total": _money(total),
+        "amount": _money(monto),
+        "days": plan.days,
+        "plan_label": plan.label,
+        "fee_regimen": FEE_REGIME_CURRENT,
     }
 
 
+def calcular_total_financiado(monto_financiado: float, plazo_dias: int) -> float:
+    return calcular_comision_por_plan(monto_financiado, plazo_dias)["total"]
+
+
+def dias_atraso_desde_vencimiento(
+    fecha_vencimiento: date | str | None,
+    hoy: date | None = None,
+) -> int:
+    """Días calendario después del vencimiento (0 si aún no vence)."""
+    if not fecha_vencimiento:
+        return 0
+    hoy = hoy or hoy_peru()
+    if isinstance(fecha_vencimiento, str):
+        fv = datetime.fromisoformat(fecha_vencimiento.replace("Z", "+00:00")).date()
+    else:
+        fv = fecha_vencimiento
+    delta = (hoy - fv).days
+    return max(0, delta)
+
+
+def calcular_mora(saldo_adeudado: float, dias_atraso: int) -> float:
+    """Mora diaria 0.03% sobre saldo; no altera comisión original."""
+    if dias_atraso <= 0 or saldo_adeudado <= 0:
+        return 0.0
+    saldo = _d(saldo_adeudado)
+    mora = saldo * MORA_DAILY_RATE * _d(dias_atraso)
+    return _money(mora)
+
+
+def calcular_saldo_adeudado(
+    monto_financiado: float,
+    fee_monto: float,
+    monto_pagado: float = 0,
+) -> float:
+    credito = _d(monto_financiado) + _d(fee_monto)
+    pagado = _d(monto_pagado)
+    saldo = max(Decimal("0"), credito - pagado)
+    return _money(saldo)
+
+
+def calcular_total_a_pagar(
+    monto_financiado: float,
+    fee_monto: float,
+    fecha_vencimiento: date | str | None,
+    monto_pagado: float = 0,
+    hoy: date | None = None,
+) -> dict:
+    credito_fijo = _money(_d(monto_financiado) + _d(fee_monto))
+    saldo = calcular_saldo_adeudado(monto_financiado, fee_monto, monto_pagado)
+    dias_atraso = dias_atraso_desde_vencimiento(fecha_vencimiento, hoy)
+    mora = calcular_mora(saldo, dias_atraso)
+    return {
+        "credito_fijo": credito_fijo,
+        "saldo_adeudado": saldo,
+        "mora_monto": mora,
+        "mora_dias": dias_atraso,
+        "total_pagar": _money(_d(saldo) + _d(mora)),
+    }
+
+
+def resolver_fecha_vencimiento_pedido(pedido: dict, hoy: date | None = None) -> Optional[date]:
+    """fecha_vencimiento en BD o entrega/confirmación + plazo_dias."""
+    fv = pedido.get("fecha_vencimiento")
+    if fv:
+        try:
+            return datetime.fromisoformat(str(fv).replace("Z", "+00:00")).date()
+        except (ValueError, TypeError):
+            pass
+    plazo = int(pedido.get("plazo_dias") or 0)
+    if plazo <= 0:
+        return None
+    base = pedido.get("fecha_entregado") or pedido.get("confirmado_at") or pedido.get("created_at")
+    if not base:
+        return None
+    try:
+        bd = datetime.fromisoformat(str(base).replace("Z", "+00:00")).date()
+        return bd + timedelta(days=plazo)
+    except (ValueError, TypeError):
+        return None
+
+
+def total_pagar_desde_pedido(pedido: dict, monto_pagado: float = 0, hoy: date | None = None) -> dict:
+    """Total vigente para cobranza (crédito congelado + mora si aplica)."""
+    mf = float(pedido.get("monto_financiado") or 0)
+    fee = float(pedido.get("fee_monto") or 0)
+    if mf <= 0 and fee <= 0:
+        tc = float(pedido.get("monto_total_credito") or pedido.get("total") or 0)
+        if tc > 0:
+            return {
+                "credito_fijo": tc,
+                "saldo_adeudado": max(0.0, tc - monto_pagado),
+                "mora_monto": 0.0,
+                "mora_dias": 0,
+                "total_pagar": max(0.0, tc - monto_pagado),
+            }
+    fv = resolver_fecha_vencimiento_pedido(pedido, hoy)
+    return calcular_total_a_pagar(mf, fee, fv, monto_pagado, hoy)
+
+
+# ── API compatible (delega al motor por plan) ─────────────────
+
+def get_fee_rate(amount: float, days: int) -> float:
+    return calcular_comision_por_plan(amount, days)["rate"]
+
+
+def calculate_fee(amount: float, days: int) -> dict:
+    return calcular_comision_por_plan(amount, days)
+
+
 def get_all_term_options(amount: float) -> list[dict]:
-    """Return fee quotes for all 3 terms (7, 15, 30 days)."""
-    return [calculate_fee(amount, d) for d in [7, 15, 30]]
+    return [calcular_comision_por_plan(amount, d) for d in VALID_PLAZOS]
 
 
 def get_finance_options(max_amount: float) -> list[dict]:
-    """Returns 100%, 50%, 25% options with absolute amounts."""
     options = []
     for pct, label in [(1.0, "Total"), (0.5, "50%"), (0.25, "25%")]:
         amt = round(max_amount * pct, 2)
@@ -53,69 +220,5 @@ def get_finance_options(max_amount: float) -> list[dict]:
     return options
 
 
-# ============================================================
-# Tasa escalonada por día efectivo de pago
-# Política de Crédito Circa (vigente desde 28-abr-2026)
-# ============================================================
-#
-# Tramos:
-#   Día 1-7   → 3%
-#   Día 8-15  → 5%
-#   Día 16-30 → 7%
-#   Día 31+   → 7% + mora 0.03% diaria sobre adeudado
-#
-# Mora se calcula sobre (amount + fee del 7%), no sobre el principal.
-
-MORA_RATE_DIARIA = 0.0003  # 0.03% diario
-
-
-def calcular_fee_por_dia_pago(amount: float, dias_desde_compra: int) -> dict:
-    """
-    Calcula fee según el día efectivo de pago (NO el plazo elegido).
-    
-    Returns:
-        {
-            "amount": principal financiado,
-            "rate": tasa decimal del tramo,
-            "rate_pct": tasa formateada (ej. "5.0%"),
-            "fee": cargo del tramo (mín. S/3),
-            "tramo": "1-7" | "8-15" | "16-30" | "31+",
-            "dias_desde_compra": días pasados,
-            "mora_dias": días en mora (0 si no aplica),
-            "mora_monto": monto de mora (0 si no aplica),
-            "total": amount + fee + mora_monto
-        }
-    """
-    if dias_desde_compra <= 7:
-        rate, tramo = 0.03, "1-7"
-    elif dias_desde_compra <= 15:
-        rate, tramo = 0.05, "8-15"
-    elif dias_desde_compra <= 30:
-        rate, tramo = 0.07, "16-30"
-    else:
-        rate, tramo = 0.07, "31+"
-    
-    fee = max(round(amount * rate, 2), MIN_FEE)
-    adeudado = amount + fee
-    
-    if dias_desde_compra > 30:
-        mora_dias = dias_desde_compra - 30
-        mora_monto = round(adeudado * MORA_RATE_DIARIA * mora_dias, 2)
-    else:
-        mora_dias = 0
-        mora_monto = 0.0
-    
-    total = round(adeudado + mora_monto, 2)
-    
-    return {
-        "amount": amount,
-        "rate": rate,
-        "rate_pct": f"{rate * 100:.1f}%",
-        "fee": fee,
-        "tramo": tramo,
-        "dias_desde_compra": dias_desde_compra,
-        "mora_dias": mora_dias,
-        "mora_monto": mora_monto,
-        "total": total,
-    }
-
+def fee_regimen_para_pedido_nuevo() -> str:
+    return FEE_REGIME_CURRENT

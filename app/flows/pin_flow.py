@@ -13,7 +13,7 @@ Each request from WhatsApp contains encrypted:
 import logging
 import hashlib
 from app.services import db
-from app.services.fees import calculate_fee
+from app.services.fees import calculate_fee, format_rate_pct, fee_regimen_para_pedido_nuevo
 
 logger = logging.getLogger("circa.flows.pin")
 
@@ -233,7 +233,9 @@ def _verify_pin_for_payment(pin: str, bodega_id: str) -> dict:
             rate = qfee["rate"]
             db.sb.table("pedidos").update({
                 "numero": num, "fee_tasa": rate, "fee_monto": fee,
+                "fee_regimen": fee_regimen_para_pedido_nuevo(),
                 "monto_financiado": round(monto, 2), "plazo_dias": dias,
+                "monto_total_credito": round(monto + fee, 2),
                 "total": round(monto + fee, 2),
                 "estado": ("preventa_confirmada" if tipo_operacion == "preventa" else "confirmado"),
             }).eq("id", pedido_id).execute()
