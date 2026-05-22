@@ -70,9 +70,11 @@ def cantidad_en_unidad_base(cantidad: int, formato: str, unidad_objetivo: str,
     if tipo_formato is None:
         return cantidad
     
-    # Misma unidad: solo multiplicar
+    # Misma unidad: 1 pack del formato YA ES 1 unidad objetivo.
+    # El "x N" del formato es el contenido (sobres por tira), no un conteo.
+    # Ej: comprar 1 "TIRA x 10" = 1 TIRA (no 10).
     if tipo_formato == unidad_objetivo:
-        return cantidad * mult
+        return cantidad
     
     # CJA → TIRA: multiplicador es directo (CJA x 8 TIRA = 8 TIRAS)
     if tipo_formato == "CJA" and unidad_objetivo == "TIRA":
