@@ -1464,12 +1464,77 @@ class AnalyticsEventIn(BaseModel):
     event_type: str
     metadata: dict | None = None
 
+# -- Promociones: se aplican al guardar el pedido (parche 22-may-2026) --
+async def _aplicar_promociones_a_cart(bodega_id: str, items_list: list) -> tuple:
+    """
+    Corre el motor de promociones sobre el carrito ANTES de guardar el pedido.
+    Reescribe precio/subtotal de cada linea con el valor con descuento.
+
+    Devuelve (items_list, total_neto, descuento_total).
+
+    Si el motor falla por cualquier razon, devuelve el carrito intacto y
+    descuento 0 -- un pedido a precio de lista es preferible a un pedido fallido.
+    """
+    bruto = round(sum(float(i.get("subtotal") or 0) for i in items_list), 2)
+    if not items_list:
+        return items_list, bruto, 0.0
+    try:
+        req = _EvaluarPromocionesReq(
+            bodega_id=bodega_id,
+            cart=[
+                _CartItem(
+                    catalogo_id=i.get("catalogo_id"),
+                    cantidad=int(i.get("cantidad") or 1),
+                    formato=i.get("pack_size") or "",
+                    precio_unitario_formato=float(i.get("precio") or 0),
+                )
+                for i in items_list
+            ],
+        )
+        resultado = await api_evaluar_promociones(req)
+        res_items = resultado.get("items") or []
+
+        # El motor devuelve un item por linea, en el mismo orden del carrito.
+        # Si la cantidad no coincide, no arriesgamos: guardamos a precio de lista.
+        if len(res_items) != len(items_list):
+            logger.error(
+                "submit-cart: motor devolvio %d items para carrito de %d; "
+                "se guarda sin descuento", len(res_items), len(items_list)
+            )
+            return items_list, bruto, 0.0
+
+        for item, res in zip(items_list, res_items):
+            desc = res.get("descuento_aplicado")
+            if not desc:
+                continue
+            pct = float(desc.get("porcentaje") or 0)
+            cant = int(item.get("cantidad") or 1)
+            precio_neto = round(float(item.get("precio") or 0) * (1 - pct), 2)
+            item["precio"] = precio_neto
+            item["subtotal"] = round(precio_neto * cant, 2)
+
+        total_neto = round(sum(float(i.get("subtotal") or 0) for i in items_list), 2)
+        descuento = round(bruto - total_neto, 2)
+        return items_list, total_neto, descuento
+
+    except Exception as e:
+        logger.error(
+            "submit-cart: motor de promociones fallo, se guarda sin descuento (%s)",
+            e, exc_info=True,
+        )
+        return items_list, bruto, 0.0
+
+
 @app.post("/api/catalogo/submit-cart")
 async def submit_cart(data: CartSubmission):
     from app.services.analytics import track_event
     from app.services import meta_client
     items_list = [dict(i) if not isinstance(i, dict) else i for i in data.items]
-    total = sum(i.get("subtotal", 0) for i in items_list)
+    # Aplicar promociones ANTES de guardar: reescribe items_list con los
+    # precios con descuento y devuelve total neto + descuento prorrateado.
+    items_list, total, descuento = await _aplicar_promociones_a_cart(
+        data.bodega_id, items_list
+    )
     tipo = "preventa" if data.tipo_operacion == "preventa" else "venta"
     estado_inicial = "preventa_borrador" if tipo == "preventa" else "borrador"
     # Create order in pedidos
@@ -1478,6 +1543,8 @@ async def submit_cart(data: CartSubmission):
         "distribuidor_id": "a1b2c3d4-0001-4000-8000-000000000001",
         "items_json": json.dumps(items_list),
         "monto_productos": total,
+        "total_pedido": total,
+        "descuento_prorrateado": descuento,
         "estado": estado_inicial,
         "tipo_operacion": tipo,
     }).execute()
@@ -1502,7 +1569,7 @@ async def submit_cart(data: CartSubmission):
         bodega = db.sb.table("bodegas").select("telefono_whatsapp").eq("id", data.bodega_id).limit(1).execute()
         if bodega.data and pedido_id:
             phone = bodega.data[0]["telefono_whatsapp"].replace("+", "")
-            items_text = "\n".join(f"{i.get('cantidad',1)}x {i.get('nombre','')} — S/{i.get('subtotal',0):.2f}" for i in items_list)
+            items_text = "\n".join(f"{i.get('cantidad',1)}x {i.get('nombre','')} \u2014 S/{i.get('subtotal',0):.2f}" for i in items_list)
             # Send payment options via Meta API (async)
             from app.flows.catalogo import _send_payment_options
             import asyncio
@@ -1514,14 +1581,14 @@ async def submit_cart(data: CartSubmission):
             pid = str(pedido_id)[:8]
             await meta_client.send_text(
                 phone,
-                f"🗓️ *Pre-venta armada*\n\n"
+                f"\U0001f5d3\ufe0f *Pre-venta armada*\n\n"
                 f"Total referencial: S/{total:.2f}\n"
-                f"Código temporal: *PRV-{pid}*\n\n"
-                f"Si todo está bien, confirma tu pre-venta con tu clave Circa.",
+                f"C\u00f3digo temporal: *PRV-{pid}*\n\n"
+                f"Si todo est\u00e1 bien, confirma tu pre-venta con tu clave Circa.",
             )
             await meta_client.send_buttons(
                 to=phone,
-                body="¿Qué deseas hacer ahora?",
+                body="\u00bfQu\u00e9 deseas hacer ahora?",
                 buttons=[
                     {"id": f"PRECONF_{pid}", "title": "Confirmar pre-venta"},
                     {"id": f"EDITAR_{pid}", "title": "Editar carrito"},
