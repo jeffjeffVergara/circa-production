@@ -231,8 +231,11 @@ def _verify_pin_for_payment(pin: str, bodega_id: str) -> dict:
             qfee = calculate_fee(monto, dias)
             fee = qfee["fee"]
             rate = qfee["rate"]
+            _dist_ped = db.get_distribuidor_pedido_de_bodega(bodega_id)
             db.sb.table("pedidos").update({
-                "numero": num, "fee_tasa": rate, "fee_monto": fee,
+                "numero": num,
+                "distribuidor_id": _dist_ped,
+                "fee_tasa": rate, "fee_monto": fee,
                 "fee_regimen": fee_regimen_para_pedido_nuevo(),
                 "monto_financiado": round(monto, 2), "plazo_dias": dias,
                 "monto_total_credito": round(monto + fee, 2),
@@ -248,8 +251,11 @@ def _verify_pin_for_payment(pin: str, bodega_id: str) -> dict:
                 logger.error(f"Linea deduct: {e}")
             msg = f"Pedido #{num} confirmado\nFinanciado: S/{monto:.2f}\nCargo Circa: S/{fee:.2f}\nTotal: S/{monto+fee:.2f}\nPlazo: {dias} días"
         else:
+            _dist_ped = db.get_distribuidor_pedido_de_bodega(bodega_id)
             db.sb.table("pedidos").update({
-                "numero": num, "fee_tasa": 0, "fee_monto": 0,
+                "numero": num,
+                "distribuidor_id": _dist_ped,
+                "fee_tasa": 0, "fee_monto": 0,
                 "monto_contado": round(monto, 2),
                 "total": round(monto, 2),
                 "estado": ("preventa_confirmada" if tipo_operacion == "preventa" else "confirmado"),

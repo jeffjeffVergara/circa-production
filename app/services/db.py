@@ -126,11 +126,18 @@ def get_catalogo(distribuidor_id: str, marca: str = None, categoria: str = None)
     return result
 
 def get_catalogo_all_for_bodega(bodega_id: str):
-    """Get catalog from bodega's default distribuidor."""
-    bodega = sb.table("bodegas").select("distribuidor_id").eq("id", bodega_id).single().execute().data
-    if not bodega:
+    """Get catalog from DIMAX (regla piloto; ver distribuidor_routing)."""
+    dist_id = get_distribuidor_de_bodega(bodega_id)
+    if not dist_id:
         return []
-    return sb.table("catalogo_distribuidor").select("*, productos_circa(*)").eq("distribuidor_id", bodega["distribuidor_id"]).eq("activo", True).execute().data
+    return (
+        sb.table("catalogo_distribuidor")
+        .select("*, productos_circa(*)")
+        .eq("distribuidor_id", dist_id)
+        .eq("activo", True)
+        .execute()
+        .data
+    )
 
 def get_marcas(distribuidor_id: str):
     items = sb.table("catalogo_distribuidor").select("productos_circa(marca)").eq("distribuidor_id", distribuidor_id).eq("activo", True).execute().data
@@ -427,17 +434,40 @@ def get_promociones_activas(distribuidor_id: str) -> list:
         return []
 
 
-def get_distribuidor_de_bodega(bodega_id: str) -> str:
-    """Devuelve el distribuidor_id asignado a una bodega."""
+def get_bodega_routing(bodega_id: str) -> dict | None:
+    """Campos mínimos para enrutar catálogo vs pedido (es_test, en_piloto)."""
     try:
-        r = sb.table("bodegas").select("distribuidor_id").eq(
-            "id", bodega_id
-        ).single().execute()
-        return r.data["distribuidor_id"] if r.data else None
+        r = (
+            sb.table("bodegas")
+            .select("id, es_test, en_piloto, distribuidor_id")
+            .eq("id", bodega_id)
+            .limit(1)
+            .execute()
+        )
+        return r.data[0] if r.data else None
     except Exception as e:
         import logging
-        logging.error(f"get_distribuidor_de_bodega error: {e}")
+        logging.error(f"get_bodega_routing error: {e}")
         return None
+
+
+def get_distribuidor_de_bodega(bodega_id: str) -> str:
+    """Distribuidor para catálogo/promos (siempre DIMAX en piloto)."""
+    from app.services.distribuidor_routing import distribuidor_id_para_catalogo
+
+    if not get_bodega_routing(bodega_id):
+        return None
+    return distribuidor_id_para_catalogo()
+
+
+def get_distribuidor_pedido_de_bodega(bodega_id: str) -> str | None:
+    """Distribuidor que debe recibir el pedido en su portal."""
+    from app.services.distribuidor_routing import distribuidor_id_para_pedido
+
+    b = get_bodega_routing(bodega_id)
+    if not b:
+        return None
+    return distribuidor_id_para_pedido(b)
 
 
 def get_catalogo_info_for_skus(distribuidor_id: str, skus: list) -> dict:

@@ -222,16 +222,22 @@ def _build_categories(bodega_id, session=None):
 # ── Products ──
 
 async def _build_products(bodega_id, session, category):
-    # Always fetch distribuidor from bodega, never use cached or hardcoded
-    try:
-        row = db.sb.table("bodegas").select("distribuidor_id").eq("id", bodega_id).limit(1).execute()
-        dist = row.data[0]["distribuidor_id"] if row.data else ""
-        logger.info(f"Distribuidor for bodega {bodega_id}: {dist}")
-    except Exception as e:
-        logger.error(f"Error fetching distribuidor: {e}")
-        dist = ""
+    # Catálogo: DIMAX para todos; pedido: Zoom si es_test (ver distribuidor_routing)
+    from app.services.distribuidor_routing import (
+        distribuidor_id_para_catalogo,
+        distribuidor_id_para_pedido,
+    )
 
-    session["dist"] = dist
+    bodega_row = db.get_bodega_routing(bodega_id)
+    dist_cat = distribuidor_id_para_catalogo(bodega_row)
+    dist_ped = distribuidor_id_para_pedido(bodega_row) if bodega_row else ""
+    session["dist"] = dist_ped
+    session["dist_catalogo"] = dist_cat
+    logger.info(
+        "Bodega %s: catalogo=%s pedido=%s es_test=%s",
+        bodega_id, dist_cat, dist_ped, (bodega_row or {}).get("es_test"),
+    )
+    dist = dist_cat
     session["cat"]  = category
     _save_session(bodega_id, session)
 
@@ -283,9 +289,7 @@ async def _build_products(bodega_id, session, category):
 async def _build_product_detail(bodega_id, session, product_id):
     try:
         # Get bodega's distribuidor
-        bod = db.sb.table("bodegas").select("distribuidor_id").eq("id", bodega_id).limit(1).execute()
-        dist_id = bod.data[0]["distribuidor_id"] if bod.data else None
-        # Query from catalogo_distribuidor joined with productos_circa
+        dist_id = db.get_distribuidor_de_bodega(bodega_id)
         cd = db.sb.table("catalogo_distribuidor").select("*, productos_circa(*)").eq("producto_circa_id", product_id).eq("distribuidor_id", dist_id).limit(1).execute()
         if not cd.data:
             p = None
@@ -366,8 +370,7 @@ async def _do_add_to_cart(bodega_id, session, selected):
         unit_key_safe = f"PK{rest[pk_pos+3:]}" if pk_pos > 0 else "UNDx1"
 
     try:
-        bod = db.sb.table("bodegas").select("distribuidor_id").eq("id", bodega_id).limit(1).execute()
-        dist_id = bod.data[0]["distribuidor_id"] if bod.data else None
+        dist_id = db.get_distribuidor_de_bodega(bodega_id)
         cd = db.sb.table("catalogo_distribuidor").select("unidades, productos_circa(nombre, marca)").eq("producto_circa_id", product_id).eq("distribuidor_id", dist_id).limit(1).execute()
         if cd.data:
             row = cd.data[0]
@@ -497,7 +500,10 @@ async def _do_checkout(bodega_id, session):
         return _build_categories(bodega_id, session)
 
     total = sum(i.get("sub", 0) for i in cart)
-    dist  = session.get("dist", "a1b2c3d4-0001-4000-8000-000000000001")
+    from app.services.distribuidor_routing import distribuidor_id_para_pedido
+
+    bodega_row = db.get_bodega_routing(bodega_id)
+    dist = distribuidor_id_para_pedido(bodega_row) if bodega_row else session.get("dist")
 
     # Build cart summary
     items_text = "\n".join(f"▸ {i['qty']}x *{i['name']}*\n   S/{i['sub']:.2f}" for i in cart)

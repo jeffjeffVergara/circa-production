@@ -1001,8 +1001,10 @@ async def meta_webhook_incoming(request: Request):
                                         ped_t = db.sb.table("pedidos").select("tipo_operacion").eq("id", pedido_id).limit(1).execute()
                                         tipo_op = ped_t.data[0].get("tipo_operacion", "venta") if ped_t.data else "venta"
                                         num = await _gen_order_number(bod_id, tipo_op)
+                                        _dist_ped = db.get_distribuidor_pedido_de_bodega(bod_id)
                                         db.sb.table("pedidos").update({
                                             "numero": num,
+                                            "distribuidor_id": _dist_ped,
                                             "fee_tasa": rate, "fee_monto": fee,
                                             "fee_regimen": fee_regimen_para_pedido_nuevo(),
                                             "monto_financiado": round(monto, 2), "plazo_dias": dias,
@@ -1059,8 +1061,10 @@ async def meta_webhook_incoming(request: Request):
                                     ped_t = db.sb.table("pedidos").select("tipo_operacion").eq("id", pedido_id).limit(1).execute()
                                     tipo_op = ped_t.data[0].get("tipo_operacion", "venta") if ped_t.data else "venta"
                                     num = await _gen_order_number(bod_id, tipo_op)
+                                    _dist_ped = db.get_distribuidor_pedido_de_bodega(bod_id)
                                     db.sb.table("pedidos").update({
                                         "numero": num,
+                                        "distribuidor_id": _dist_ped,
                                         "fee_tasa": 0, "fee_monto": 0,
                                         "monto_financiado": 0, "monto_contado": round(monto, 2),
                                         "total": round(monto, 2), "estado": _confirmed_status_for(tipo_op),
@@ -1398,9 +1402,12 @@ async def verify_pin_web(data: PinVerification):
         cart_total = sum(i.get("subtotal", 0) for i in cart)
         contado = cart_total - fin_amt
 
+        dist_pedido = db.get_distribuidor_pedido_de_bodega(bodega["id"])
+        if not dist_pedido:
+            return {"ok": False, "error": "Bodega no encontrada"}
         pedido = db.create_pedido(
             bodega_id=bodega["id"],
-            distribuidor_id=bodega["distribuidor_id"],
+            distribuidor_id=dist_pedido,
             items=cart,
             monto_productos=cart_total,
             monto_financiado=fin_amt,
@@ -1537,10 +1544,13 @@ async def submit_cart(data: CartSubmission):
     )
     tipo = "preventa" if data.tipo_operacion == "preventa" else "venta"
     estado_inicial = "preventa_borrador" if tipo == "preventa" else "borrador"
+    dist_pedido = db.get_distribuidor_pedido_de_bodega(data.bodega_id)
+    if not dist_pedido:
+        return {"ok": False, "error": "Bodega no encontrada"}
     # Create order in pedidos
     pedido = db.sb.table("pedidos").insert({
         "bodega_id": data.bodega_id,
-        "distribuidor_id": "a1b2c3d4-0001-4000-8000-000000000001",
+        "distribuidor_id": dist_pedido,
         "items_json": json.dumps(items_list),
         "monto_productos": total,
         "total_pedido": total,

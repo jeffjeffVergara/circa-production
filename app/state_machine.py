@@ -72,7 +72,7 @@ def _find_product_by_sku(bodega: dict, sku: str) -> dict | None:
         db.sb.table("catalogo_distribuidor")
         .select("*, productos_circa(*)")
         .eq("activo", True)
-        .eq("distribuidor_id", bodega["distribuidor_id"])
+        .eq("distribuidor_id", db.get_distribuidor_de_bodega(bodega["id"]))
         .eq("sku_distribuidor", sku)
         .limit(1)
         .execute()
