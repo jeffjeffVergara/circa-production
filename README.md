@@ -43,7 +43,11 @@ Para exponer el webhook (desarrollo): túnel tipo `ngrok http 8000` y configurar
 
 ## Documentación interna
 
-En el repo hay planes y notas de producto (por ejemplo `CIRCA_PLAN_MAESTRO_v2.md`, `CIRCA_PLAN_MAESTRO_WHATSAPP_FLOWS.md`).
+| Documento | Contenido |
+|-----------|-----------|
+| [`docs/flows/README.md`](docs/flows/README.md) | **Mapa de flujos**, matriz de escenarios (~50), wireframes (Figma) y smoke P0 |
+| [`arquitectura.md`](arquitectura.md) | Arquitectura técnica, diagramas Mermaid |
+| `CIRCA_PLAN_MAESTRO_v2.md`, `CIRCA_PLAN_MAESTRO_WHATSAPP_FLOWS.md` | Planes históricos de producto |
 
 ## Logo
 

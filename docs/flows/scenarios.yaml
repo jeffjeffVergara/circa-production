@@ -1,0 +1,126 @@
+# Circa — registro de escenarios (IDs estables)
+# Sincronizar con docs/flows/README.md al agregar o cambiar flujos.
+# Campos: id, title, journey, group, actor, priority, status, code, figma, notes
+
+version: 1
+updated: "2026-05-20"
+
+status_legend:
+  done: "✅ Implementado"
+  partial: "🟡 Parcial"
+  spec: "📋 Spec"
+  bug: "🔴 Bug"
+  deprecated: "⛔ Deprecado"
+
+journeys:
+  - id: onboarding
+    file: 01-onboarding.md
+    figma_page: "01 Onboarding"
+  - id: catalogo-pedido
+    file: 02-catalogo-pedido.md
+    figma_page: "02 Catálogo"
+  - id: pago-pin
+    file: 03-pago-pin.md
+    figma_page: "03 Pago y PIN"
+  - id: preventa
+    file: 04-preventa.md
+    figma_page: "04 Preventa"
+  - id: postventa-cobranza
+    file: 05-postventa-cobranza.md
+    figma_page: "05 Postventa"
+  - id: distribuidor
+    file: 06-distribuidor.md
+    figma_page: "06 Distribuidor"
+  - id: admin-ops
+    file: 07-admin-ops.md
+    figma_page: "07 Admin"
+  - id: soporte
+    file: 08-soporte.md
+    figma_page: "08 Soporte"
+  - id: legacy
+    file: 09-legacy.md
+    figma_page: "09 Legacy"
+
+scenarios:
+  - { id: ONB-01, title: "Bienvenida sin bodega", journey: onboarding, group: Onboarding, actor: nuevo, priority: P0, status: done, code: "app/state_machine.py welcome" }
+  - { id: ONB-02, title: "RUC preaprobado", journey: onboarding, group: Onboarding, actor: nuevo, priority: P0, status: done, code: "reg_ruc" }
+  - { id: ONB-03, title: "RUC rechazado", journey: onboarding, group: Onboarding, actor: nuevo, priority: P1, status: done, code: "reg_ruc" }
+  - { id: ONB-04, title: "DNI representante", journey: onboarding, group: Onboarding, actor: nuevo, priority: P0, status: done, code: "reg_dni, app/services/vision.py" }
+  - { id: ONB-05, title: "Biometría", journey: onboarding, group: Onboarding, actor: nuevo, priority: P1, status: partial, code: "reg_biometria" }
+  - { id: ONB-06, title: "Oferta y aceptación línea", journey: onboarding, group: Onboarding, actor: nuevo, priority: P0, status: done, code: "reg_linea_acepta" }
+  - { id: ONB-07, title: "Contrato + ACEPTO", journey: onboarding, group: Onboarding, actor: nuevo, priority: P0, status: done, code: "reg_contrato, contract_generator" }
+  - { id: ONB-08, title: "PIN 4 dígitos", journey: onboarding, group: Onboarding, actor: nuevo, priority: P0, status: done, code: "reg_pin, app/flows/pin_flow.py" }
+  - { id: ONB-09, title: "Cuenta activa → menú", journey: onboarding, group: Onboarding, actor: bodega_activa, priority: P0, status: done, code: "CUENTA_ACTIVA, fase=menu" }
+  - { id: ONB-10, title: "Flow Meta onboarding DDE", journey: onboarding, group: Onboarding, actor: nuevo, priority: P1, status: partial, code: "POST /flows/onboarding" }
+  - { id: ONB-11, title: "Reset PIN OLVIDE", journey: onboarding, group: Onboarding, actor: bodega_activa, priority: P1, status: done, code: "menu OLVIDE → reg_dni" }
+
+  - { id: CAT-01, title: "Menú PEDIDO → catálogo venta", journey: catalogo-pedido, group: Catálogo, actor: bodega_activa, priority: P0, status: done, code: "state_machine menu, /catalogo-v2?t=venta" }
+  - { id: CAT-02, title: "Carrito web y promos", journey: catalogo-pedido, group: Catálogo, actor: bodega_activa, priority: P0, status: done, code: "static/catalogo_v2.html" }
+  - { id: CAT-03, title: "submit-cart borrador", journey: catalogo-pedido, group: Catálogo, actor: bodega_activa, priority: P0, status: done, code: "POST /api/catalogo/submit-cart" }
+  - { id: CAT-04, title: "Routing DIMAX/Zoom por bodega", journey: catalogo-pedido, group: Piloto, actor: bodega_piloto, priority: P0, status: done, code: "app/services/distribuidor_routing.py" }
+  - { id: CAT-05, title: "Flow catálogo WhatsApp", journey: catalogo-pedido, group: Legacy, actor: bodega_activa, priority: P2, status: partial, code: "/flows/catalogo" }
+  - { id: CAT-06, title: "Carrito chat categorías Twilio", journey: catalogo-pedido, group: Legacy, actor: bodega_activa, priority: P2, status: deprecated, code: "fase catalogo*, /webhook/twilio" }
+  - { id: CAT-07, title: "REPETIR último pedido venta", journey: catalogo-pedido, group: UX, actor: bodega_activa, priority: P0, status: done, code: "get_items_para_repetir" }
+  - { id: CAT-08, title: "REPETIR sin historial", journey: catalogo-pedido, group: UX, actor: bodega_activa, priority: P1, status: done, code: "state_machine REPETIR" }
+  - { id: CAT-09, title: "Editar carrito desde pago", journey: catalogo-pedido, group: UX, actor: bodega_activa, priority: P1, status: done, code: "EDITAR_{pid}" }
+
+  - { id: PAY-01, title: "Pago todo hoy primero en lista", journey: pago-pin, group: UX, actor: bodega_activa, priority: P0, status: done, code: "_send_payment_options", notes: "commit 223d54e" }
+  - { id: PAY-02, title: "Contado → PIN", journey: pago-pin, group: Pago, actor: bodega_activa, priority: P0, status: done, code: "CONTADO_, pin_pago" }
+  - { id: PAY-03, title: "Financiar tramo 100-500 7d", journey: pago-pin, group: Crédito, actor: bodega_activa, priority: P0, status: done, code: "FINFIJO*" }
+  - { id: PAY-04, title: "Total <100 contado + 7d", journey: pago-pin, group: Crédito, actor: bodega_activa, priority: P1, status: done, code: "_send_payment_options else branch" }
+  - { id: PAY-05, title: "Sin línea solo contado", journey: pago-pin, group: Crédito, actor: bodega_activa, priority: P1, status: done, code: "linea<=0 pin_pago" }
+  - { id: PAY-06, title: "Plazo 7/15/30 tras FIN100", journey: pago-pin, group: Crédito, actor: bodega_activa, priority: P2, status: partial, code: "fin_plazo PAY7/15/30" }
+  - { id: PAY-07, title: "PIN confirma pedido", journey: pago-pin, group: Pago, actor: bodega_activa, priority: P0, status: done, code: "pin_flow, /flows/pin" }
+  - { id: PAY-08, title: "Fee por plan al confirmar", journey: pago-pin, group: Crédito, actor: bodega_activa, priority: P0, status: done, code: "fees.py fee_regimen" }
+  - { id: PAY-09, title: "Sleep 2s antes opciones pago", journey: pago-pin, group: UX, actor: bodega_activa, priority: P2, status: done, code: "asyncio.sleep(2)" }
+
+  - { id: PRV-01, title: "Menú PREVENTA catálogo", journey: preventa, group: Preventa, actor: bodega_activa, priority: P0, status: done, code: "?t=preventa" }
+  - { id: PRV-02, title: "preventa_borrador", journey: preventa, group: Preventa, actor: bodega_activa, priority: P0, status: done, code: "tipo_operacion preventa" }
+  - { id: PRV-03, title: "Confirmación sin pago inmediato", journey: preventa, group: Preventa, actor: bodega_activa, priority: P0, status: partial, code: "preventa_confirmada flow" }
+  - { id: PRV-04, title: "Admin acepta preventa", journey: preventa, group: Admin, actor: admin, priority: P0, status: done, code: "/admin/preventa/.../aceptar" }
+  - { id: PRV-05, title: "Pagar mi preventa menú", journey: preventa, group: Preventa, actor: bodega_activa, priority: P0, status: done, code: "PREVENTA_PAYMENT_OPTIONS" }
+  - { id: PRV-06, title: "Import preventas Excel", journey: preventa, group: Admin, actor: admin, priority: P2, status: done, code: "/preventas/import" }
+
+  - { id: POS-01, title: "ESTADO pedidos activos", journey: postventa-cobranza, group: Postventa, actor: bodega_activa, priority: P0, status: done, code: "menu ESTADO" }
+  - { id: POS-02, title: "LINEA disponible", journey: postventa-cobranza, group: UX, actor: bodega_activa, priority: P1, status: done, code: "LINEA_INFO" }
+  - { id: POS-03, title: "PAGUE pago_reportado", journey: postventa-cobranza, group: Postventa, actor: bodega_activa, priority: P0, status: done, code: "menu PAGUE" }
+  - { id: POS-04, title: "Recordatorios cobranza", journey: postventa-cobranza, group: Admin, actor: sistema, priority: P1, status: done, code: "cobranza.py" }
+  - { id: POS-05, title: "Admin verificar pago", journey: postventa-cobranza, group: Admin, actor: admin, priority: P0, status: done, code: "/admin/verificar-pago" }
+  - { id: POS-06, title: "Mora post-vencimiento", journey: postventa-cobranza, group: Crédito, actor: bodega_activa, priority: P1, status: done, code: "fees calcular_total_a_pagar" }
+
+  - { id: DIS-01, title: "Portal distribuidor login", journey: distribuidor, group: Distribuidor, actor: distribuidor, priority: P0, status: done, code: "static/distribuidor.html" }
+  - { id: DIS-02, title: "Listar pedidos", journey: distribuidor, group: Distribuidor, actor: distribuidor, priority: P0, status: done, code: "routes/distribuidor pedidos" }
+  - { id: DIS-03, title: "Cambiar estado", journey: distribuidor, group: Distribuidor, actor: distribuidor, priority: P0, status: done, code: "POST pedidos/status" }
+  - { id: DIS-04, title: "Notif WA cambio estado", journey: distribuidor, group: UX, actor: bodega_activa, priority: P1, status: done, code: "update_order_status" }
+  - { id: DIS-05, title: "Conciliación export", journey: distribuidor, group: Distribuidor, actor: distribuidor, priority: P2, status: done, code: "conciliacion export" }
+
+  - { id: ADM-01, title: "Resumen analytics", journey: admin-ops, group: Admin, actor: admin, priority: P1, status: done, code: "/admin/resumen" }
+  - { id: ADM-02, title: "Cobranzas admin", journey: admin-ops, group: Admin, actor: admin, priority: P1, status: done, code: "/admin/cobranzas" }
+  - { id: ADM-03, title: "Alertas sobregiro", journey: admin-ops, group: Admin, actor: admin, priority: P2, status: done, code: "/admin/alerts/sobregiro" }
+  - { id: ADM-04, title: "SQL Zoom→DIMAX piloto", journey: admin-ops, group: Piloto, actor: admin, priority: P1, status: spec, code: "migrations/20260521_pedidos_zoom_a_dimax_solo_piloto.sql" }
+  - { id: ADM-05, title: "Migración fee_regimen", journey: admin-ops, group: Crédito, actor: admin, priority: P1, status: spec, code: "migrations/20260520_pedidos_fee_regimen.sql" }
+
+  - { id: SUP-01, title: "Escalamiento a humano", journey: soporte, group: Soporte, actor: bodega_activa, priority: P1, status: done, code: "escalate_from_bot" }
+  - { id: SUP-02, title: "Agente inbox", journey: soporte, group: Soporte, actor: agente_soporte, priority: P1, status: done, code: "/support support_inbox" }
+  - { id: SUP-03, title: "Contactar Circa", journey: soporte, group: UX, actor: bodega_activa, priority: P1, status: done, code: "CONTACT_CIRCA" }
+
+  - { id: LEG-01, title: "Webhook Twilio", journey: legacy, group: Legacy, actor: null, priority: P2, status: deprecated, code: "/webhook/twilio" }
+  - { id: LEG-02, title: "Menú interactivo Meta", journey: legacy, group: UX, actor: bodega_activa, priority: P0, status: done, code: "meta_client.send_menu" }
+
+  - { id: OPS-01, title: "Latencia response_time_ms", journey: admin-ops, group: Ops, actor: bodega_test, priority: P2, status: partial, code: "app/services/analytics.py", notes: "verificar post-deploy" }
+  - { id: OPS-02, title: "Smoke piloto P0", journey: admin-ops, group: Piloto, actor: bodega_piloto, priority: P0, status: spec, code: "docs/flows/README.md smoke checklist" }
+
+smoke_p0:
+  - ONB-09
+  - CAT-01
+  - CAT-03
+  - CAT-04
+  - PAY-01
+  - PAY-02
+  - PAY-03
+  - PRV-01
+  - PRV-05
+  - DIS-03
+  - POS-03
+  - CAT-07
+  - SUP-03

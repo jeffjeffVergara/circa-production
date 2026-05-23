@@ -1,0 +1,22 @@
+-- Consultas de latencia (response_time_ms en outbound tras inbound).
+-- Requiere que el backend ya esté desplegado con medición automática.
+
+-- Resumen últimos 7 días (solo respuestas medidas)
+-- SELECT
+--   count(*) AS respuestas,
+--   round(avg(response_time_ms)) AS avg_ms,
+--   round(percentile_cont(0.5) WITHIN GROUP (ORDER BY response_time_ms)) AS p50_ms,
+--   round(percentile_cont(0.95) WITHIN GROUP (ORDER BY response_time_ms)) AS p95_ms
+-- FROM messages
+-- WHERE direction = 'outbound'
+--   AND response_time_ms IS NOT NULL
+--   AND created_at > now() - interval '7 days';
+
+-- Por día (hora Lima)
+-- SELECT
+--   date_trunc('day', created_at AT TIME ZONE 'America/Lima') AS dia,
+--   count(*) AS n,
+--   round(avg(response_time_ms)) AS avg_ms
+-- FROM messages
+-- WHERE direction = 'outbound' AND response_time_ms IS NOT NULL
+-- GROUP BY 1 ORDER BY 1 DESC;
