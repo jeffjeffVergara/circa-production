@@ -707,6 +707,29 @@ async def admin_verificar_pago(pedido_id: str, payload: dict, admin: bool = Depe
     }
     _sb_patch("pedidos", patch, {"id": f"eq.{pedido_id}"})
 
+    # BUG #2 fix: marcar el financiamiento como pagado.
+    # Antes este handler nunca tocaba 'financiamientos', asi que un prestamo
+    # ya pagado quedaba en estado 'activo' y luego se marcaba como vencido.
+    try:
+        fins = _sb_get("financiamientos", {
+            "select": "id,estado,monto_total",
+            "pedido_id": f"eq.{pedido_id}",
+        })
+        for fin in (fins or []):
+            if fin.get("estado") in ("activo", "verificando", "vencido"):
+                _sb_patch("financiamientos", {
+                    "estado": "pagado",
+                    "fecha_pago": datetime.utcnow().isoformat(),
+                    "monto_pagado": fin.get("monto_total"),
+                    "metodo_pago": payload.get("metodo", "yape"),
+                    "updated_at": datetime.utcnow().isoformat(),
+                }, {"id": f"eq.{fin['id']}"})
+    except Exception as e:
+        import logging
+        logging.getLogger("circa").error(
+            f"No se pudo marcar financiamiento como pagado para pedido {pedido_id}: {e}"
+        )
+
     # Facturacion Circa (simulada) - nunca bloquea la confirmacion de pago
     try:
         from app.services.cobranza import crear_comprobante_circa_simulado
