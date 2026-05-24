@@ -239,8 +239,31 @@ async def twilio_webhook(
 # ══════════════════════════════════════════
 
 async def _gen_order_number(bodega_id, tipo_operacion: str = "venta"):
-    """Generate next order number by operation type."""
+    """Generate next order number: PREFIX-NNNNN-SSS.
+
+    NNNNN es el codigo de afiliado de la bodega (CIRCA-NNNNN) y SSS es el
+    correlativo por bodega. Ej: CRC-00042-003 = tercer pedido de CIRCA-00042.
+    """
     prefix = "PRV" if tipo_operacion == "preventa" else "CRC"
+
+    # Segmento de afiliado: los digitos del codigo_afiliado de la bodega
+    afil = "TEST"
+    try:
+        b = (
+            db.sb.table("bodegas")
+            .select("codigo_afiliado")
+            .eq("id", bodega_id)
+            .limit(1)
+            .execute()
+        )
+        codigo = b.data[0].get("codigo_afiliado") if b.data else None
+        if codigo and codigo.startswith("CIRCA-"):
+            afil = codigo.split("-")[1]
+    except Exception as e:
+        logger.error(f"_gen_order_number: error leyendo codigo_afiliado de {bodega_id}: {e}")
+
+    # Correlativo por bodega y tipo de operacion
+    n = 1
     try:
         r = (
             db.sb.table("pedidos")
@@ -253,13 +276,15 @@ async def _gen_order_number(bodega_id, tipo_operacion: str = "venta"):
             .execute()
         )
         if r.data and r.data[0].get("numero"):
-            last = r.data[0]["numero"]
-            n = int(last.split("-")[1]) + 1
-        else:
-            n = 1
-        return f"{prefix}-{n:03d}"
-    except:
-        return f"{prefix}-{__import__('random').randint(100,999)}"
+            partes = r.data[0]["numero"].split("-")
+            # Solo continua el correlativo si el ultimo numero ya usa el
+            # formato nuevo (3 partes). Si era formato viejo, arranca en 1.
+            if len(partes) == 3 and partes[2].isdigit():
+                n = int(partes[2]) + 1
+    except Exception as e:
+        logger.error(f"_gen_order_number: error leyendo correlativo de {bodega_id}: {e}")
+
+    return f"{prefix}-{afil}-{n:03d}"
 
 
 def _is_draft_status(estado: str) -> bool:
