@@ -295,3 +295,89 @@ async def get_pending_payments(bodega_id: str) -> list[dict]:
             ).days if f.get("fecha_vencimiento") else None,
         })
     return out
+
+
+# ── Facturación Circa — comprobante simulado por el fee de plataforma ──
+
+async def crear_comprobante_circa_simulado(pedido: dict) -> None:
+    """
+    Crea un comprobante Circa (modo simulado, sin SUNAT) por el fee de la
+    plataforma. Se llama despues de marcar un pedido como pagado.
+    Nunca lanza excepcion: si algo falla, solo registra el error.
+    """
+    try:
+        # Idempotencia: si el pedido ya fue facturado, no hacer nada
+        if pedido.get("facturado"):
+            return
+
+        # Resolver el monto del fee (cadena de respaldo)
+        fee_monto = pedido.get("fee_monto")
+        fee_monto_final = pedido.get("fee_monto_final")
+        monto_fee = fee_monto_final
+        if monto_fee is None:
+            monto_fee = fee_monto
+        if monto_fee is None:
+            mtc = pedido.get("monto_total_credito")
+            mfin = pedido.get("monto_financiado")
+            if mtc is not None and mfin is not None:
+                monto_fee = float(mtc) - float(mfin)
+        monto_fee = round(float(monto_fee or 0), 2)
+
+        # Pedido al contado o sin fee -> no se factura
+        if monto_fee <= 0:
+            return
+
+        # El fee mostrado a la bodega ya incluye IGV 18%
+        total = monto_fee
+        subtotal = round(total / 1.18, 2)
+        igv = round(total - subtotal, 2)
+
+        # fee_ajustado: True solo si el fee final difiere del calculado
+        fee_ajustado = bool(
+            fee_monto_final is not None
+            and fee_monto is not None
+            and round(float(fee_monto_final), 2) != round(float(fee_monto), 2)
+        )
+        fee_final = fee_monto_final if fee_monto_final is not None else total
+
+        ahora = datetime.utcnow().isoformat()
+
+        # Insertar el comprobante (modo simulado, sin SUNAT)
+        db.sb.table("comprobantes_circa").insert({
+            "pedido_id": pedido["id"],
+            "bodega_id": pedido["bodega_id"],
+            "tipo_comprobante": "pendiente_definir",
+            "concepto": "Servicio de uso de plataforma Circa",
+            "monto_fee": total,
+            "subtotal": subtotal,
+            "igv": igv,
+            "total": total,
+            "fee_base": pedido.get("monto_financiado"),
+            "fee_porcentaje": pedido.get("fee_tasa"),
+            "fee_calculado": fee_monto,
+            "fee_final": fee_final,
+            "fee_ajustado": fee_ajustado,
+            "plazo_dias": pedido.get("plazo_dias"),
+            "tasa_aplicada": pedido.get("fee_tasa"),
+            "regla_fee": pedido.get("fee_regimen"),
+            "proveedor": "simulado",
+            "sunat_estado": "simulado",
+            "issued_at": ahora,
+            "created_at": ahora,
+        }).execute()
+
+        # Marcar el pedido como facturado
+        db.sb.table("pedidos").update({
+            "facturado": True,
+            "fecha_facturado": ahora,
+        }).eq("id", pedido["id"]).execute()
+
+        logger.info(
+            f"Comprobante Circa simulado creado - pedido "
+            f"{pedido.get('numero', pedido['id'])}, fee S/{total:.2f}"
+        )
+    except Exception as e:
+        logger.error(
+            f"Error creando comprobante Circa (pedido {pedido.get('id', '?')}): {e}",
+            exc_info=True,
+        )

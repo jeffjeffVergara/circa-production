@@ -706,6 +706,17 @@ async def admin_verificar_pago(pedido_id: str, payload: dict, admin: bool = Depe
         "nro_operacion": payload.get("nro_operacion", ""),
     }
     _sb_patch("pedidos", patch, {"id": f"eq.{pedido_id}"})
+
+    # Facturacion Circa (simulada) - nunca bloquea la confirmacion de pago
+    try:
+        from app.services.cobranza import crear_comprobante_circa_simulado
+        await crear_comprobante_circa_simulado(ped)
+    except Exception as e:
+        import logging
+        logging.getLogger("circa").error(
+            f"Facturacion Circa fallo para pedido {pedido_id}: {e}"
+        )
+
     track_event(
         "payment_made",
         bodega_id=bodega_id,
