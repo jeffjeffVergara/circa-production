@@ -705,6 +705,34 @@ async def admin_send_cobranza(pedido_id: str, admin: bool = Depends(verify_admin
     if not resultado.get("ok"):
         raise HTTPException(status_code=502, detail=f"Meta rechazo el envio: {resultado.get('error')}")
 
+    # ── Registrar el envio para tener seguimiento (tabla messages) ──
+    wamid = ""
+    try:
+        wamid = ((resultado.get("response") or {}).get("messages") or [{}])[0].get("id", "")
+    except Exception:
+        wamid = ""
+    try:
+        from app.services.analytics import track_message
+        track_message(
+            telefono=tel,
+            direction="outbound",
+            bodega_id=bid,
+            message_id=wamid,
+            message_type="cobranza_recordatorio",
+            template_name=tpl["name"],
+            content=f"Recordatorio de cobranza ({tkey}) - pedido {ped.get('numero','')}",
+            metadata={
+                "pedido_id": pedido_id,
+                "numero": ped.get("numero", ""),
+                "dia": tkey,
+                "dias_desde_despacho": dias,
+            },
+            measure_response_latency=False,
+        )
+    except Exception as e:
+        import logging
+        logging.getLogger("circa").error(f"[cobranza track_message] {e}")
+
     return {
         "ok": True,
         "enviado_a": tel,
@@ -762,6 +790,28 @@ async def admin_cobranzas(
 
     hoy = datetime.utcnow().date()
     resultado = []
+
+    # ── Ultimo recordatorio de cobranza enviado, por pedido (tabla messages) ──
+    recordatorios_map = {}
+    try:
+        _msgs = _sb_get("messages", {
+            "select": "template_name,metadata,created_at",
+            "message_type": "eq.cobranza_recordatorio",
+            "order": "created_at.desc",
+            "limit": "2000",
+        })
+        for _m in _msgs:
+            _meta = _m.get("metadata") or {}
+            _pid = _meta.get("pedido_id")
+            if _pid and _pid not in recordatorios_map:
+                recordatorios_map[_pid] = {
+                    "fecha": _m.get("created_at"),
+                    "plantilla": _m.get("template_name"),
+                    "dia": _meta.get("dia"),
+                }
+    except Exception:
+        recordatorios_map = {}
+
     for p in pedidos:
         plazo = p.get("plazo_dias") or 0
         fecha_entregado = p.get("fecha_entregado") or p.get("created_at")
@@ -804,6 +854,7 @@ async def admin_cobranzas(
             "estado": p.get("estado"),
             "fecha_pagado": p.get("fecha_pagado"),
             "fee_regimen": p.get("fee_regimen"),
+            "ultimo_recordatorio": recordatorios_map.get(p["id"]),
         }
         
         # Filters

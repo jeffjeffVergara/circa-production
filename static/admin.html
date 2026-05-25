@@ -597,6 +597,9 @@ function loadCobranzas(){
       var actions = c.status_cobranza==='pagado' 
         ? '<span style="color:var(--purple);font-size:11px">✓ Pagado</span>'
         : '<button type="button" class="btn btn-green btn-small" onclick="openVerificarPago(\''+c.pedido_id+'\')">💵 Verificar pago</button> <button type="button" class="btn btn-outline btn-small" onclick="enviarRecordatorio(\''+c.pedido_id+'\')">📨 Recordatorio</button>';
+      var ultRec = c.ultimo_recordatorio
+        ? '<div style="font-size:10px;color:var(--muted);margin-top:6px">📨 Último: '+fmtFechaCorta(c.ultimo_recordatorio.fecha)+' · '+String(c.ultimo_recordatorio.dia||'').replace('dia','día ')+'</div>'
+        : '';
       return '<tr class="cob-row">'+
         '<td data-label="Pedido" class="pedido-num mono">'+(c.numero||'-')+'</td>'+
         '<td data-label="Bodega">'+(b.nombre_comercial||'?')+'</td>'+
@@ -606,7 +609,7 @@ function loadCobranzas(){
         '<td data-label="Días">'+diasText+'</td>'+
         '<td data-label="Monto" class="mono">S/'+c.total_pagar.toFixed(2)+'</td>'+
         '<td data-label="Estado"><span class="badge badge-'+c.status_cobranza+'">'+c.status_cobranza.replace('_',' ')+'</span></td>'+
-        '<td data-label="Acciones" class="cob-col-actions">'+actions+'</td></tr>';
+        '<td data-label="Acciones" class="cob-col-actions">'+actions+ultRec+'</td></tr>';
     }).join('') : '<tr><td colspan="9" class="empty">Sin cobranzas</td></tr>';
   });
 }
@@ -694,8 +697,16 @@ function enviarRecordatorio(pid){
   if(!confirm('¿Enviar recordatorio de pago por WhatsApp?')) return;
   fetch('/api/distribuidor/admin/cobranza/'+pid, {
     method:'POST', headers:{'X-Admin-Token':TOKEN}
-  }).then(function(r){return r.json()}).then(function(d){
-    showToast('Recordatorio enviado','success');
+  }).then(function(r){
+    return r.json().then(function(d){ return {ok:r.ok, body:d}; });
+  }).then(function(res){
+    if(res.ok && res.body && res.body.ok){
+      showToast('✓ Recordatorio enviado por WhatsApp','success');
+      loadCobranzas();
+    } else {
+      var msg = (res.body && res.body.detail) ? String(res.body.detail) : 'No se pudo enviar';
+      showToast('No se envió: '+msg.slice(0,180),'error');
+    }
   }).catch(function(e){showToast('Error: '+e.message,'error')});
 }
 
