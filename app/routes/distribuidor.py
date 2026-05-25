@@ -62,12 +62,17 @@ def _send_wa_text(to, text):
 # ── Plantillas de cobranza (WhatsApp message templates aprobadas en Meta) ──
 # El recordatorio se elige segun los dias transcurridos desde el despacho.
 # "vars" es el orden EXACTO de las variables {{1}}, {{2}}, ... de cada plantilla.
-# Si Meta rechaza un envio por idioma, el unico dato a corregir es "lang".
 COBRANZA_TEMPLATES = {
-    "dia2": {"name": "recordatorio_dia2_v1", "lang": "es_PE", "vars": ["nombre", "cuota", "vence"]},
-    "dia4": {"name": "cobranza_dia_4",       "lang": "es_PE", "vars": ["nombre", "cuota", "vence", "linea"]},
-    "dia6": {"name": "cobranza_dia_6",       "lang": "es_PE", "vars": ["nombre", "cuota", "linea"]},
+    "dia2": {"name": "recordatorio_dia2_v1", "vars": ["nombre", "cuota", "vence"]},
+    "dia4": {"name": "cobranza_dia_4",       "vars": ["nombre", "cuota", "vence", "linea"]},
+    "dia6": {"name": "cobranza_dia_6",       "vars": ["nombre", "cuota", "linea"]},
 }
+
+# Meta no acepta "es_PE" como codigo de idioma para estas plantillas. El codigo
+# real es uno de los estandar de espanol; se prueban en orden hasta que Meta
+# acepte uno, y el que funciona queda cacheado para los siguientes envios.
+COBRANZA_LANG_CANDIDATES = ["es", "es_MX", "es_ES", "es_AR"]
+_TEMPLATE_LANG_CACHE = {}
 
 
 def _fmt_monto(x):
@@ -79,44 +84,67 @@ def _fmt_monto(x):
     return str(int(x)) if x == int(x) else f"{x:.2f}"
 
 
-def _send_wa_template(to, template_name, lang_code, variables):
+def _send_wa_template(to, template_name, variables):
     """Envia una plantilla de WhatsApp aprobada en Meta.
 
-    variables: lista de valores en el orden {{1}}, {{2}}, {{3}}, ...
-    Devuelve {"ok": True/False, ...}. Registra en log el detalle si Meta rechaza.
+    Resuelve el codigo de idioma automaticamente: prueba los codigos de espanol
+    estandar hasta que Meta acepte uno (Meta no reconoce 'es_PE'). El idioma que
+    funciona queda cacheado. Devuelve {"ok": True/False, ...}.
     """
     if not META_TOKEN:
         return {"ok": False, "error": "META_TOKEN no configurado"}
+
     components = []
     if variables:
         components = [{
             "type": "body",
             "parameters": [{"type": "text", "text": str(v)} for v in variables],
         }]
-    payload = {
-        "messaging_product": "whatsapp",
-        "to": to,
-        "type": "template",
-        "template": {
-            "name": template_name,
-            "language": {"code": lang_code},
-            "components": components,
-        },
-    }
-    try:
-        r = httpx.post(
-            f"https://graph.facebook.com/v23.0/{PHONE_NUMBER_ID}/messages",
-            headers={"Authorization": f"Bearer {META_TOKEN}", "Content-Type": "application/json"},
-            json=payload, timeout=15)
-        if r.status_code >= 400:
+
+    # Orden de idiomas a probar: primero el que ya funciono antes, luego los candidatos.
+    intentos = []
+    if template_name in _TEMPLATE_LANG_CACHE:
+        intentos.append(_TEMPLATE_LANG_CACHE[template_name])
+    for c in COBRANZA_LANG_CANDIDATES:
+        if c not in intentos:
+            intentos.append(c)
+
+    ultimo_error = ""
+    for lang in intentos:
+        payload = {
+            "messaging_product": "whatsapp",
+            "to": to,
+            "type": "template",
+            "template": {
+                "name": template_name,
+                "language": {"code": lang},
+                "components": components,
+            },
+        }
+        try:
+            r = httpx.post(
+                f"https://graph.facebook.com/v23.0/{PHONE_NUMBER_ID}/messages",
+                headers={"Authorization": f"Bearer {META_TOKEN}", "Content-Type": "application/json"},
+                json=payload, timeout=15)
+        except Exception as e:
+            ultimo_error = str(e)
+            continue
+        if r.status_code < 400:
+            _TEMPLATE_LANG_CACHE[template_name] = lang
+            return {"ok": True, "lang": lang, "response": r.json()}
+        ultimo_error = r.text
+        # 132001 = la plantilla no existe en ese idioma -> probar el siguiente.
+        # Cualquier otro error no se arregla cambiando idioma -> cortar aqui.
+        if "132001" not in ultimo_error:
             import logging
-            logging.getLogger("circa").error(f"[WA template error] {template_name}: {r.status_code} {r.text}")
-            return {"ok": False, "error": r.text}
-        return {"ok": True, "response": r.json()}
-    except Exception as e:
-        import logging
-        logging.getLogger("circa").error(f"[WA template error] {template_name}: {e}")
-        return {"ok": False, "error": str(e)}
+            logging.getLogger("circa").error(
+                f"[WA template error] {template_name}/{lang}: {r.status_code} {ultimo_error}")
+            return {"ok": False, "error": ultimo_error}
+
+    import logging
+    logging.getLogger("circa").error(
+        f"[WA template error] {template_name}: ningun idioma aceptado. {ultimo_error}")
+    return {"ok": False, "error": ultimo_error}
 
 
 class StatusUpdate(BaseModel):
@@ -641,7 +669,7 @@ async def admin_send_cobranza(pedido_id: str, admin: bool = Depends(verify_admin
     }
     variables = [valores[v] for v in tpl["vars"]]
 
-    resultado = _send_wa_template(tel, tpl["name"], tpl["lang"], variables)
+    resultado = _send_wa_template(tel, tpl["name"], variables)
     if not resultado.get("ok"):
         raise HTTPException(status_code=502, detail=f"Meta rechazo el envio: {resultado.get('error')}")
 
