@@ -68,11 +68,12 @@ COBRANZA_TEMPLATES = {
     "dia6": {"name": "cobranza_dia_6",       "vars": ["nombre", "cuota", "linea"]},
 }
 
-# Meta no acepta "es_PE" como codigo de idioma para estas plantillas. El codigo
-# real es uno de los estandar de espanol; se prueban en orden hasta que Meta
-# acepte uno, y el que funciona queda cacheado para los siguientes envios.
+# WABA (cuenta de WhatsApp Business) a la que pertenece el numero que envia.
+WABA_ID = os.getenv("WABA_ID", "965950269106934")
+# Codigos de espanol validos en la API de envio de Meta (no existe "es_PE").
 COBRANZA_LANG_CANDIDATES = ["es", "es_MX", "es_ES", "es_AR"]
-_TEMPLATE_LANG_CACHE = {}
+# Catalogo de plantillas consultado a Meta: {nombre: idioma_real}. Se carga una vez.
+_META_TEMPLATES = {"cargado": False, "mapa": {}, "error": ""}
 
 
 def _fmt_monto(x):
@@ -84,12 +85,35 @@ def _fmt_monto(x):
     return str(int(x)) if x == int(x) else f"{x:.2f}"
 
 
+def _cargar_plantillas_meta():
+    """Consulta a Meta (una sola vez) el catalogo de plantillas de la WABA y
+    arma el mapa {nombre: idioma_real}. Si la consulta falla, guarda el error."""
+    if _META_TEMPLATES["cargado"]:
+        return _META_TEMPLATES
+    try:
+        r = httpx.get(
+            f"https://graph.facebook.com/v23.0/{WABA_ID}/message_templates",
+            params={"fields": "name,language,status", "limit": 250, "access_token": META_TOKEN},
+            timeout=20)
+        if r.status_code < 400:
+            for t in r.json().get("data", []):
+                nm, lg = t.get("name"), t.get("language")
+                if nm and lg and nm not in _META_TEMPLATES["mapa"]:
+                    _META_TEMPLATES["mapa"][nm] = lg
+            _META_TEMPLATES["cargado"] = True
+        else:
+            _META_TEMPLATES["error"] = f"HTTP {r.status_code}: {r.text}"
+    except Exception as e:
+        _META_TEMPLATES["error"] = str(e)
+    return _META_TEMPLATES
+
+
 def _send_wa_template(to, template_name, variables):
     """Envia una plantilla de WhatsApp aprobada en Meta.
 
-    Resuelve el codigo de idioma automaticamente: prueba los codigos de espanol
-    estandar hasta que Meta acepte uno (Meta no reconoce 'es_PE'). El idioma que
-    funciona queda cacheado. Devuelve {"ok": True/False, ...}.
+    Resuelve el codigo de idioma consultando el catalogo real de Meta; si no lo
+    encuentra, prueba los codigos de espanol estandar. Si nada funciona, devuelve
+    un diagnostico con las plantillas que la cuenta SI tiene.
     """
     if not META_TOKEN:
         return {"ok": False, "error": "META_TOKEN no configurado"}
@@ -101,10 +125,12 @@ def _send_wa_template(to, template_name, variables):
             "parameters": [{"type": "text", "text": str(v)} for v in variables],
         }]
 
-    # Orden de idiomas a probar: primero el que ya funciono antes, luego los candidatos.
+    # Idioma real segun el catalogo de Meta; si no aparece, candidatos estandar.
+    catalogo = _cargar_plantillas_meta()
+    lang_real = catalogo["mapa"].get(template_name)
     intentos = []
-    if template_name in _TEMPLATE_LANG_CACHE:
-        intentos.append(_TEMPLATE_LANG_CACHE[template_name])
+    if lang_real:
+        intentos.append(lang_real)
     for c in COBRANZA_LANG_CANDIDATES:
         if c not in intentos:
             intentos.append(c)
@@ -130,7 +156,6 @@ def _send_wa_template(to, template_name, variables):
             ultimo_error = str(e)
             continue
         if r.status_code < 400:
-            _TEMPLATE_LANG_CACHE[template_name] = lang
             return {"ok": True, "lang": lang, "response": r.json()}
         ultimo_error = r.text
         # 132001 = la plantilla no existe en ese idioma -> probar el siguiente.
@@ -141,10 +166,17 @@ def _send_wa_template(to, template_name, variables):
                 f"[WA template error] {template_name}/{lang}: {r.status_code} {ultimo_error}")
             return {"ok": False, "error": ultimo_error}
 
-    import logging
-    logging.getLogger("circa").error(
-        f"[WA template error] {template_name}: ningun idioma aceptado. {ultimo_error}")
-    return {"ok": False, "error": ultimo_error}
+    # Nada funciono: devolver diagnostico con lo que la cuenta SI tiene.
+    import json as _json, logging
+    diag = {
+        "plantilla_buscada": template_name,
+        "idioma_segun_meta": lang_real,
+        "plantillas_en_la_cuenta": catalogo["mapa"],
+        "error_al_leer_catalogo": catalogo["error"],
+        "ultimo_error_envio": ultimo_error,
+    }
+    logging.getLogger("circa").error(f"[WA template DIAG] {_json.dumps(diag, ensure_ascii=False)}")
+    return {"ok": False, "error": _json.dumps(diag, ensure_ascii=False)}
 
 
 class StatusUpdate(BaseModel):
