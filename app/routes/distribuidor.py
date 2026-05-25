@@ -58,6 +58,67 @@ def _send_wa_text(to, text):
     except Exception as e:
         print(f"[WA notify error] {e}")
 
+
+# ── Plantillas de cobranza (WhatsApp message templates aprobadas en Meta) ──
+# El recordatorio se elige segun los dias transcurridos desde el despacho.
+# "vars" es el orden EXACTO de las variables {{1}}, {{2}}, ... de cada plantilla.
+# Si Meta rechaza un envio por idioma, el unico dato a corregir es "lang".
+COBRANZA_TEMPLATES = {
+    "dia2": {"name": "recordatorio_dia2_v1", "lang": "es_PE", "vars": ["nombre", "cuota", "vence"]},
+    "dia4": {"name": "cobranza_dia_4",       "lang": "es_PE", "vars": ["nombre", "cuota", "vence", "linea"]},
+    "dia6": {"name": "cobranza_dia_6",       "lang": "es_PE", "vars": ["nombre", "cuota", "linea"]},
+}
+
+
+def _fmt_monto(x):
+    """Formatea un monto: sin decimales si es entero, con 2 decimales si no."""
+    try:
+        x = float(x or 0)
+    except Exception:
+        x = 0.0
+    return str(int(x)) if x == int(x) else f"{x:.2f}"
+
+
+def _send_wa_template(to, template_name, lang_code, variables):
+    """Envia una plantilla de WhatsApp aprobada en Meta.
+
+    variables: lista de valores en el orden {{1}}, {{2}}, {{3}}, ...
+    Devuelve {"ok": True/False, ...}. Registra en log el detalle si Meta rechaza.
+    """
+    if not META_TOKEN:
+        return {"ok": False, "error": "META_TOKEN no configurado"}
+    components = []
+    if variables:
+        components = [{
+            "type": "body",
+            "parameters": [{"type": "text", "text": str(v)} for v in variables],
+        }]
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": to,
+        "type": "template",
+        "template": {
+            "name": template_name,
+            "language": {"code": lang_code},
+            "components": components,
+        },
+    }
+    try:
+        r = httpx.post(
+            f"https://graph.facebook.com/v23.0/{PHONE_NUMBER_ID}/messages",
+            headers={"Authorization": f"Bearer {META_TOKEN}", "Content-Type": "application/json"},
+            json=payload, timeout=15)
+        if r.status_code >= 400:
+            import logging
+            logging.getLogger("circa").error(f"[WA template error] {template_name}: {r.status_code} {r.text}")
+            return {"ok": False, "error": r.text}
+        return {"ok": True, "response": r.json()}
+    except Exception as e:
+        import logging
+        logging.getLogger("circa").error(f"[WA template error] {template_name}: {e}")
+        return {"ok": False, "error": str(e)}
+
+
 class StatusUpdate(BaseModel):
     nuevo_estado: str
 
@@ -507,41 +568,90 @@ async def admin_analytics_resumen(
 
 @router.post("/admin/cobranza/{pedido_id}")
 async def admin_send_cobranza(pedido_id: str, admin: bool = Depends(verify_admin)):
-    """Manually send payment reminder to bodeguero."""
-    rows = _sb_get("pedidos", {"select":"*","id":f"eq.{pedido_id}"})
+    """Envia el recordatorio de pago al bodeguero usando la plantilla aprobada de
+    Meta que corresponde al dia de cobranza (2 / 4 / 6 dias desde el despacho)."""
+    from datetime import datetime, timezone, timedelta
+
+    rows = _sb_get("pedidos", {"select": "*", "id": f"eq.{pedido_id}"})
     if not rows:
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
     ped = rows[0]
-    bid = ped.get("bodega_id","")
+    bid = ped.get("bodega_id", "")
+
+    # ── Datos de la bodega ──
     try:
-        b_rows = _sb_get("bodegas", {"select":"telefono_whatsapp,nombre_comercial","id":f"eq.{bid}"})
-        tel = b_rows[0].get("telefono_whatsapp","") if b_rows else ""
-    except:
-        tel = ""
+        b_rows = _sb_get("bodegas", {
+            "select": "telefono_whatsapp,nombre_comercial,representante_nombre_corto,linea_aprobada",
+            "id": f"eq.{bid}"})
+        bodega = b_rows[0] if b_rows else {}
+    except Exception:
+        bodega = {}
+    tel = bodega.get("telefono_whatsapp", "")
     if not tel:
         raise HTTPException(status_code=400, detail="Bodega sin telefono")
-    monto_fin = ped.get("monto_financiado") or 0
-    fee = ped.get("fee_monto") or 0
-    total_credito = round(monto_fin + fee, 2)
+
+    # ── Valores para las variables de la plantilla ──
+    monto_fin = float(ped.get("monto_financiado") or 0)
+    fee = float(ped.get("fee_monto") or 0)
+    cuota = float(ped.get("monto_total_credito") or 0) or round(monto_fin + fee, 2)
+    if cuota <= 0:
+        raise HTTPException(status_code=400, detail="Este pedido no tiene saldo financiado por cobrar")
+    linea = float(bodega.get("linea_aprobada") or 0)
+    nombre = (bodega.get("representante_nombre_corto") or bodega.get("nombre_comercial") or "").strip()
+
+    # Fecha de vencimiento (entrega + plazo). Se normaliza a DD/MM/AAAA.
     plazo = ped.get("plazo_dias") or 7
-    venc = ped.get("fecha_vencimiento") or "Por definir"
-    num = ped.get("numero", "")
-    reminder = (
-        f"\U0001f4b3 *Recordatorio de pago — Circa*\n"
-        f"\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\n"
-        f"Pedido: *{num}*\n"
-        f"Monto financiado: S/{monto_fin:.2f}\n"
-        f"Fee: S/{fee:.2f}\n"
-        f"*Total a pagar: S/{total_credito:.2f}*\n\n"
-        f"Vence: *{venc}*\n\n"
-        f"\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n"
-        f"Paga por Yape o Plin al:\n"
-        f"\U0001f4f1 *986311567*\n"
-        f"\U0001f464 PALI SAC\n\n"
-        f"Escribe *YA PAGUE* en este chat."
-    )
-    _send_wa_text(tel, reminder)
-    return {"ok": True, "enviado_a": tel, "pedido": num}
+    vence_str = ped.get("fecha_vencimiento") or ""
+    fecha_entregado = ped.get("fecha_entregado") or ped.get("created_at")
+    if not vence_str and fecha_entregado:
+        try:
+            fe = datetime.fromisoformat(fecha_entregado.replace("Z", "+00:00"))
+            vence_str = (fe + timedelta(days=plazo)).strftime("%d/%m/%Y")
+        except Exception:
+            vence_str = ""
+    try:
+        if vence_str and len(vence_str) == 10 and vence_str[4] == "-":
+            vence_str = datetime.fromisoformat(vence_str).strftime("%d/%m/%Y")
+    except Exception:
+        pass
+
+    # ── Elegir plantilla segun dias transcurridos desde el despacho ──
+    fecha_ref = ped.get("fecha_despachado") or ped.get("fecha_entregado") or ped.get("created_at")
+    dias = 0
+    if fecha_ref:
+        try:
+            fr = datetime.fromisoformat(fecha_ref.replace("Z", "+00:00"))
+            dias = (datetime.now(timezone.utc) - fr).days
+        except Exception:
+            dias = 0
+    if dias <= 3:
+        tkey = "dia2"
+    elif dias <= 5:
+        tkey = "dia4"
+    else:
+        tkey = "dia6"
+    tpl = COBRANZA_TEMPLATES[tkey]
+
+    # ── Armar las variables en el orden EXACTO de la plantilla elegida ──
+    valores = {
+        "nombre": nombre or "estimado cliente",
+        "cuota": _fmt_monto(cuota),
+        "vence": vence_str or "tu fecha de vencimiento",
+        "linea": _fmt_monto(linea),
+    }
+    variables = [valores[v] for v in tpl["vars"]]
+
+    resultado = _send_wa_template(tel, tpl["name"], tpl["lang"], variables)
+    if not resultado.get("ok"):
+        raise HTTPException(status_code=502, detail=f"Meta rechazo el envio: {resultado.get('error')}")
+
+    return {
+        "ok": True,
+        "enviado_a": tel,
+        "pedido": ped.get("numero", ""),
+        "plantilla": tpl["name"],
+        "dias_desde_despacho": dias,
+    }
 
 # ===================== COBRANZAS =====================
 
