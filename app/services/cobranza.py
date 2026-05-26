@@ -469,7 +469,7 @@ async def emitir_comprobante_circa(pedido: dict) -> None:
             .select(
                 "id,ruc,razon_social,nombre_comercial,direccion_fiscal,"
                 "distrito,dni_representante,solo_dni_sin_ruc,"
-                "email_facturacion,tipo_comprobante_preferido"
+                "email_facturacion,tipo_comprobante_preferido,telefono_whatsapp"
             )
             .eq("id", pedido["bodega_id"])
             .limit(1)
@@ -624,6 +624,29 @@ async def emitir_comprobante_circa(pedido: dict) -> None:
             f"{serie}-{numero}, pedido {numero_pedido}, "
             f"total S/{total:.2f}, sunat={sunat_estado}"
         )
+
+        # Enviar el comprobante a la bodega por WhatsApp (no bloqueante).
+        try:
+            telefono = (bodega.get("telefono_whatsapp") or "").strip()
+            if telefono and pdf_url:
+                tipo_label = "Factura" if tipo == "factura" else "Boleta"
+                await meta_client.send_document(
+                    telefono,
+                    pdf_url,
+                    filename=f"Comprobante_Circa_{serie}-{numero}.pdf",
+                    caption=(
+                        f"Aquí está tu comprobante por el servicio de "
+                        f"plataforma Circa: {tipo_label} {serie}-{numero}."
+                    ),
+                )
+                logger.info(
+                    f"Comprobante {serie}-{numero} enviado por WhatsApp a {telefono}"
+                )
+        except Exception as e_wa:
+            logger.error(
+                f"No se pudo enviar el comprobante por WhatsApp "
+                f"(pedido {numero_pedido}): {e_wa}"
+            )
 
     except Exception as e:
         # Nunca bloquear la confirmacion de pago: registrar el error.
