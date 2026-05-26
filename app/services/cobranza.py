@@ -314,8 +314,8 @@ except ImportError:  # pragma: no cover
 
 # Series de comprobantes en NubeFact (4 caracteres exactos).
 # Factura empieza con "F", boleta con "B".
-NUBEFACT_SERIE_FACTURA = "F001"
-NUBEFACT_SERIE_BOLETA = "B001"
+NUBEFACT_SERIE_FACTURA = "FFF1"
+NUBEFACT_SERIE_BOLETA = "BBB1"
 
 # Texto del concepto que aparece en el comprobante (servicio afecto a IGV 18%).
 CIRCA_FEE_CONCEPTO = "Servicio de uso de plataforma Circa"
