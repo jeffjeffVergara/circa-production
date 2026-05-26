@@ -662,7 +662,7 @@ function openVerificarPago(pid){
   if(!c) return;
   var b = c.bodega || {};
   document.getElementById('modalContainer').innerHTML = 
-  '<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal"><h3>💵 Verificar pago</h3>'+
+  '<div class="modal-overlay open" onclick="if(event.target===this)closeModal()"><div class="modal"><h3>💵 Verificar pago</h3>'+
   '<div class="modal-info">'+
   '<div class="modal-info-row"><span>Pedido:</span><strong>'+(c.numero||'-')+'</strong></div>'+
   '<div class="modal-info-row"><span>Bodega:</span><strong>'+(b.nombre_comercial||'?')+'</strong></div>'+
