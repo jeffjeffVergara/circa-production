@@ -916,6 +916,12 @@ async def admin_verificar_pago(pedido_id: str, payload: dict, admin: bool = Depe
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
     ped = rows[0]
     
+    # Idempotencia: si el pedido ya esta pagado, no reprocesar.
+    # Evita recargar la linea 2x y mandar el mensaje "Pago verificado" duplicado.
+    if (ped.get("estado") or "").lower() == "pagado":
+        return {"ok": True, "already_paid": True, "pedido": ped.get("numero"),
+                "mensaje": "Este pedido ya estaba marcado como pagado."}
+    
     monto_financiado = float(ped.get("monto_financiado") or 0)
     bodega_id = ped.get("bodega_id")
     
@@ -975,7 +981,7 @@ async def admin_verificar_pago(pedido_id: str, payload: dict, admin: bool = Depe
     
     # Restore bodega line
     if bodega_id and monto_financiado > 0:
-        bod = _sb_get("bodegas", {"select":"linea_disponible,telefono_whatsapp,nombre_comercial","id":f"eq.{bodega_id}"})
+        bod = _sb_get("bodegas", {"select":"linea_disponible,linea_aprobada,telefono_whatsapp,nombre_comercial","id":f"eq.{bodega_id}"})
         if bod:
             nueva_linea = float(bod[0].get("linea_disponible") or 0) + monto_financiado
             nueva_linea = min(nueva_linea, bod[0].get('linea_aprobada', nueva_linea))  # Cap
