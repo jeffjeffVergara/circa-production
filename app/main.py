@@ -606,7 +606,7 @@ async def meta_webhook_incoming(request: Request):
                         telefono,
                         bod_id,
                         tipo_operacion=tipo_op,
-                        load_saved_cart=True,
+                        edit_cart=True,
                         catalog_prompt=(
                             "¡Aquí seguimos!\n"
                             "Tu pre-venta te está esperando en el catálogo: revísala con calma y confírmala cuando quieras."
@@ -665,17 +665,13 @@ async def meta_webhook_incoming(request: Request):
             try:
                 bod = db.sb.table("bodegas").select("id").eq("telefono_whatsapp", telefono).limit(1).execute()
                 bod_id = bod.data[0]["id"] if bod.data else None
-                r = (
-                    db.sb.table("pedidos")
-                    .select("id, monto_productos")
-                    .eq("bodega_id", bod_id)
-                    .in_("estado", ["borrador", "preventa_borrador"])
-                    .order("created_at", desc=True)
-                    .limit(1)
-                    .execute()
-                ) if bod_id else type("X",(),{"data":[]})()
-                if r.data:
-                    pedido = r.data[0]
+                pedido_short = btn.split("_", 1)[1] if "_" in btn else ""
+                pedido = (
+                    db.get_pedido_borrador_por_prefijo(bod_id, pedido_short)
+                    if bod_id and pedido_short
+                    else None
+                )
+                if pedido:
                     monto = pedido["monto_productos"]
                     # Store intent in session, ask PIN
                     db.sb.table("sesiones").delete().eq("telefono", telefono).execute()
@@ -717,17 +713,17 @@ async def meta_webhook_incoming(request: Request):
                 fin_amt = int(monto_match.group(1)) if monto_match else 0
                 bod = db.sb.table("bodegas").select("id, linea_disponible").eq("telefono_whatsapp", telefono).limit(1).execute()
                 bod_id = bod.data[0]["id"] if bod.data else None
-                r = (
-                    db.sb.table("pedidos")
-                    .select("id, monto_productos, total_pedido, origen")
-                    .eq("bodega_id", bod_id)
-                    .in_("estado", ["borrador", "preventa_borrador", "preventa_confirmada"])
-                    .order("created_at", desc=True)
-                    .limit(1)
-                    .execute()
-                ) if bod_id else type("X",(),{"data":[]})()
-                if r.data and fin_amt > 0:
-                    pedido = r.data[0]
+                pedido_short = btn.rsplit("_", 1)[-1] if "_" in btn else ""
+                pedido = (
+                    db.get_pedido_borrador_por_prefijo(
+                        bod_id,
+                        pedido_short,
+                        ("borrador", "preventa_borrador", "preventa_confirmada"),
+                    )
+                    if bod_id and pedido_short
+                    else None
+                )
+                if pedido and fin_amt > 0:
                     # Para preventa DIMAX, total_pedido es la fuente de verdad
                     # (monto_productos puede tener subtotales sin descuento DIMAX)
                     total = float(pedido.get("total_pedido") or pedido.get("monto_productos") or 0)
@@ -761,17 +757,13 @@ async def meta_webhook_incoming(request: Request):
                 bod = db.sb.table("bodegas").select("id, linea_disponible").eq("telefono_whatsapp", telefono).limit(1).execute()
                 bod_id = bod.data[0]["id"] if bod.data else None
                 linea = bod.data[0].get("linea_disponible", 0) if bod.data else 0
-                r = (
-                    db.sb.table("pedidos")
-                    .select("id, monto_productos")
-                    .eq("bodega_id", bod_id)
-                    .in_("estado", ["borrador", "preventa_borrador"])
-                    .order("created_at", desc=True)
-                    .limit(1)
-                    .execute()
-                ) if bod_id else type("X",(),{"data":[]})()
-                if r.data:
-                    pedido = r.data[0]
+                pedido_short = btn.rsplit("_", 1)[-1] if "_" in btn else ""
+                pedido = (
+                    db.get_pedido_borrador_por_prefijo(bod_id, pedido_short)
+                    if bod_id and pedido_short
+                    else None
+                )
+                if pedido:
                     total = pedido["monto_productos"]
                     if btn.startswith("FIN100_"):
                         fin_amt = min(linea, total)
@@ -858,7 +850,9 @@ async def meta_webhook_incoming(request: Request):
             try:
                 bodega_ped = db.get_bodega_by_phone(telefono)
                 if bodega_ped:
-                    await meta_client.send_catalogo_flow(telefono, bodega_ped["id"], tipo_operacion="venta")
+                    await meta_client.send_catalogo_flow(
+                        telefono, bodega_ped["id"], tipo_operacion="venta", fresh=True
+                    )
                 else:
                     await meta_client.send_text(telefono, "Escribe MENU para empezar.")
             except Exception as e:
@@ -870,7 +864,9 @@ async def meta_webhook_incoming(request: Request):
             try:
                 bodega_pv = db.get_bodega_by_phone(telefono)
                 if bodega_pv:
-                    await meta_client.send_catalogo_flow(telefono, bodega_pv["id"], tipo_operacion="preventa")
+                    await meta_client.send_catalogo_flow(
+                        telefono, bodega_pv["id"], tipo_operacion="preventa", fresh=True
+                    )
                 else:
                     await meta_client.send_text(telefono, "Escribe MENU para empezar.")
             except Exception as e:
@@ -887,16 +883,12 @@ async def meta_webhook_incoming(request: Request):
                     items = db.get_items_para_repetir(bodega_rep)
                     if items:
                         db.save_carrito(bodega_rep["id"], items)
-                        await meta_client.send_text(
-                            telefono,
-                            "¡Listo! 👋 Ya te cargamos tu último pedido.\nAbajo tienes el botón para abrirlo en el catálogo.",
-                        )
                         await meta_client.send_catalogo_flow(
                             telefono,
                             bodega_rep["id"],
                             tipo_operacion="venta",
                             load_saved_cart=True,
-                            catalog_prompt="👇",
+                            catalog_prompt=meta_client.CATALOGO_CTA_BODY_REPETIR,
                         )
                     else:
                         await meta_client.send_text(
@@ -1079,6 +1071,7 @@ async def meta_webhook_incoming(request: Request):
                                             f"Vence: {venc}\n\n"
                                             "Recibirás novedades por WhatsApp.",
                                         )
+                                        db.clear_carrito(bod_id)
                                         db.sb.table("sesiones").update(
                                             {"fase": "menu", "datos": "{}"}).eq("telefono", telefono).execute()
                                         logger.info(f"Order {pedido_id} confirmed via PIN (financiado)")
@@ -1115,6 +1108,7 @@ async def meta_webhook_incoming(request: Request):
                                         "Pagas al recibir tu pedido, sin cargo extra de plazo.\n\n"
                                         "Tu distribuidor preparará tu pedido.",
                                     )
+                                    db.clear_carrito(bod_id)
                                     db.sb.table("sesiones").update(
                                         {"fase": "menu", "datos": "{}"}).eq("telefono", telefono).execute()
                                     logger.info(f"Order {pedido_id} confirmed via PIN (contado)")
@@ -1585,7 +1579,10 @@ async def submit_cart(data: CartSubmission):
     }).execute()
     pedido_id = pedido.data[0]["id"] if pedido.data else None
     if pedido_id:
-        # Persist cart so "Editar carrito" (catalog with repeat=1) can reload line items.
+        db.cerrar_borradores_abiertos(
+            data.bodega_id, tipo, except_pedido_id=str(pedido_id)
+        )
+        # Persist cart so "Editar carrito" (edit=1) can reload line items.
         db.save_carrito(data.bodega_id, items_list)
         track_event(
             "preventa_created" if tipo == "preventa" else "order_created",

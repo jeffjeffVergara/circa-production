@@ -184,6 +184,57 @@ def clear_carrito(bodega_id: str):
     sb.table("carritos").delete().eq("bodega_id", bodega_id).execute()
 
 
+def cerrar_borradores_abiertos(
+    bodega_id: str,
+    tipo_operacion: str = "venta",
+    *,
+    except_pedido_id: str | None = None,
+) -> None:
+    """Marca borradores previos como rechazado al crear un pedido nuevo."""
+    estado = "preventa_borrador" if tipo_operacion == "preventa" else "borrador"
+    try:
+        q = (
+            sb.table("pedidos")
+            .update({"estado": "rechazado"})
+            .eq("bodega_id", bodega_id)
+            .eq("estado", estado)
+        )
+        if except_pedido_id:
+            q = q.neq("id", except_pedido_id)
+        q.execute()
+    except Exception as e:
+        logger_db.warning("cerrar_borradores_abiertos: %s", e)
+
+
+def get_pedido_borrador_por_prefijo(
+    bodega_id: str,
+    id_prefix: str,
+    estados: tuple[str, ...] = ("borrador", "preventa_borrador", "preventa_confirmada"),
+) -> dict | None:
+    """Resuelve pedido por los primeros 8 chars del UUID (botones WhatsApp)."""
+    if not bodega_id or not id_prefix:
+        return None
+    prefix = str(id_prefix).strip().lower()
+    try:
+        rows = (
+            sb.table("pedidos")
+            .select("id, monto_productos, total_pedido, tipo_operacion, estado")
+            .eq("bodega_id", bodega_id)
+            .in_("estado", list(estados))
+            .order("created_at", desc=True)
+            .limit(20)
+            .execute()
+            .data
+            or []
+        )
+        for row in rows:
+            if str(row.get("id", "")).lower().startswith(prefix):
+                return row
+    except Exception as e:
+        logger_db.warning("get_pedido_borrador_por_prefijo: %s", e)
+    return None
+
+
 # Estados de pedidos **venta** ya confirmados (excluye borrador y todo preventa por tipo_operacion).
 ESTADOS_REPETIR_VENTA = (
     "confirmado",

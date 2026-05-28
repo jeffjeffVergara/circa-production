@@ -66,9 +66,11 @@ html,body{height:100%;font-family:'Plus Jakarta Sans',sans-serif;background:var(
 .dfl{font-size:13px;color:var(--t2)}.dfv{font-size:20px;font-weight:800;color:var(--accent)}
 .dfli{font-size:11px;margin-bottom:10px;font-weight:600}
 .dfli.ok{color:var(--cta)}.dfli.warn{color:#ffa502}.dfli.bad{color:var(--danger)}
-.btn-row{display:flex;gap:8px}
+.btn-row{display:flex;gap:10px;align-items:stretch}
 .btn-sec{flex:1;padding:12px;border-radius:var(--rs);background:var(--card);color:var(--t2);font-size:13px;font-weight:600;border:1px solid var(--brd);cursor:pointer;font-family:inherit;text-align:center}
-.btn-pri{flex:2;padding:12px;border-radius:var(--rs);background:var(--cta);color:var(--bg);font-size:14px;font-weight:700;border:none;cursor:pointer;font-family:inherit}
+.btn-edit{flex:1;padding:12px 10px;border-radius:var(--rs);background:rgba(0,194,255,.14);color:#7ee8ff;font-size:13px;font-weight:700;border:2px solid rgba(0,194,255,.65);cursor:pointer;font-family:inherit;text-align:center;min-height:48px;box-shadow:0 2px 12px rgba(0,194,255,.2),inset 0 1px 0 rgba(255,255,255,.08);letter-spacing:.01em;-webkit-tap-highlight-color:transparent}
+.btn-edit:active{transform:scale(.98);background:rgba(0,194,255,.22)}
+.btn-pri{flex:2;padding:12px;border-radius:var(--rs);background:linear-gradient(135deg,#00e6b8 0%,var(--cta) 100%);color:#04251f;font-size:14px;font-weight:700;border:none;cursor:pointer;font-family:inherit;min-height:48px;box-shadow:0 4px 14px rgba(0,212,170,.35)}
 .btn-pri:disabled{opacity:.5}
 .fin-section{background:var(--card);border-radius:var(--r);padding:14px;margin:10px 0}
 .fin-title{font-size:13px;font-weight:700;margin-bottom:8px;color:var(--t1)}
@@ -240,8 +242,7 @@ async function loadCartFromServer(){
   });
   normalizeLoadedCartUnits();
   uC();evaluarPromos();
-  var fromRepeat=QS.get('repeat')==='1';
-  if(fromRepeat){
+  if(QS.get('repeat')==='1'){
    toast(cart.length+' producto(s) del pedido anterior');
    setTimeout(function(){openD()},500);
   }
@@ -256,7 +257,17 @@ async function init(){
    fetch(API+'/api/bodegas/'+BID).then(function(r){return r.json()}).catch(function(){return null})]);
   P=r[0].filter(function(p){return p.activo});
   if(r[1]){linea=r[1].linea_disponible||0;$('bN').textContent=r[1].nombre_comercial||'';$('hL').textContent='S/'+linea.toFixed(2);document.getElementById('backBtn').style.display='inline-block'}
-  await loadCartFromServer();
+  var fromRepeat=QS.get('repeat')==='1';
+  var fromEdit=QS.get('edit')==='1';
+  var isFresh=QS.get('fresh')==='1';
+  if(isFresh){
+   cart=[];
+   if(BID){
+    await fetch(API+'/api/carrito/clear',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({bodega_id:BID})}).catch(function(){});
+   }
+  }else if(fromRepeat||fromEdit){
+   await loadCartFromServer();
+  }
   // Build categories from actual data
   var catSet={};P.forEach(function(p){var c=p.categoria||'Otros';catSet[c]=(catSet[c]||0)+1});
   CATS=['Todos'].concat(Object.keys(catSet).sort(function(a,b){return catSet[b]-catSet[a]}));
@@ -528,7 +539,7 @@ function rD(){
    cart.map(function(c){return'<div class="fin-row"><span class="lbl">'+c.qty+'x '+esc(c.nombre).slice(0,28)+'</span><span class="val">'+fmt(c.precio*c.qty)+'</span></div>'}).join('')+
    '<div class="fin-row" style="border-top:1px solid var(--brd);padding-top:6px;margin-top:4px"><span class="lbl"><b>Total del pedido</b></span><span class="val hl"><b>'+fmt(t)+'</b></span></div></div>'+
    '<div style="text-align:center;padding:10px 0;font-size:12px;color:var(--t2)">En el siguiente paso te ayudamos<br>a financiar tu compra con Circa</div>';
-  $('dF').innerHTML='<div class="btn-row"><button class="btn-sec" onclick="step=\'cart\';rD()">Editar pedido</button><button class="btn-pri" id="cfB" onclick="cfmOrder()">Continuar pedido</button></div>';
+  $('dF').innerHTML='<div class="btn-row"><button type="button" class="btn-edit" onclick="step=\'cart\';rD()">✏️ Editar pedido</button><button type="button" class="btn-pri" id="cfB" onclick="cfmOrder()">Continuar pedido</button></div>';
  }
 }
 function dQ(id,d,u){cQ(id,d,u);if(!cart.length)closeD();else rD()}

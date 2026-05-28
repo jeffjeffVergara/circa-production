@@ -59,8 +59,19 @@ def _app_base_url() -> str:
 def _bot_wa_number() -> str:
     return TWILIO_FROM.replace("whatsapp:", "").replace("+", "").strip()
 
-def get_catalog_url(bodega_id: str) -> str:
-    return f"{_app_base_url()}/catalogo-v2?b={bodega_id}"
+def get_catalog_url(
+    bodega_id: str,
+    *,
+    tipo: str = "venta",
+    fresh: bool = False,
+    repeat: bool = False,
+    edit: bool = False,
+) -> str:
+    from app.services.catalog_urls import build_catalog_v2_url
+
+    return build_catalog_v2_url(
+        bodega_id, tipo=tipo, fresh=fresh, repeat=repeat, edit=edit
+    )
 
 def get_pin_url(bodega_id: str, mode: str = "confirm") -> str:
     return f"{_app_base_url()}/pin?b={bodega_id}&mode={mode}&to={_bot_wa_number()}"
@@ -688,7 +699,7 @@ En menos de 24 horas validamos tu solicitud y activamos tu línea. Empiezas comp
 
         if body_n in ("PEDIDO", "PEDIR", "COMPRAR", "1", "pedido"):
             db.clear_carrito(bodega["id"])  # Fresh order = empty cart
-            url = get_catalog_url(bodega["id"]) + "&t=venta"
+            url = get_catalog_url(bodega["id"], tipo="venta", fresh=True)
             db.upsert_session(telefono, "catalogo", {"cart": []}, bodega["id"])
             return [
                 f"📦 *¡Vamos con tu pedido!*\n\n"
@@ -699,7 +710,7 @@ En menos de 24 horas validamos tu solicitud y activamos tu línea. Empiezas comp
 
         if body_n in ("PREVENTA", "PRE-VENTA", "PRE VENTA", "5"):
             db.clear_carrito(bodega["id"])
-            url = get_catalog_url(bodega["id"]) + "&t=preventa"
+            url = get_catalog_url(bodega["id"], tipo="preventa", fresh=True)
             db.upsert_session(telefono, "catalogo", {"cart": [], "tipo_operacion": "preventa"}, bodega["id"])
             return [
                 f"🗓️ *¡Sigamos con tu pre-venta!*\n\n"
@@ -711,7 +722,7 @@ En menos de 24 horas validamos tu solicitud y activamos tu línea. Empiezas comp
             items = db.get_items_para_repetir(bodega)
             if items:
                 db.save_carrito(bodega["id"], items)
-                url = get_catalog_url(bodega["id"]) + "&t=venta&repeat=1"
+                url = get_catalog_url(bodega["id"], tipo="venta", repeat=True)
                 db.upsert_session(telefono, "catalogo", {"cart": items}, bodega["id"])
                 return [
                     "¡Listo! 👋 Ya te cargamos tu último pedido.\n\n"

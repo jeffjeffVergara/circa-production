@@ -677,6 +677,10 @@ CATALOGO_CTA_BODY_PREVENTA = (
     "¡Sigamos con tu pre-venta!\n"
     "Entra al catálogo, arma tu lista y confírmala cuando te cuadre todo."
 )
+CATALOGO_CTA_BODY_REPETIR = (
+    "¡Listo! 👋 Ya te cargamos tu último pedido.\n\n"
+    "Ábrelo en el catálogo, ajusta si quieres y confírmalo."
+)
 
 
 async def send_catalogo_flow(
@@ -684,16 +688,26 @@ async def send_catalogo_flow(
     bodega_id: str,
     tipo_operacion: str = "venta",
     *,
+    fresh: bool = False,
     load_saved_cart: bool = False,
+    edit_cart: bool = False,
     catalog_prompt: str | None = None,
 ):
     """Send catalog as CTA URL button - opens in WhatsApp in-app browser."""
-    base = os.getenv("APP_BASE_URL", "https://circa-production-c517.up.railway.app")
+    from app.services import db as _db
+    from app.services.catalog_urls import build_catalog_v2_url
+
     t = "preventa" if tipo_operacion == "preventa" else "venta"
-    q = f"b={bodega_id}&t={t}"
-    if load_saved_cart:
-        q += "&repeat=1"
-    url = f"{base}/catalogo-v2?{q}"
+    if fresh:
+        _db.clear_carrito(bodega_id)
+    if edit_cart:
+        url = build_catalog_v2_url(bodega_id, tipo=t, edit=True)
+    elif load_saved_cart:
+        url = build_catalog_v2_url(bodega_id, tipo=t, repeat=True)
+    elif fresh:
+        url = build_catalog_v2_url(bodega_id, tipo=t, fresh=True)
+    else:
+        url = build_catalog_v2_url(bodega_id, tipo=t)
     if catalog_prompt and catalog_prompt.strip():
         texto = catalog_prompt.strip()
     else:
