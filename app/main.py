@@ -8,12 +8,9 @@ from fastapi import FastAPI, Request, Form, HTTPException
 from fastapi.responses import PlainTextResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
-from app.routes.distribuidor import router as distribuidor_router
-from app.routes.support_inbox import router as support_inbox_router
-from app.routes.vendedor import router as vendedor_router
 from twilio.twiml.messaging_response import MessagingResponse
-from app.state_machine import handle_message
-from app.services.twilio_client import (
+from state_machine import handle_message
+from services.twilio_client import (
     send_whatsapp,
     send_categorias,
     send_productos_bebidas,
@@ -29,54 +26,16 @@ from app.services.twilio_client import (
     send_menu,
     CATEGORY_SENDERS,
 )
-from app.services import db
-from app.services.fees import calculate_fee, format_rate_pct, fee_regimen_para_pedido_nuevo
+from services import db
 from pydantic import BaseModel
-from app.config import TWILIO_FROM
-from datetime import date, timedelta
-from contextlib import asynccontextmanager
-import logging, json, os
+import logging, json
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("circa")
 
-
-@asynccontextmanager
-async def _circa_lifespan(app: FastAPI):
-    task = None
-    try:
-        from app.support.realtime_redis import redis_pubsub_enabled, spawn_subscriber_if_needed
-        from app.support.ws_hub import hub
-
-        if redis_pubsub_enabled():
-            task = spawn_subscriber_if_needed(hub.deliver_local)
-            logger.info("Support realtime: Redis Pub/Sub bridge enabled")
-    except Exception as e:
-        logger.warning("lifespan init (support redis): %s", e)
-    yield
-    try:
-        from app.support.realtime_redis import shutdown_redis_async
-
-        await shutdown_redis_async(task)
-    except Exception as e:
-        logger.warning("lifespan shutdown (support redis): %s", e)
-
-
-app = FastAPI(title="Circa MVP", version="2.3.0", lifespan=_circa_lifespan)
+app = FastAPI(title="Circa MVP", version="2.1.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 app.mount("/static", StaticFiles(directory="static"), name="static")
-app.include_router(distribuidor_router)
-app.include_router(support_inbox_router)
-app.include_router(vendedor_router)
-
-
-def _bot_wa_number() -> str:
-    return TWILIO_FROM.replace("whatsapp:", "").replace("+", "").strip()
-
-def _pin_url(bodega_id: str, mode: str = "confirm") -> str:
-    base = os.getenv("APP_BASE_URL", "http://localhost:8000").rstrip("/")
-    return f"{base}/pin?b={bodega_id}&mode={mode}&to={_bot_wa_number()}"
-
 
 
 # ══════════════════════════════════════════
@@ -100,53 +59,12 @@ def dispatch_signal(telefono: str, signal: dict):
         send_item_agregado(telefono, signal["cantidad"], signal["pack_label"], signal["nombre"], signal["subtotal"], signal["cart_total"])
     elif sig == "CARRITO":
         send_carrito_resumen(telefono, signal["items_text"], signal["total"], signal["financiable"])
-    elif sig == "PREVENTA_PAYMENT_OPTIONS":
-        from app.flows.catalogo import _send_payment_options
-        items = signal["items"]
-        lines_items = []
-        for it in items:
-            cat = it.get("catalogo_distribuidor") or {}
-            prod = cat.get("productos_circa") or {}
-            nombre = (prod.get("nombre") or "Producto")[:38]
-            cant = it.get("cantidad", 0)
-            sub = float(it.get("subtotal") or 0)
-            if sub == 0:
-                lines_items.append(f"▸ {cant}x *{nombre}* 🎁")
-            else:
-                lines_items.append(f"▸ {cant}x *{nombre}*\n   S/{sub:.2f}")
-        items_text = "\n".join(lines_items)
-        asyncio.create_task(_send_payment_options(
-            telefono, signal["pedido_id"], signal["total"], items_text, signal["bodega_id"]
-        ))
     elif sig == "MONTO":
         send_monto_financiar(telefono, signal["linea"], signal["total"], signal["financiable"])
     elif sig == "PLAZO":
         send_plazo(telefono, signal["monto"], signal["fee7"], signal["total7"], signal["fee15"], signal["total15"], signal["fee30"], signal["total30"])
     elif sig == "MENU":
         send_menu(telefono, signal["linea"])
-    elif sig == "FLYER_LINK":
-        base = os.getenv("APP_BASE_URL", "https://circa-production-c517.up.railway.app").rstrip("/")
-        send_whatsapp(
-            telefono,
-            "📄 *Flyer y promos Circa*\n\n"
-            f"Abre aquí: {base}/flyer\n\n"
-            "Cuando termines, escribe *MENU* para volver.",
-        )
-    elif sig == "CONTACT_CIRCA":
-        # Twilio (legacy): texto plano. Si SUPPORT_INBOX_DISABLED, fallback wa.me (CIRCA_SOPORTE_WHATSAPP).
-        link = signal.get("wa_link") or ""
-        if link:
-            send_whatsapp(
-                telefono,
-                "📞 *Habla con Circa*\n\n"
-                f"Abre: {link}\n\n"
-                "Cuando termines, escribe MENU para volver.",
-            )
-        else:
-            send_whatsapp(
-                telefono,
-                "📞 Contacto Circa aún no configurado. Escribe MENU o habla con tu distribuidor.",
-            )
     else:
         logger.warning(f"Unknown signal: {sig}")
         send_whatsapp(telefono, "⚠️ Error interno. Escribe MENU para volver.")
@@ -183,24 +101,6 @@ async def twilio_webhook(
     )
 
     try:
-        # Misma cola de soporte humano que Meta (inbox interno), antes del state machine.
-        tel_sup = telefono.strip()
-        if not tel_sup.startswith("+"):
-            tel_sup = f"+{tel_sup}"
-        bodega_tw = db.get_bodega_by_phone(telefono) or db.get_bodega_by_phone(tel_sup)
-        from app.support.webhook_gate import process_meta_inbound
-
-        sup_tw = await process_meta_inbound(
-            telefono=tel_sup,
-            body_text=body,
-            msg={"message_id": "", "type": "text", "list_id": body},
-            bodega_id=bodega_tw.get("id") if bodega_tw else None,
-            contact_name=None,
-        )
-        if sup_tw.skip_remaining_handlers:
-            twiml = MessagingResponse()
-            return PlainTextResponse(str(twiml), media_type="text/xml")
-
         responses = handle_message(telefono, body, media_url)
 
         for resp in responses:
@@ -224,9 +124,6 @@ async def twilio_webhook(
         return PlainTextResponse(str(twiml), media_type="text/xml")
 
     except Exception as e:
-        import traceback
-        print(f"❌ WEBHOOK ERROR: {type(e).__name__}: {e}", flush=True)
-        print(traceback.format_exc(), flush=True)
         logger.error(f"❌ Error: {e}", exc_info=True)
         try:
             send_whatsapp(telefono, "⚠️ Hubo un error. Intenta de nuevo en un momento.")
@@ -240,1023 +137,9 @@ async def twilio_webhook(
 # API ENDPOINTS
 # ══════════════════════════════════════════
 
-async def _gen_order_number(bodega_id, tipo_operacion: str = "venta"):
-    """Generate next order number: PREFIX-NNNNN-SSS.
-
-    NNNNN es el codigo de afiliado de la bodega (CIRCA-NNNNN) y SSS es el
-    correlativo por bodega. Ej: CRC-00042-003 = tercer pedido de CIRCA-00042.
-    """
-    prefix = "PRV" if tipo_operacion == "preventa" else "CRC"
-
-    # Segmento de afiliado: los digitos del codigo_afiliado de la bodega
-    afil = "TEST"
-    try:
-        b = (
-            db.sb.table("bodegas")
-            .select("codigo_afiliado")
-            .eq("id", bodega_id)
-            .limit(1)
-            .execute()
-        )
-        codigo = b.data[0].get("codigo_afiliado") if b.data else None
-        if codigo and codigo.startswith("CIRCA-"):
-            afil = codigo.split("-")[1]
-    except Exception as e:
-        logger.error(f"_gen_order_number: error leyendo codigo_afiliado de {bodega_id}: {e}")
-
-    # Correlativo por bodega y tipo de operacion
-    n = 1
-    try:
-        r = (
-            db.sb.table("pedidos")
-            .select("numero")
-            .eq("bodega_id", bodega_id)
-            .eq("tipo_operacion", tipo_operacion)
-            .not_.is_("numero", "null")
-            .order("created_at", desc=True)
-            .limit(1)
-            .execute()
-        )
-        if r.data and r.data[0].get("numero"):
-            partes = r.data[0]["numero"].split("-")
-            # Solo continua el correlativo si el ultimo numero ya usa el
-            # formato nuevo (3 partes). Si era formato viejo, arranca en 1.
-            if len(partes) == 3 and partes[2].isdigit():
-                n = int(partes[2]) + 1
-    except Exception as e:
-        logger.error(f"_gen_order_number: error leyendo correlativo de {bodega_id}: {e}")
-
-    return f"{prefix}-{afil}-{n:03d}"
-
-
-def _is_draft_status(estado: str) -> bool:
-    return estado in ("borrador", "preventa_borrador")
-
-
-def _confirmed_status_for(tipo_operacion: str) -> str:
-    return "preventa_confirmada" if tipo_operacion == "preventa" else "confirmado"
-
-
 @app.get("/api/health")
 async def health():
-    return {"status": "ok", "service": "circa-mvp", "version": "2.3.0"}
-
-@app.get("/privacy")
-async def privacy():
-    return PlainTextResponse("""
-POLÍTICA DE PRIVACIDAD — CIRCA (PALI S.A.C.)
-Última actualización: 28 de abril de 2026
-
-Circa, operado por PALI S.A.C. (RUC 20600627806), recopila datos personales (RUC, DNI, nombre, dirección, teléfono, historial de pedidos y pagos) exclusivamente para la evaluación crediticia, gestión de pedidos y cobranza. Los datos son almacenados en servidores seguros y no se comparten con terceros sin consentimiento, salvo requerimiento legal. El usuario puede ejercer sus derechos ARCO escribiendo a contacto@circa.pe. Cumplimos con la Ley 29733 de Protección de Datos Personales del Perú.
-
-Contacto: contacto@circa.pe | +51 986 311 567
-""", media_type="text/plain; charset=utf-8")
-
-@app.get("/terms")
-async def terms():
-    return PlainTextResponse("""
-CONDICIONES DEL SERVICIO — CIRCA (PALI S.A.C.)
-Última actualización: 20 de mayo de 2026
-
-Circa es una plataforma de crédito embebido para bodegas peruanas operada por PALI S.A.C. Al usar el servicio, el usuario acepta las condiciones del contrato de línea de crédito revolving. En nuevas operaciones, la comisión se fija al confirmar el pedido según el plan elegido: 7 días (1.4%), 15 días (3%), 30 días (6%), con comisión mínima de S/1.00 por operación. El pago dentro del plazo no modifica el monto acordado. Tras el vencimiento del plan, aplica mora de 0.03% diaria sobre el saldo adeudado. Las operaciones ya originadas conservan los montos acordados en su confirmación. Jurisdicción: Lima, Perú.
-
-Contacto: contacto@circa.pe | +51 986 311 567
-""", media_type="text/plain; charset=utf-8")
-
-@app.get("/data-deletion")
-@app.post("/data-deletion")
-async def data_deletion(request: Request = None):
-    return PlainTextResponse("""
-ELIMINACIÓN DE DATOS — CIRCA (PALI S.A.C.)
-
-Para solicitar la eliminación de tus datos personales, envía un mensaje a contacto@circa.pe con tu RUC y número de teléfono. Procesaremos tu solicitud en un plazo máximo de 30 días hábiles conforme a la Ley 29733.
-
-Contacto: contacto@circa.pe | +51 986 311 567
-""", media_type="text/plain; charset=utf-8")
-
-@app.get("/delete")
-@app.post("/delete")
-async def data_deletion_short(request: Request = None):
-    return await data_deletion(request)
-
-@app.get("/api/debug")
-async def debug_check():
-    """Temporary debug endpoint — remove after fixing."""
-    import os
-    key = os.getenv("SUPABASE_SERVICE_KEY", "")
-    url = os.getenv("SUPABASE_URL", "")
-    results = {
-        "_key_info": {
-            "length": len(key),
-            "first_20": key[:20],
-            "last_10": key[-10:] if len(key) > 10 else key,
-            "has_newlines": "\n" in key,
-            "has_spaces": " " in key,
-            "url": url,
-        }
-    }
-    tables = ["sesiones", "bodegas"]
-    for t in tables:
-        try:
-            r = db.sb.table(t).select("*").limit(1).execute()
-            results[t] = {"ok": True, "rows": len(r.data)}
-        except Exception as e:
-            results[t] = {"ok": False, "error": str(e)[:200]}
-    return results
-
-# ══════════════════════════════════════════════
-# WHATSAPP FLOW ENDPOINTS (Dynamic Data Exchange)
-# ══════════════════════════════════════════════
-
-@app.post("/flows/onboarding")
-async def flow_onboarding(request: Request):
-    """Dynamic endpoint for the Onboarding WhatsApp Flow."""
-    from app.flows.crypto import decrypt_request, encrypt_response
-    from app.flows.onboarding import handle_onboarding
-    
-    try:
-        body = await request.json()
-        flow_data, aes_key, iv = decrypt_request(
-            body["encrypted_flow_data"],
-            body["encrypted_aes_key"],
-            body["initial_vector"],
-        )
-        
-        # Handle the flow logic
-        response_data = await handle_onboarding(flow_data)
-        
-        # Encrypt and return
-        encrypted = encrypt_response(response_data, aes_key, iv)
-        return PlainTextResponse(encrypted)
-    
-    except Exception as e:
-        logger.error(f"Flow onboarding error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/flows/catalogo")
-async def flow_catalogo(request: Request):
-    """Dynamic endpoint for the Catálogo WhatsApp Flow."""
-    from app.flows.crypto import decrypt_request, encrypt_response
-    from app.flows.catalogo import handle_catalogo
-    
-    try:
-        body = await request.json()
-        flow_data, aes_key, iv = decrypt_request(
-            body["encrypted_flow_data"],
-            body["encrypted_aes_key"],
-            body["initial_vector"],
-        )
-        
-        # Handle the flow logic
-        response_data = await handle_catalogo(flow_data)
-        logger.info(f"RESPONSE TO ENCRYPT: {json.dumps(response_data, default=str)}")
-        
-        # Encrypt and return
-        encrypted = encrypt_response(response_data, aes_key, iv)
-        return PlainTextResponse(encrypted)
-    
-    except Exception as e:
-        logger.error(f"Flow catalogo error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/flows/pin")
-async def flow_pin(request: Request):
-    """Dynamic endpoint for the PIN creation WhatsApp Flow."""
-    from app.flows.crypto import decrypt_request, encrypt_response
-    from app.flows.pin_flow import handle_pin_flow
-    
-    try:
-        body = await request.json()
-        flow_data, aes_key, iv = decrypt_request(
-            body["encrypted_flow_data"],
-            body["encrypted_aes_key"],
-            body["initial_vector"],
-        )
-        
-        response_data = await handle_pin_flow(flow_data)
-        
-        encrypted = encrypt_response(response_data, aes_key, iv)
-        return PlainTextResponse(encrypted)
-    
-    except Exception as e:
-        logger.error(f"Flow PIN error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-# ══════════════════════════════════════════════
-# META CLOUD API WEBHOOK (replaces Twilio webhook)
-# ══════════════════════════════════════════════
-
-@app.get("/webhook/meta")
-async def meta_webhook_verify(request: Request):
-    """Verify webhook subscription from Meta."""
-    from app.services.meta_webhook import verify_webhook
-    
-    mode = request.query_params.get("hub.mode", "")
-    token = request.query_params.get("hub.verify_token", "")
-    challenge = request.query_params.get("hub.challenge", "")
-    
-    result = verify_webhook(mode, token, challenge)
-    if result:
-        return PlainTextResponse(result)
-    raise HTTPException(status_code=403, detail="Verification failed")
-
-
-@app.post("/webhook/meta")
-async def meta_webhook_incoming(request: Request):
-    """Handle incoming messages from Meta Cloud API."""
-    from app.services.meta_webhook import parse_incoming, parse_status_updates, verify_signature
-    from app.services import meta_client
-    from app.services.analytics import track_message
-    from app.support.service import apply_wa_status
-    
-    body = await request.json()
-
-    for st in parse_status_updates(body):
-        await apply_wa_status(st)
-    
-    # Parse incoming messages
-    messages = parse_incoming(body)
-    
-    for msg in messages:
-        telefono = msg["from"]
-        # Meta sends "51993557282", DB stores "+51993557282"
-        if not telefono.startswith("+"):
-            telefono = f"+{telefono}"
-        body_text = msg["body"]
-        media_url = None
-        bodega_msg = db.get_bodega_by_phone(telefono) or db.get_bodega_by_phone(f"+{telefono}")
-        bodega_id_msg = bodega_msg.get("id") if bodega_msg else None
-        track_message(
-            telefono=telefono,
-            direction="inbound",
-            bodega_id=bodega_id_msg,
-            message_id=msg.get("message_id", ""),
-            message_type=msg.get("type", ""),
-            content=body_text,
-            metadata={
-                "button_id": msg.get("button_id", ""),
-                "list_id": msg.get("list_id", ""),
-                "has_flow_data": bool(msg.get("flow_data")),
-                "media_id": msg.get("media_id", ""),
-                "mime_type": msg.get("mime_type", ""),
-                "caption": msg.get("caption", ""),
-                "filename": msg.get("filename", ""),
-            },
-        )
-        
-        # Handle image (selfie for biometria)
-        if msg["type"] == "image" and msg["media_id"]:
-            media_url = msg["media_id"]  # Pass media_id to state machine
-
-        # Human support inbox: bot + commerce handlers stand down while agent owns thread
-        from app.support.webhook_gate import process_meta_inbound
-
-        sup_decision = await process_meta_inbound(
-            telefono=telefono,
-            body_text=body_text,
-            msg=msg,
-            bodega_id=bodega_id_msg,
-            contact_name=msg.get("name") or "",
-        )
-        if sup_decision.skip_remaining_handlers:
-            if msg.get("message_id"):
-                await meta_client.mark_as_read(msg["message_id"])
-            continue
-        
-        # Handle Flow response
-        if body_text == "__FLOW_RESPONSE__" and msg["flow_data"]:
-            flow_data = msg["flow_data"]
-            logger.info(f"Flow response from {telefono}: {flow_data}")
-            
-            # ── PIN Flow response ──
-            if "pin" in flow_data and "pin_confirm" in flow_data:
-                pin = flow_data["pin"]
-                pin_confirm = flow_data["pin_confirm"]
-                
-                if pin != pin_confirm:
-                    await meta_client.send_text(telefono, "❌ Las claves no coinciden. Intenta de nuevo.")
-                    # Re-send PIN flow
-                    bodega = db.get_bodega_by_phone(telefono)
-                    if bodega:
-                        await meta_client.send_pin_request(telefono, "create", bodega["id"])
-                elif len(pin) != 4 or not pin.isdigit():
-                    await meta_client.send_text(telefono, "❌ La clave debe ser 4 dígitos. Intenta de nuevo.")
-                else:
-                    # Valid PIN — activate account
-                    from app.services.pin import hash_pin
-                    bodega = db.get_bodega_by_phone(telefono)
-                    if bodega:
-                        pin_hashed = hash_pin(pin)
-                        db.update_bodega(bodega["id"], {
-                            "estado": "activo",
-                            "pin_hash": pin_hashed,
-                            "pin_intentos": 0,
-                        })
-                        import hashlib
-                        contract_hash = hashlib.sha256(f"{bodega['id']}|{telefono}|pin_flow".encode()).hexdigest()
-                        db.sign_contract(bodega["id"], contract_hash[:16])
-                        db.upsert_session(telefono, "menu", {}, bodega["id"])
-                        await meta_client.send_cuenta_activa(telefono, bodega.get("linea_disponible", 500))
-                        logger.info(f"Bodega {bodega['id']} activated via PIN Flow")
-            
-            # ── Order confirmation ──
-            elif flow_data.get("status") == "order_confirmed":
-                await meta_client.send_order_confirmation(
-                    to=telefono,
-                    order_number=flow_data.get("order_number", ""),
-                    total_credito=flow_data.get("total_credito", 0),
-                    pago_contado=flow_data.get("pago_contado", 0),
-                )
-            elif flow_data.get("status") == "activated":
-                bodega = db.get_bodega_by_phone(telefono) or db.get_bodega_by_phone(f"+{telefono}")
-                linea = bodega.get("linea_disponible", 500) if bodega else 500
-                _pv_pend = db.get_preventa_pendiente(bodega["id"])
-                await meta_client.send_menu(to=telefono, linea_disponible=linea, preventa_pendiente=_pv_pend)
-            
-            # Mark as read
-            if msg["message_id"]:
-                await meta_client.mark_as_read(msg["message_id"])
-            continue
-        
-        # Handle catalog order (cart submission)
-        if body_text == "__ORDER__" and msg["order"]:
-            # TODO: Process catalog cart order
-            logger.info(f"Catalog order from {telefono}: {msg['order']}")
-            continue
-        
-        # ── Handle payment replies (buttons or list) ──
-        btn = msg.get("button_id", "") or msg.get("list_id", "") or ""
-        if btn.startswith("EDITAR_"):
-            try:
-                bod = db.sb.table("bodegas").select("id").eq("telefono_whatsapp", telefono).limit(1).execute()
-                bod_id = bod.data[0]["id"] if bod.data else None
-                if bod_id:
-                    po = (
-                        db.sb.table("pedidos")
-                        .select("tipo_operacion")
-                        .eq("bodega_id", bod_id)
-                        .in_("estado", ["borrador", "preventa_borrador"])
-                        .order("created_at", desc=True)
-                        .limit(1)
-                        .execute()
-                    )
-                    tipo_op = "preventa" if po.data and po.data[0].get("tipo_operacion") == "preventa" else "venta"
-                    await meta_client.send_catalogo_flow(
-                        telefono,
-                        bod_id,
-                        tipo_operacion=tipo_op,
-                        edit_cart=True,
-                        catalog_prompt=(
-                            "¡Aquí seguimos!\n"
-                            "Tu pre-venta te está esperando en el catálogo: revísala con calma y confírmala cuando quieras."
-                            if tipo_op == "preventa"
-                            else (
-                                "¡Seguimos donde lo dejaste!\n"
-                                "Tu pedido sigue en el carrito: ábrelo, retoca lo que necesites y confirma cuando estés listo."
-                            )
-                        ),
-                    )
-            except Exception as e:
-                logger.error(f"EDITAR error: {e}", exc_info=True)
-            if msg.get("message_id"):
-                await meta_client.mark_as_read(msg["message_id"])
-            continue
-
-        if btn.startswith("PRECONF_"):
-            try:
-                bod = db.sb.table("bodegas").select("id").eq("telefono_whatsapp", telefono).limit(1).execute()
-                bod_id = bod.data[0]["id"] if bod.data else None
-                r = (
-                    db.sb.table("pedidos")
-                    .select("id, monto_productos")
-                    .eq("bodega_id", bod_id)
-                    .eq("estado", "preventa_borrador")
-                    .order("created_at", desc=True)
-                    .limit(1)
-                    .execute()
-                ) if bod_id else type("X",(),{"data":[]})()
-                if r.data:
-                    pedido = r.data[0]
-                    monto = pedido["monto_productos"]
-                    db.sb.table("sesiones").delete().eq("telefono", telefono).execute()
-                    db.sb.table("sesiones").insert({
-                        "telefono": telefono,
-                        "fase": "pin_pago",
-                        "datos": json.dumps({"pedido_id": pedido["id"], "dias": 0, "rate": 0, "monto": monto}),
-                        "bodega_id": bod_id,
-                    }).execute()
-                    await meta_client.send_text(
-                        telefono,
-                        f"🔐 *Confirmar pre-venta*\n\n"
-                        f"Ingresa tu clave Circa para confirmar la pre-venta por S/{monto:.2f}.",
-                    )
-                    await meta_client.send_pin_request(telefono, mode="verify", bodega_id=bod_id)
-                else:
-                    await meta_client.send_text(telefono, "No encontré una pre-venta pendiente.")
-            except Exception as e:
-                logger.error(f"PRECONF handler error: {e}", exc_info=True)
-                await meta_client.send_text(telefono, "Error al confirmar pre-venta. Intenta de nuevo.")
-            if msg.get("message_id"):
-                await meta_client.mark_as_read(msg["message_id"])
-            continue
-
-        if btn.startswith("CONTADO_"):
-            try:
-                bod = db.sb.table("bodegas").select("id").eq("telefono_whatsapp", telefono).limit(1).execute()
-                bod_id = bod.data[0]["id"] if bod.data else None
-                pedido_short = btn.split("_", 1)[1] if "_" in btn else ""
-                pedido = (
-                    db.get_pedido_borrador_por_prefijo(bod_id, pedido_short)
-                    if bod_id and pedido_short
-                    else None
-                )
-                if pedido:
-                    monto = pedido["monto_productos"]
-                    # Store intent in session, ask PIN
-                    db.sb.table("sesiones").delete().eq("telefono", telefono).execute()
-                    db.sb.table("sesiones").insert({
-                        "telefono": telefono,
-                        "fase": "pin_pago",
-                        "datos": json.dumps({"pedido_id": pedido["id"], "dias": 0, "rate": 0, "monto": monto}),
-                        "bodega_id": bod_id,
-                    }).execute()
-                    await meta_client.send_text(telefono,
-                        f"💵 *Pago al contado — S/{monto:.2f}*\n\n"
-                        f"Ingresa tu clave Circa de 4 dígitos para confirmar:")
-                    await meta_client.send_pin_request(telefono, mode="verify", bodega_id=bod_id)
-                else:
-                    await meta_client.send_text(telefono, "No encontré el pedido.")
-            except Exception as e:
-                logger.error(f"Contado handler error: {e}", exc_info=True)
-                await meta_client.send_text(telefono, "Error al confirmar.")
-            if msg["message_id"]:
-                await meta_client.mark_as_read(msg["message_id"])
-            continue
-        if btn == "YA_PAGUE":
-            try:
-                await meta_client.send_text(telefono,
-                    "🎉 *¡Pago registrado!*\n\n"
-                    "Verificación en las próximas horas.\n"
-                    "Tu tope se renueva cuando Circa confirme el pago.\n\n"
-                    "Escribe *MENU* para volver al menú principal.")
-            except Exception as e:
-                logger.error(f"YA_PAGUE error: {e}")
-            if msg["message_id"]:
-                await meta_client.mark_as_read(msg["message_id"])
-            continue
-        if btn.startswith("FINFIJO"):
-            try:
-                import re as _re
-                from datetime import datetime, timedelta
-                monto_match = _re.search(r"FINFIJO(\d+)_", btn)
-                fin_amt = int(monto_match.group(1)) if monto_match else 0
-                bod = db.sb.table("bodegas").select("id, linea_disponible").eq("telefono_whatsapp", telefono).limit(1).execute()
-                bod_id = bod.data[0]["id"] if bod.data else None
-                pedido_short = btn.rsplit("_", 1)[-1] if "_" in btn else ""
-                pedido = (
-                    db.get_pedido_borrador_por_prefijo(
-                        bod_id,
-                        pedido_short,
-                        ("borrador", "preventa_borrador", "preventa_confirmada"),
-                    )
-                    if bod_id and pedido_short
-                    else None
-                )
-                if pedido and fin_amt > 0:
-                    # Para preventa DIMAX, total_pedido es la fuente de verdad
-                    # (monto_productos puede tener subtotales sin descuento DIMAX)
-                    total = float(pedido.get("total_pedido") or pedido.get("monto_productos") or 0)
-                    contado = round(total - fin_amt, 2)
-                    dias = 7
-                    _qf = calculate_fee(fin_amt, dias)
-                    rate = _qf["rate"]
-                    fee = _qf["fee"]
-                    fecha_venc = (datetime.now() + timedelta(days=dias)).strftime("%d/%m/%Y")
-                    db.sb.table("sesiones").delete().eq("telefono", telefono).execute()
-                    db.sb.table("sesiones").insert({
-                        "telefono": telefono, "fase": "pin_pago",
-                        "datos": json.dumps({"pedido_id": pedido["id"], "dias": dias, "rate": rate, "monto": fin_amt}),
-                        "bodega_id": bod_id,
-                    }).execute()
-                    total_pagar = contado + fin_amt + fee
-                    await meta_client.send_text(telefono,
-                        f"\U0001f4b3 *Resumen de pago*\n\n"
-                        f"\U0001f69a Hoy pagas al repartidor: *S/{contado:.2f}*\n"
-                        f"\U0001f4b3 Cuota Circa S/{fin_amt + fee:.2f} — pagar antes del {fecha_venc}\n\n"
-                        f"*Total a pagar: S/{total_pagar:.2f}*\n\n"
-                        f"Confirma con tu clave de 4 digitos.")
-                    await meta_client.send_pin_request(telefono, mode="verify", bodega_id=bod_id)
-            except Exception as e:
-                logger.error(f"FINFIJO error: {e}")
-            if msg.get("message_id"):
-                await meta_client.mark_as_read(msg["message_id"])
-            continue
-        if btn.startswith("FIN100_") or btn.startswith("FIN50_") or btn.startswith("FIN25_"):
-            try:
-                bod = db.sb.table("bodegas").select("id, linea_disponible").eq("telefono_whatsapp", telefono).limit(1).execute()
-                bod_id = bod.data[0]["id"] if bod.data else None
-                linea = bod.data[0].get("linea_disponible", 0) if bod.data else 0
-                pedido_short = btn.rsplit("_", 1)[-1] if "_" in btn else ""
-                pedido = (
-                    db.get_pedido_borrador_por_prefijo(bod_id, pedido_short)
-                    if bod_id and pedido_short
-                    else None
-                )
-                if pedido:
-                    total = pedido["monto_productos"]
-                    if btn.startswith("FIN100_"):
-                        fin_amt = min(linea, total)
-                    elif btn.startswith("FIN50_"):
-                        fin_amt = min(round(linea * 0.5, 2), total)
-                    else:
-                        fin_amt = min(round(linea * 0.25, 2), total)
-                    contado = round(total - fin_amt, 2)
-                    fee7 = calculate_fee(fin_amt, 7)["fee"]
-                    fee15 = calculate_fee(fin_amt, 15)["fee"]
-                    fee30 = calculate_fee(fin_amt, 30)["fee"]
-                    pid = str(pedido["id"])[:8]
-                    db.sb.table("sesiones").delete().eq("telefono", telefono).execute()
-                    db.sb.table("sesiones").insert({
-                        "telefono": telefono, "fase": "fin_plazo",
-                        "datos": json.dumps({"pedido_id": pedido["id"], "fin_amt": fin_amt, "contado": contado, "total": total}),
-                        "bodega_id": bod_id,
-                    }).execute()
-                    await meta_client.send_list(
-                        to=telefono,
-                        body=f"Financiar: *S/{fin_amt:.2f}*\nAl contado: S/{contado:.2f}\n\nElige plazo:",
-                        button_text="Ver plazos",
-                        sections=[{"title": "Plazo de pago", "rows": [
-                            {"id": f"PAY7_{pid}", "title": f"7 días ({format_rate_pct(calculate_fee(fin_amt, 7)['rate'])})", "description": f"Cargo Circa S/{fee7:.2f} · Total S/{fin_amt+fee7:.2f}"},
-                            {"id": f"PAY15_{pid}", "title": f"15 días ({format_rate_pct(calculate_fee(fin_amt, 15)['rate'])})", "description": f"Cargo Circa S/{fee15:.2f} · Total S/{fin_amt+fee15:.2f}"},
-                            {"id": f"PAY30_{pid}", "title": f"30 días ({format_rate_pct(calculate_fee(fin_amt, 30)['rate'])})", "description": f"Cargo Circa S/{fee30:.2f} · Total S/{fin_amt+fee30:.2f}"},
-                        ]}],
-                    )
-                else:
-                    await meta_client.send_text(telefono, "No encontré el pedido.")
-            except Exception as e:
-                logger.error(f"FIN handler error: {e}", exc_info=True)
-                await meta_client.send_text(telefono, "Error. Intenta de nuevo.")
-            if msg["message_id"]:
-                await meta_client.mark_as_read(msg["message_id"])
-            continue
-        if btn == "ACEPTO":
-            try:
-                from app.config import now_peru
-                from app.services.contract_generator import generate_contract
-                bodega_ac = db.get_bodega_by_phone(telefono)
-                if bodega_ac:
-                    bod_id = bodega_ac["id"]
-                    dist_nombre = "Red de distribuidores Circa"
-                    if bodega_ac.get("distribuidor_id"):
-                        dist_r = db.sb.table("distribuidores").select("nombre_comercial").eq("id", bodega_ac["distribuidor_id"]).limit(1).execute()
-                        if dist_r.data:
-                            dist_nombre = dist_r.data[0]["nombre_comercial"]
-                    now = now_peru()
-                    contract_path, contract_hash = generate_contract({
-                        "razon_social": bodega_ac.get("razon_social", ""),
-                        "ruc": bodega_ac.get("ruc", ""),
-                        "representante_legal": bodega_ac.get("representante_legal", ""),
-                        "dni_representante": bodega_ac.get("dni_representante", ""),
-                        "direccion_fiscal": bodega_ac.get("direccion_fiscal", ""),
-                        "direccion_despacho": bodega_ac.get("direccion_despacho", ""),
-                        "email": bodega_ac.get("email", ""),
-                        "linea_aprobada": bodega_ac.get("linea_aprobada", 500),
-                        "nombre_comercial": bodega_ac.get("nombre_comercial", ""),
-                        "distribuidor_nombre": dist_nombre,
-                        "telefono": telefono.replace("+51", "").replace("+", ""),
-                        "fecha_firma": now.strftime("%d/%m/%Y"),
-                        "hora_firma": now.strftime("%H:%M:%S"),
-                    })
-                    nombre = bodega_ac.get("nombre_comercial") or bodega_ac.get("razon_social", "Bodega")
-                    await meta_client.send_contract_document(telefono, contract_path, nombre)
-                    db.sign_contract(bod_id, contract_hash)  # FIX BUG #8: usa helper que libera linea
-                    import os
-                    try: os.remove(contract_path)
-                    except: pass
-                    await meta_client.send_pin_request(telefono, mode="create", bodega_id=bod_id)
-                    # Update session so state machine doesn't interfere
-                    db.upsert_session(telefono, "reg_pin", {"bodega_id": bod_id}, bod_id)
-                    logger.info(f"Contract signed for bodega {bod_id}, hash={contract_hash}")
-                else:
-                    await meta_client.send_text(telefono, "Error. Escribe MENU para empezar.")
-            except Exception as e:
-                logger.error(f"ACEPTO handler error: {e}", exc_info=True)
-                await meta_client.send_text(telefono, "Error al procesar. Intenta de nuevo.")
-            if msg["message_id"]:
-                await meta_client.mark_as_read(msg["message_id"])
-            continue
-        if btn == "PEDIDO":
-            try:
-                bodega_ped = db.get_bodega_by_phone(telefono)
-                if bodega_ped:
-                    await meta_client.send_catalogo_flow(
-                        telefono, bodega_ped["id"], tipo_operacion="venta", fresh=True
-                    )
-                else:
-                    await meta_client.send_text(telefono, "Escribe MENU para empezar.")
-            except Exception as e:
-                logger.error(f"PEDIDO handler error: {e}", exc_info=True)
-            if msg["message_id"]:
-                await meta_client.mark_as_read(msg["message_id"])
-            continue
-        if btn == "PREVENTA":
-            try:
-                bodega_pv = db.get_bodega_by_phone(telefono)
-                if bodega_pv:
-                    await meta_client.send_catalogo_flow(
-                        telefono, bodega_pv["id"], tipo_operacion="preventa", fresh=True
-                    )
-                else:
-                    await meta_client.send_text(telefono, "Escribe MENU para empezar.")
-            except Exception as e:
-                logger.error(f"PREVENTA handler error: {e}", exc_info=True)
-            if msg["message_id"]:
-                await meta_client.mark_as_read(msg["message_id"])
-            continue
-        if btn == "REPETIR":
-            try:
-                bodega_rep = db.get_bodega_by_phone(telefono)
-                if not bodega_rep:
-                    await meta_client.send_text(telefono, "Escribe MENU para empezar.")
-                else:
-                    items = db.get_items_para_repetir(bodega_rep)
-                    if items:
-                        db.save_carrito(bodega_rep["id"], items)
-                        await meta_client.send_catalogo_flow(
-                            telefono,
-                            bodega_rep["id"],
-                            tipo_operacion="venta",
-                            load_saved_cart=True,
-                            catalog_prompt=meta_client.CATALOGO_CTA_BODY_REPETIR,
-                        )
-                    else:
-                        await meta_client.send_text(
-                            telefono,
-                            "No tienes un pedido anterior. Escribe PEDIDO o MENU.",
-                        )
-            except Exception as e:
-                logger.error(f"REPETIR handler error: {e}", exc_info=True)
-            if msg["message_id"]:
-                await meta_client.mark_as_read(msg["message_id"])
-            continue
-        if btn.startswith("PAY7_") or btn.startswith("PAY15_") or btn.startswith("PAY30_"):
-            pedido_short = btn.split("_", 1)[1]
-            if btn.startswith("PAY7"):
-                dias = 7
-            elif btn.startswith("PAY15"):
-                dias = 15
-            else:
-                dias = 30
-            try:
-                # Find pedido by bodega phone (most recent borrador)
-                bod = db.sb.table("bodegas").select("id").eq("telefono_whatsapp", telefono).limit(1).execute()
-                bod_id = bod.data[0]["id"] if bod.data else None
-                r = (
-                    db.sb.table("pedidos")
-                    .select("id, monto_productos, total, items_json")
-                    .eq("bodega_id", bod_id)
-                    .in_("estado", ["borrador", "preventa_borrador"])
-                    .order("created_at", desc=True)
-                    .limit(1)
-                    .execute()
-                ) if bod_id else type("X",(),{"data":[]})()
-                if r.data:
-                    pedido = r.data[0]
-                    # Check session for fin_amt
-                    ses_fin = db.sb.table("sesiones").select("datos").eq("telefono", telefono).limit(1).execute()
-                    fin_amt = pedido["monto_productos"]
-                    contado = 0
-                    if ses_fin.data and ses_fin.data[0].get("datos"):
-                        sd = json.loads(ses_fin.data[0]["datos"]) if isinstance(ses_fin.data[0]["datos"], str) else ses_fin.data[0]["datos"]
-                        if sd.get("fin_amt"):
-                            fin_amt = sd["fin_amt"]
-                            contado = sd.get("contado", 0)
-                    monto = fin_amt
-                    _qfee = calculate_fee(float(monto), int(dias))
-                    fee = _qfee["fee"]
-                    rate = _qfee["rate"]
-                    from datetime import datetime, timedelta
-                    venc = (datetime.now() + timedelta(days=dias)).strftime("%d/%m/%Y")
-                    # Store intent in session, ask PIN
-                    db.sb.table("sesiones").delete().eq("telefono", telefono).execute()
-                    db.sb.table("sesiones").insert({
-                        "telefono": telefono,
-                        "fase": "pin_pago",
-                        "datos": json.dumps({"pedido_id": pedido["id"], "dias": dias, "rate": rate, "monto": monto, "fee": round(fee, 2), "venc": venc}),
-                        "bodega_id": bod_id,
-                    }).execute()
-                    # Send summary then PIN Flow
-                    await meta_client.send_text(
-                        telefono,
-                        f"💳 *Circa {dias} dias*\n"
-                        f"Financiar: S/{monto:.2f}\n"
-                        f"Comisión Circa ({format_rate_pct(rate)}): S/{fee:.2f}\n"
-                        f"*TOTAL: S/{monto+fee:.2f}*\n"
-                        f"Vence: {venc}"
-                    )
-                    await meta_client.send_pin_request(telefono, mode="verify", bodega_id=bod_id)
-                    logger.info(f"Order {pedido['id']} confirmed: {dias}d, fee={fee}")
-                else:
-                    await meta_client.send_text(telefono, "No encontre el pedido. Intenta de nuevo.")
-            except Exception as e:
-                logger.error(f"Payment handler error: {e}", exc_info=True)
-                await meta_client.send_text(telefono, "Error al confirmar. Intenta de nuevo.")
-            if msg["message_id"]:
-                await meta_client.mark_as_read(msg["message_id"])
-            continue
-        
-        # ── Handle PIN for payment confirmation ──
-        if body_text and len(body_text) == 4 and body_text.isdigit():
-            try:
-                ses = db.sb.table("sesiones").select("fase, datos, bodega_id").eq("telefono", telefono).limit(1).execute()
-                if ses.data and ses.data[0].get("fase") == "pin_pago":
-                    datos = json.loads(ses.data[0]["datos"]) if isinstance(ses.data[0]["datos"], str) else ses.data[0]["datos"]
-                    bod_id = ses.data[0]["bodega_id"]
-                    bodega = db.sb.table("bodegas").select("pin_hash, pin_intentos").eq("id", bod_id).limit(1).execute()
-                    if bodega.data:
-                        import bcrypt
-                        pin_hash = bodega.data[0].get("pin_hash", "")
-                        if pin_hash and bcrypt.checkpw(body_text.encode(), pin_hash.encode()):
-                            # PIN correct → confirm order (idempotente + tope disponible)
-                            pedido_id = datos["pedido_id"]
-                            dias = int(datos.get("dias", 0) or 0)
-                            monto = float(datos["monto"])
-                            contado = float(datos.get("contado", 0) or 0)
-                            venc = datos.get("venc", "")
-
-                            pe = db.sb.table("pedidos").select("id, estado").eq("id", pedido_id).limit(1).execute()
-                            if not pe.data:
-                                await meta_client.send_text(
-                                    telefono, "No encontramos ese pedido. Escribe MENU.")
-                                db.sb.table("sesiones").update(
-                                    {"fase": "menu", "datos": "{}"}).eq("telefono", telefono).execute()
-                            elif not _is_draft_status(pe.data[0].get("estado")):
-                                await meta_client.send_text(
-                                    telefono,
-                                    "Este pedido ya estaba confirmado. Escribe MENU si necesitas otra cosa.",
-                                )
-                                db.sb.table("sesiones").update(
-                                    {"fase": "menu", "datos": "{}"}).eq("telefono", telefono).execute()
-                            else:
-                                if dias > 0:
-                                    bod_line = db.sb.table("bodegas").select(
-                                        "linea_disponible, linea_aprobada").eq("id", bod_id).limit(1).execute()
-                                    ld = float(bod_line.data[0].get("linea_disponible") or 0) if bod_line.data else 0.0
-                                    if monto > ld + 1e-6:
-                                        await meta_client.send_text(
-                                            telefono,
-                                            f"⚠️ Tu tope disponible ya no alcanza (tienes S/{ld:.2f}). "
-                                            "Escribe MENU, arma el pedido de nuevo o elige menos financiamiento.",
-                                        )
-                                        db.sb.table("sesiones").update(
-                                            {"fase": "menu", "datos": "{}"}).eq("telefono", telefono).execute()
-                                    else:
-                                        qfee = calculate_fee(monto, dias)
-                                        fee = qfee["fee"]
-                                        rate = qfee["rate"]
-                                        ped_t = db.sb.table("pedidos").select("tipo_operacion").eq("id", pedido_id).limit(1).execute()
-                                        tipo_op = ped_t.data[0].get("tipo_operacion", "venta") if ped_t.data else "venta"
-                                        num = await _gen_order_number(bod_id, tipo_op)
-                                        _dist_ped = db.get_distribuidor_pedido_de_bodega(bod_id)
-                                        db.sb.table("pedidos").update({
-                                            "numero": num,
-                                            "distribuidor_id": _dist_ped,
-                                            "fee_tasa": rate, "fee_monto": fee,
-                                            "fee_regimen": fee_regimen_para_pedido_nuevo(),
-                                            "monto_financiado": round(monto, 2), "plazo_dias": dias,
-                                            "monto_contado": round(contado, 2),
-                                            "monto_total_credito": round(monto + fee, 2),
-                                            "total": round(monto + fee, 2), "estado": _confirmed_status_for(tipo_op),
-                                        }).eq("id", pedido_id).execute()
-                                        lap = float(bod_line.data[0].get("linea_aprobada") or ld)
-                                        new_ld = max(0.0, ld - monto)
-                                        new_ld = min(new_ld, lap)
-                                        db.sb.table("bodegas").update(
-                                            {"linea_disponible": new_ld}).eq("id", bod_id).execute()
-                                        db.snapshot_ultimo_pedido_venta(bod_id, pedido_id)
-                                        from app.services.analytics import track_event
-                                        track_event(
-                                            "order_confirmed" if tipo_op == "venta" else "preventa_confirmada",
-                                            bodega_id=bod_id,
-                                            pedido_id=pedido_id,
-                                            telefono=telefono,
-                                            source="pin_verify",
-                                            metadata={
-                                                "numero": num,
-                                                "tipo_operacion": tipo_op,
-                                                "monto_financiado": round(monto, 2),
-                                                "fee_monto": round(fee, 2),
-                                                "dias": dias,
-                                            },
-                                        )
-                                        track_event(
-                                            "credit_used",
-                                            bodega_id=bod_id,
-                                            pedido_id=pedido_id,
-                                            telefono=telefono,
-                                            source="pin_verify",
-                                            metadata={"monto": round(monto, 2), "dias": dias},
-                                        )
-                                        await meta_client.send_text(
-                                            telefono,
-                                            f"✅ *Pedido {num} confirmado*\n"
-                                            f"Financiado con Circa\n\n"
-                                            f"Nro: *#{num}*\n"
-                                            f"Financiado: *S/{monto:.2f}*\n"
-                                            f"Comisión Circa ({format_rate_pct(rate)}): S/{fee:.2f}\n"
-                                            f"Total a pagar a Circa: *S/{monto + fee:.2f}*\n"
-                                            f"Al distribuidor (contado): S/{contado:.2f}\n"
-                                            f"Plazo: {dias} días\n"
-                                            f"Vence: {venc}\n\n"
-                                            "Recibirás novedades por WhatsApp.",
-                                        )
-                                        db.clear_carrito(bod_id)
-                                        db.sb.table("sesiones").update(
-                                            {"fase": "menu", "datos": "{}"}).eq("telefono", telefono).execute()
-                                        logger.info(f"Order {pedido_id} confirmed via PIN (financiado)")
-                                else:
-                                    ped_t = db.sb.table("pedidos").select("tipo_operacion").eq("id", pedido_id).limit(1).execute()
-                                    tipo_op = ped_t.data[0].get("tipo_operacion", "venta") if ped_t.data else "venta"
-                                    num = await _gen_order_number(bod_id, tipo_op)
-                                    _dist_ped = db.get_distribuidor_pedido_de_bodega(bod_id)
-                                    db.sb.table("pedidos").update({
-                                        "numero": num,
-                                        "distribuidor_id": _dist_ped,
-                                        "fee_tasa": 0, "fee_monto": 0,
-                                        "monto_financiado": 0, "monto_contado": round(monto, 2),
-                                        "total": round(monto, 2), "estado": _confirmed_status_for(tipo_op),
-                                    }).eq("id", pedido_id).execute()
-                                    db.snapshot_ultimo_pedido_venta(bod_id, pedido_id)
-                                    from app.services.analytics import track_event
-                                    track_event(
-                                        "order_confirmed" if tipo_op == "venta" else "preventa_confirmada",
-                                        bodega_id=bod_id,
-                                        pedido_id=pedido_id,
-                                        telefono=telefono,
-                                        source="pin_verify",
-                                        metadata={
-                                            "numero": num,
-                                            "tipo_operacion": tipo_op,
-                                            "monto_contado": round(monto, 2),
-                                        },
-                                    )
-                                    await meta_client.send_text(
-                                        telefono,
-                                        f"✅ *Pedido {num} confirmado — Contado*\n\n"
-                                        f"Total: S/{monto:.2f}\n"
-                                        "Pagas al recibir tu pedido, sin cargo extra de plazo.\n\n"
-                                        "Tu distribuidor preparará tu pedido.",
-                                    )
-                                    db.clear_carrito(bod_id)
-                                    db.sb.table("sesiones").update(
-                                        {"fase": "menu", "datos": "{}"}).eq("telefono", telefono).execute()
-                                    logger.info(f"Order {pedido_id} confirmed via PIN (contado)")
-                        else:
-                            intentos = bodega.data[0].get("pin_intentos", 0) + 1
-                            db.sb.table("bodegas").update({"pin_intentos": intentos}).eq("id", bod_id).execute()
-                            if intentos >= 3:
-                                await meta_client.send_text(
-                                    telefono,
-                                    "❌ Demasiados intentos incorrectos.\n\n"
-                                    "Escribe *Me olvidé mi clave* para crear una nueva "
-                                    "sin perder tu pedido.\n\n"
-                                    "O escribe *MENU* para volver al menú.",
-                                )
-                            else:
-                                await meta_client.send_text(
-                                    telefono,
-                                    f"❌ Clave incorrecta. Intento {intentos}/3.\n\n"
-                                    "¿La olvidaste? Escribe *Me olvidé mi clave*.",
-                                )
-                    if msg["message_id"]:
-                        await meta_client.mark_as_read(msg["message_id"])
-                    continue
-            except Exception as e:
-                logger.error(f"PIN verify error: {e}", exc_info=True)
-        
-        # Regular message processing via state machine
-        try:
-            responses = handle_message(telefono, body_text, media_url)
-            
-            for resp in responses:
-                if isinstance(resp, dict):
-                    signal = resp.get("signal", "")
-                    
-                    # ── Onboarding signals ──
-                    if signal == "WELCOME":
-                        await meta_client.send_welcome(
-                            telefono, resp.get("nombre", ""),
-                            resp.get("linea", 500), resp.get("distribuidor", "")
-                        )
-                    elif signal == "RUC_ASK":
-                        await meta_client.send_ruc_request(telefono)
-                    elif signal == "RUC_VERIFIED":
-                        await meta_client.send_ruc_verified(
-                            telefono, resp.get("razon_social", ""),
-                            resp.get("ruc", ""), resp.get("direccion", ""),
-                            resp.get("representante", "")
-                        )
-                    elif signal == "DNI_ASK":
-                        await meta_client.send_dni_request(telefono)
-                    elif signal == "BIOMETRIA_ASK":
-                        await meta_client.send_biometria_request(
-                            telefono, resp.get("representante", "")
-                        )
-                    elif signal == "LINEA_OFERTA":
-                        await meta_client.send_linea_oferta(
-                            telefono, resp.get("nombre", ""),
-                            resp.get("linea", 500), resp.get("distribuidor", "")
-                        )
-                    elif signal == "CONTRATO":
-                        await meta_client.send_contrato(
-                            telefono, resp.get("linea", 500)
-                        )
-                    elif signal == "PIN_ASK":
-                        await meta_client.send_pin_request(
-                            telefono, resp.get("mode", "create"),
-                            bodega_id=resp.get("bodega_id", "")
-                        )
-                    elif signal == "CUENTA_ACTIVA":
-                        await meta_client.send_cuenta_activa(
-                            telefono, resp.get("linea", 500)
-                        )
-                    
-                    # ── Menu signals ──
-                    elif signal == "MENU":
-                        _bodega_menu = db.get_bodega_by_phone(telefono)
-                        _pv_pend = db.get_preventa_pendiente(_bodega_menu["id"]) if _bodega_menu else None
-                        await meta_client.send_menu(telefono, resp.get("linea", 500), preventa_pendiente=_pv_pend)
-                    elif signal == "FLYER_LINK":
-                        await meta_client.send_flyer_link(telefono)
-                    elif signal == "LINEA_INFO":
-                        await meta_client.send_linea_info(
-                            telefono, resp.get("aprobada", 500),
-                            resp.get("disponible", 500), resp.get("scoring", 0)
-                        )
-                    elif signal == "CONTACT_CIRCA":
-                        await meta_client.send_contacto_circa(
-                            telefono, resp.get("wa_link"),
-                        )
-                    
-                    # ── Legacy catalog signals → redirect to text for now ──
-                    elif signal == "ONBOARDING_FLOW":
-                        await meta_client.send_welcome(
-                            telefono, resp.get("nombre", ""),
-                            resp.get("linea", 500), ""
-                        )
-                    elif signal == "CATALOGO_FLOW":
-                        bodega_cat = db.get_bodega_by_phone(telefono)
-                        if bodega_cat:
-                            await meta_client.send_catalogo_flow(telefono, bodega_cat["id"])
-                    elif signal in ("CATEGORIAS", "PRODUCTOS", "PACK", "CANTIDAD",
-                                     "AGREGADO", "CARRITO", "MONTO", "PLAZO"):
-                        bodega_leg = db.get_bodega_by_phone(telefono)
-                        if bodega_leg:
-                            await meta_client.send_catalogo_flow(telefono, bodega_leg["id"])
-                    elif signal == "PREVENTA_PAYMENT_OPTIONS":
-                        from app.flows.catalogo import _send_payment_options
-                        items = resp.get("items") or []
-                        lines_items = []
-                        for it in items:
-                            cat = it.get("catalogo_distribuidor") or {}
-                            prod = cat.get("productos_circa") or {}
-                            nombre = (prod.get("nombre") or "Producto")[:38]
-                            cant = it.get("cantidad", 0)
-                            sub = float(it.get("subtotal") or 0)
-                            if sub == 0:
-                                lines_items.append(f"▸ {cant}x *{nombre}* 🎁")
-                            else:
-                                lines_items.append(f"▸ {cant}x *{nombre}*\n   S/{sub:.2f}")
-                        items_text = "\n".join(lines_items)
-                        await _send_payment_options(
-                            telefono, resp["pedido_id"], resp["total"], items_text, resp["bodega_id"]
-                        )
-                    else:
-                        logger.warning(f"Unknown signal: {signal}")
-                
-                elif isinstance(resp, str):
-                    await meta_client.send_text(telefono, resp)
-            
-        except Exception as e:
-            import traceback
-            print(f"❌ META WEBHOOK ERROR: {type(e).__name__}: {e}", flush=True)
-            print(traceback.format_exc(), flush=True)
-            logger.error(f"❌ Error: {e}", exc_info=True)
-            await meta_client.send_text(
-                telefono,
-                "⚠️ Hubo un error. Intenta de nuevo en un momento."
-            )
-        
-        # Mark as read
-        if msg["message_id"]:
-            await meta_client.mark_as_read(msg["message_id"])
-    
-    # Always return 200 to Meta (required)
-    return {"status": "ok"}
-
+    return {"status": "ok", "service": "circa-mvp", "version": "2.1.0"}
 
 @app.get("/api/pedidos")
 async def list_pedidos(estado: str = None):
@@ -1272,56 +155,24 @@ async def get_pedido(pedido_id: str):
     return {"pedido": pedido, "items": items}
 
 @app.post("/api/pedidos/{pedido_id}/estado")
-async def update_estado(pedido_id: str, estado: str = Form(...), actor: str = Form(default="distribuidor"),
-                         notas: str = Form(default=None), estimado_entrega: str = Form(default=None)):
-    """Update order status with tracking notifications."""
-    from app.services.tracking import update_order_status
-    result = await update_order_status(pedido_id, estado, actor, notas, estimado_entrega)
-    if not result["ok"]:
-        raise HTTPException(400, result["message"])
-    return result
-
-@app.get("/api/pedidos/{pedido_id}/timeline")
-async def get_timeline(pedido_id: str):
-    """Get order event timeline."""
-    from app.services.tracking import get_order_timeline
-    return await get_order_timeline(pedido_id)
-
-# ── Cobranza ──
-
-@app.post("/api/cobranza/confirmar-pago")
-async def confirmar_pago(financiamiento_id: str = Form(...), monto: float = Form(default=None),
-                          metodo: str = Form(default="yape"), actor: str = Form(default="backoffice")):
-    """Confirm a payment and renew credit line (backoffice)."""
-    from app.services.cobranza import confirm_payment
-    result = await confirm_payment(financiamiento_id, monto, metodo, actor)
-    if not result["ok"]:
-        raise HTTPException(400, result["message"])
-    return result
-
-@app.get("/api/cobranza/pendientes")
-async def pagos_pendientes(bodega_id: str = None):
-    """List pending payments, optionally filtered by bodega."""
-    query = db.sb.table("financiamientos").select(
-        "*, pedidos(numero), bodegas(nombre_comercial, telefono_whatsapp)"
-    ).in_("estado", ["activo", "verificando", "vencido"])
-    if bodega_id:
-        query = query.eq("bodega_id", bodega_id)
-    return query.order("fecha_vencimiento").execute().data
-
-@app.post("/api/cobranza/check-overdue")
-async def check_overdue():
-    """Check and mark overdue loans. Call daily."""
-    from app.services.cobranza import check_overdue_loans
-    overdue = await check_overdue_loans()
-    return {"overdue_count": len(overdue), "overdue": overdue}
-
-@app.post("/api/cobranza/send-reminders")
-async def send_reminders():
-    """Send pending payment reminders. Call daily."""
-    from app.services.cobranza import send_pending_reminders
-    count = await send_pending_reminders()
-    return {"reminders_sent": count}
+async def update_estado(pedido_id: str, estado: str = Form(...), actor: str = Form(default="distribuidor")):
+    valid_transitions = {
+        "aprobado": ["despachado"], "despachado": ["en_camino"], "en_camino": ["entregado"],
+    }
+    pedido = db.sb.table("pedidos").select("estado, bodega_id, numero").eq("id", pedido_id).single().execute().data
+    if not pedido:
+        raise HTTPException(404, "Pedido no encontrado")
+    if estado not in valid_transitions.get(pedido["estado"], []):
+        raise HTTPException(400, f"No se puede cambiar de {pedido['estado']} a {estado}")
+    db.update_pedido_estado(pedido_id, estado, actor)
+    bodega = db.sb.table("bodegas").select("telefono_whatsapp").eq("id", pedido["bodega_id"]).single().execute().data
+    from services import messages as msg
+    status_msgs = {"despachado": "📦 Tu pedido fue despachado.", "en_camino": "🚚 En camino. Llegada: 2-4 horas.", "entregado": "🎉 ¡Entregado!"}
+    try:
+        send_whatsapp(bodega["telefono_whatsapp"], msg.msg_status(pedido["numero"], estado, status_msgs.get(estado, "")))
+    except Exception as e:
+        logger.error(f"Notify failed: {e}")
+    return {"ok": True, "nuevo_estado": estado}
 
 @app.get("/api/bodegas")
 async def list_bodegas():
@@ -1332,42 +183,32 @@ async def get_bodega(bodega_id: str):
     return db.sb.table("bodegas").select("*").eq("id", bodega_id).single().execute().data
 
 @app.get("/api/catalogo")
-async def list_catalogo(distribuidor_id: str = None, bodega_id: str = None, marca: str = None, categoria: str = None):
-    from app.services.distribuidor_routing import DIMAX_DISTRIBUIDOR_ID
+async def list_catalogo(distribuidor_id: str = None, marca: str = None, categoria: str = None):
+    q = db.sb.table("catalogo").select("*, distribuidores(nombre_comercial)").eq("activo", True)
+    if distribuidor_id: q = q.eq("distribuidor_id", distribuidor_id)
+    if marca: q = q.eq("marca", marca)
+    if categoria: q = q.eq("categoria", categoria)
+    return q.execute().data
 
-    # Catálogo web: siempre DIMAX (ignora FK legacy Zoom en bodegas y ?distribuidor_id=Zoom).
-    try:
-        if bodega_id:
-            distribuidor_id = db.get_distribuidor_de_bodega(bodega_id)
-        else:
-            distribuidor_id = DIMAX_DISTRIBUIDOR_ID
-    except Exception:
-        distribuidor_id = DIMAX_DISTRIBUIDOR_ID
-    q = (
-        db.sb.table("catalogo_distribuidor")
-        .select("*, productos_circa(*)")
-        .eq("activo", True)
-        .eq("distribuidor_id", distribuidor_id)
-    )
-    rows = q.execute().data
-    result = []
-    for row in rows:
-        pc = row.get("productos_circa") or {}
-        if marca and pc.get("marca") != marca: continue
-        if categoria and pc.get("categoria") != categoria: continue
-        result.append({
-            "id": pc.get("id"), "nombre": pc.get("nombre", ""), "marca": pc.get("marca", ""),
-            "categoria": pc.get("categoria", ""), "unidades": row.get("unidades") or {},
-            "sku": row.get("sku_distribuidor", ""), "activo": row.get("activo", True),
-        })
-    return result
-
-# ── PIN (web page) ──
+# ── PIN VERIFICATION (web page) ──
 
 class PinVerification(BaseModel):
     bodega_id: str
     pin: str
-    mode: str = "confirm"
+
+@app.post("/api/pin/verify")
+async def verify_pin_web(data: PinVerification):
+    from services.pin import check_pin
+    bodega = db.sb.table("bodegas").select("*").eq("id", data.bodega_id).single().execute().data
+    if not bodega:
+        return {"ok": False, "error": "Bodega no encontrada"}
+    success, error_msg, updates = check_pin(data.pin, bodega)
+    if updates:
+        db.update_bodega(data.bodega_id, updates)
+    if success:
+        return {"ok": True}
+    else:
+        return {"ok": False, "error": error_msg}
 
 class PinCreate(BaseModel):
     bodega_id: str
@@ -1386,85 +227,7 @@ async def create_pin_web(data: PinCreate):
         return {"ok": False, "error": error_msg}
 
     pin_hashed = hash_pin(data.pin)
-    db.update_bodega(data.bodega_id, {
-        "estado": "activo",
-        "pin_hash": pin_hashed,
-        "pin_intentos": 0,
-        "pin_bloqueado_hasta": None,
-    })
-
-    bodega_updated = db.sb.table("bodegas").select("id, estado, pin_hash").eq("id", data.bodega_id).single().execute().data
-    if not bodega_updated or not bodega_updated.get("pin_hash"):
-        return {"ok": False, "error": "No se pudo guardar la clave"}
-
-    return {"ok": True}
-
-@app.post("/api/pin/verify")
-async def verify_pin_web(data: PinVerification):
-    from services.pin import check_pin
-
-    bodega = db.sb.table("bodegas").select("*").eq("id", data.bodega_id).single().execute().data
-    if not bodega:
-        return {"ok": False, "error": "Bodega no encontrada"}
-
-    if not bodega.get("pin_hash"):
-        return {"ok": False, "error": "La bodega no tiene una clave registrada"}
-
-    success, error_msg, updates = check_pin(data.pin, bodega)
-    if updates:
-        db.update_bodega(data.bodega_id, updates)
-
-    if not success:
-        return {"ok": False, "error": error_msg}
-
-    if data.mode == "confirm":
-        telefono = bodega["telefono_whatsapp"]
-        session = db.get_session(telefono)
-        if not session:
-            return {"ok": False, "error": "No hay una sesión activa para confirmar"}
-
-        datos = json.loads(session["datos"]) if isinstance(session["datos"], str) else (session["datos"] or {})
-        if session.get("fase") != "pin_confirm":
-            return {"ok": False, "error": "La sesión actual no está esperando confirmación de PIN"}
-
-        if datos.get("pedido_id"):
-            return {"ok": True, "pedido_id": datos["pedido_id"]}
-
-        cart = datos.get("cart", [])
-        term = datos.get("selected_term")
-        fin_amt = datos.get("finance_amount")
-
-        if not cart or not term or fin_amt is None:
-            return {"ok": False, "error": "Faltan datos para confirmar el pedido"}
-
-        cart_total = sum(i.get("subtotal", 0) for i in cart)
-        contado = cart_total - fin_amt
-
-        dist_pedido = db.get_distribuidor_pedido_de_bodega(bodega["id"])
-        if not dist_pedido:
-            return {"ok": False, "error": "Bodega no encontrada"}
-        pedido = db.create_pedido(
-            bodega_id=bodega["id"],
-            distribuidor_id=dist_pedido,
-            items=cart,
-            monto_productos=cart_total,
-            monto_financiado=fin_amt,
-            monto_contado=contado,
-            fee_tasa=term["rate"],
-            fee_monto=term["fee"],
-            plazo_dias=term["days"],
-            fee_regimen=fee_regimen_para_pedido_nuevo(),
-        )
-        db.update_pedido_estado(pedido["id"], "aprobado", "pin_web")
-        db.clear_carrito(bodega["id"])
-
-        datos["pedido_id"] = pedido["id"]
-        datos["pedido_numero"] = pedido["numero"]
-        datos["pin_web_confirmed"] = True
-        db.upsert_session(telefono, "pin_confirm", datos, bodega["id"])
-
-        return {"ok": True, "pedido_id": pedido["id"], "pedido_numero": pedido["numero"]}
-
+    db.activate_bodega(data.bodega_id, pin_hashed)
     return {"ok": True}
 
 @app.get("/pin")
@@ -1481,19 +244,10 @@ async def reset_pin(data: PinReset):
     bodega = db.sb.table("bodegas").select("telefono_whatsapp").eq("id", data.bodega_id).single().execute().data
     if not bodega:
         return {"ok": False, "error": "Bodega no encontrada"}
-
     tel = bodega["telefono_whatsapp"]
     db.update_bodega(data.bodega_id, {"pin_hash": None, "pin_intentos": 0, "pin_bloqueado_hasta": None})
-    db.upsert_session(tel, "reg_pin", {"bodega_id": data.bodega_id, "ruc": "reset", "is_reset": True}, data.bodega_id)
-
-    try:
-        send_whatsapp(
-            tel,
-            f"🔐 Tu clave fue reseteada.\n\nUsa el teclado seguro para crear una nueva:\n👉 {_pin_url(data.bodega_id, 'create')}"
-        )
-    except Exception as e:
-        logger.error(f"PIN reset notify failed: {e}")
-
+    db.upsert_session(tel, "reg_pin", {"bodega_id": data.bodega_id, "ruc": "reset"}, data.bodega_id)
+    send_whatsapp(tel, "🔐 Tu clave fue reseteada.\n\nCrea una nueva clave Circa de 4 dígitos:")
     return {"ok": True}
 
 # ── CART (web catalog → WhatsApp) ──
@@ -1501,234 +255,31 @@ async def reset_pin(data: PinReset):
 class CartSubmission(BaseModel):
     bodega_id: str
     items: list
-    tipo_operacion: str = "venta"
-
-
-class AnalyticsEventIn(BaseModel):
-    bodega_id: str
-    event_type: str
-    metadata: dict | None = None
-
-# -- Promociones: se aplican al guardar el pedido (parche 22-may-2026) --
-async def _aplicar_promociones_a_cart(bodega_id: str, items_list: list) -> tuple:
-    """
-    Corre el motor de promociones sobre el carrito ANTES de guardar el pedido.
-    Reescribe precio/subtotal de cada linea con el valor con descuento.
-
-    Devuelve (items_list, total_neto, descuento_total).
-
-    Si el motor falla por cualquier razon, devuelve el carrito intacto y
-    descuento 0 -- un pedido a precio de lista es preferible a un pedido fallido.
-    """
-    bruto = round(sum(float(i.get("subtotal") or 0) for i in items_list), 2)
-    if not items_list:
-        return items_list, bruto, 0.0
-    try:
-        req = _EvaluarPromocionesReq(
-            bodega_id=bodega_id,
-            cart=[
-                _CartItem(
-                    catalogo_id=i.get("catalogo_id"),
-                    cantidad=int(i.get("cantidad") or 1),
-                    formato=i.get("pack_size") or "",
-                    precio_unitario_formato=float(i.get("precio") or 0),
-                )
-                for i in items_list
-            ],
-        )
-        resultado = await api_evaluar_promociones(req)
-        res_items = resultado.get("items") or []
-
-        # El motor devuelve un item por linea, en el mismo orden del carrito.
-        # Si la cantidad no coincide, no arriesgamos: guardamos a precio de lista.
-        if len(res_items) != len(items_list):
-            logger.error(
-                "submit-cart: motor devolvio %d items para carrito de %d; "
-                "se guarda sin descuento", len(res_items), len(items_list)
-            )
-            return items_list, bruto, 0.0
-
-        for item, res in zip(items_list, res_items):
-            desc = res.get("descuento_aplicado")
-            if not desc:
-                continue
-            pct = float(desc.get("porcentaje") or 0)
-            cant = int(item.get("cantidad") or 1)
-            precio_neto = round(float(item.get("precio") or 0) * (1 - pct), 2)
-            item["precio"] = precio_neto
-            item["subtotal"] = round(precio_neto * cant, 2)
-
-        total_neto = round(sum(float(i.get("subtotal") or 0) for i in items_list), 2)
-        descuento = round(bruto - total_neto, 2)
-        return items_list, total_neto, descuento
-
-    except Exception as e:
-        logger.error(
-            "submit-cart: motor de promociones fallo, se guarda sin descuento (%s)",
-            e, exc_info=True,
-        )
-        return items_list, bruto, 0.0
-
 
 @app.post("/api/catalogo/submit-cart")
 async def submit_cart(data: CartSubmission):
-    from app.services.analytics import track_event
-    from app.services import meta_client
     items_list = [dict(i) if not isinstance(i, dict) else i for i in data.items]
-    # Aplicar promociones ANTES de guardar: reescribe items_list con los
-    # precios con descuento y devuelve total neto + descuento prorrateado.
-    items_list, total, descuento = await _aplicar_promociones_a_cart(
-        data.bodega_id, items_list
-    )
-    tipo = "preventa" if data.tipo_operacion == "preventa" else "venta"
-    estado_inicial = "preventa_borrador" if tipo == "preventa" else "borrador"
-    dist_pedido = db.get_distribuidor_pedido_de_bodega(data.bodega_id)
-    if not dist_pedido:
-        return {"ok": False, "error": "Bodega no encontrada"}
-    # Create order in pedidos
-    pedido = db.sb.table("pedidos").insert({
-        "bodega_id": data.bodega_id,
-        "distribuidor_id": dist_pedido,
-        "items_json": json.dumps(items_list),
-        "monto_productos": total,
-        "total_pedido": total,
-        "descuento_prorrateado": descuento,
-        "estado": estado_inicial,
-        "tipo_operacion": tipo,
-    }).execute()
-    pedido_id = pedido.data[0]["id"] if pedido.data else None
-    if pedido_id:
-        db.cerrar_borradores_abiertos(
-            data.bodega_id, tipo, except_pedido_id=str(pedido_id)
-        )
-        # Persist cart so "Editar carrito" (edit=1) can reload line items.
-        db.save_carrito(data.bodega_id, items_list)
-        track_event(
-            "preventa_created" if tipo == "preventa" else "order_created",
-            bodega_id=data.bodega_id,
-            pedido_id=pedido_id,
-            source="catalog_web",
-            metadata={
-                "tipo_operacion": tipo,
-                "items_count": len(items_list),
-                "total": round(total, 2),
-            },
-        )
-    # For venta: send proactive payment options right after cart submit.
-    # For preventa: ask explicit confirm step (no payment options yet).
-    if tipo == "venta":
-        bodega = db.sb.table("bodegas").select("telefono_whatsapp").eq("id", data.bodega_id).limit(1).execute()
-        if bodega.data and pedido_id:
-            phone = bodega.data[0]["telefono_whatsapp"].replace("+", "")
-            items_text = "\n".join(f"{i.get('cantidad',1)}x {i.get('nombre','')} \u2014 S/{i.get('subtotal',0):.2f}" for i in items_list)
-            # Send payment options via Meta API (async)
-            from app.flows.catalogo import _send_payment_options
-            import asyncio
-            asyncio.create_task(_send_payment_options(phone, pedido_id, total, items_text, data.bodega_id))
-    else:
-        bodega = db.sb.table("bodegas").select("telefono_whatsapp").eq("id", data.bodega_id).limit(1).execute()
-        if bodega.data and pedido_id:
-            phone = bodega.data[0]["telefono_whatsapp"].replace("+", "")
-            pid = str(pedido_id)[:8]
-            await meta_client.send_text(
-                phone,
-                f"\U0001f5d3\ufe0f *Pre-venta armada*\n\n"
-                f"Total referencial: S/{total:.2f}\n"
-                f"C\u00f3digo temporal: *PRV-{pid}*\n\n"
-                f"Si todo est\u00e1 bien, confirma tu pre-venta con tu clave Circa.",
-            )
-            await meta_client.send_buttons(
-                to=phone,
-                body="\u00bfQu\u00e9 deseas hacer ahora?",
-                buttons=[
-                    {"id": f"PRECONF_{pid}", "title": "Confirmar pre-venta"},
-                    {"id": f"EDITAR_{pid}", "title": "Editar carrito"},
-                ],
-            )
-    return {"ok": True, "pedido_id": str(pedido_id) if pedido_id else None}
-
-
-@app.get("/api/analytics/bodega/{bodega_id}")
-async def analytics_bodega(bodega_id: str):
-    from app.services.analytics import get_bodega_features
-    return get_bodega_features(bodega_id)
-
-
-@app.post("/api/analytics/event")
-async def analytics_event(data: AnalyticsEventIn):
-    from app.services.analytics import track_event
-    track_event(
-        data.event_type,
-        bodega_id=data.bodega_id,
-        source="catalog_web",
-        metadata=data.metadata or {},
-    )
+    db.save_carrito(data.bodega_id, items_list)
+    bodega = db.sb.table("bodegas").select("telefono_whatsapp, linea_disponible").eq("id", data.bodega_id).single().execute().data
+    if bodega:
+        tel = bodega["telefono_whatsapp"]
+        db.upsert_session(tel, "cart_review", {"cart": items_list}, data.bodega_id)
+        total = sum(i.get("subtotal", 0) for i in items_list)
+        from services import messages as msg
+        try:
+            send_whatsapp(tel, msg.msg_carrito(items_list, total, bodega["linea_disponible"]))
+        except Exception as e:
+            logger.error(f"Cart notify failed: {e}")
     return {"ok": True}
-
-@app.post("/api/carrito/clear")
-async def clear_carrito_api(data: dict):
-    bodega_id = data.get("bodega_id", "")
-    if bodega_id:
-        db.clear_carrito(bodega_id)
-    return {"ok": True}
-
-
-@app.post("/api/carrito/save")
-async def save_carrito_api(data: dict):
-    """Persist cart while browsing (same shape as submit-carrito items / get_carrito)."""
-    bodega_id = data.get("bodega_id", "")
-    raw = data.get("items")
-    if not bodega_id or not isinstance(raw, list):
-        return {"ok": False, "error": "bodega_id e items requeridos"}
-    items_out = []
-    for i in raw:
-        if not isinstance(i, dict):
-            continue
-        cid = i.get("catalogo_id") or i.get("id")
-        if not cid:
-            continue
-        pack = i.get("pack_size") or i.get("unit") or ""
-        qty = int(i.get("cantidad") or i.get("qty") or 1)
-        pr = float(i.get("precio") or 0)
-        items_out.append({
-            "catalogo_id": cid,
-            "pack_size": pack,
-            "nombre": i.get("nombre") or i.get("producto") or "",
-            "marca": i.get("marca") or "",
-            "cantidad": qty,
-            "precio": pr,
-            "subtotal": float(i.get("subtotal") or round(pr * qty, 2)),
-        })
-    db.save_carrito(bodega_id, items_out)
-    return {"ok": True}
-
 
 @app.get("/api/carrito/{bodega_id}")
 async def get_carrito(bodega_id: str):
     cart = db.get_carrito(bodega_id)
-    if not cart:
-        return {"items": []}
-    cart["items"] = db.normalize_carrito_items(cart.get("items"))
-    return cart
+    return cart if cart else {"items": []}
 
 @app.get("/catalogo")
 async def catalogo_page():
     return FileResponse("static/catalogo.html")
-
-@app.get("/catalogo-v2")
-async def catalogo_v2_page():
-    return FileResponse("static/catalogo_v2.html")
-
-@app.get("/flyer")
-async def flyer_page():
-    return FileResponse("static/flyer.html")
-
-
-@app.get("/support")
-async def support_inbox_page():
-    """Consola web interna de soporte humano (WhatsApp shared inbox)."""
-    return FileResponse("static/support_inbox.html")
-
 
 @app.get("/api/cobranza")
 async def cobranza_pendiente():
@@ -1739,53 +290,23 @@ async def cobranza_pendiente():
 @app.post("/api/demo/simulate-flow/{pedido_id}")
 async def simulate_full_flow(pedido_id: str):
     import asyncio
-    from app.services import meta_client as mc
     pedido = db.sb.table("pedidos").select("*, bodegas(telefono_whatsapp, nombre_comercial)").eq("id", pedido_id).single().execute().data
     if not pedido:
         raise HTTPException(404, "Pedido no encontrado")
-    tel = pedido["bodegas"]["telefono_whatsapp"].replace("+", "")
-    monto = pedido.get("total", 0)
-    plazo = pedido.get("plazo_dias", 0)
-    items_json = pedido.get("items_json", "[]")
-    try:
-        items = json.loads(items_json) if isinstance(items_json, str) else items_json
-    except:
-        items = []
-    items_text = "\n".join(f"{it.get('cantidad', it.get('qty',0))}x {it.get('nombre', it.get('name',''))}" for it in items)
-
-    steps = [
-        ("confirmado", "📋 *Pedido recibido*\nTu pedido ha sido recibido por el distribuidor."),
-        ("despachado", "📦 *Armando pedido*\nTu pedido fue armado y esta listo para despacho."),
-        ("en_camino", "🚚 *En camino*\nTu pedido esta en camino. Llegada estimada: hoy 2-4 p.m."),
-        ("entregado", "✅ *Entregado*\n¡Tu pedido ha sido entregado!"),
-    ]
-    for estado, msg_text in steps:
+    tel = pedido["bodegas"]["telefono_whatsapp"]
+    from services import messages as msg
+    for estado, detalle in [("despachado","📦 Despachado"),("en_camino","🚚 En camino"),("entregado","🎉 ¡Entregado!")]:
+        db.update_pedido_estado(pedido_id, estado, "demo")
         try:
-            db.sb.table("pedidos").update({"estado": estado}).eq("id", pedido_id).execute()
+            send_whatsapp(tel, msg.msg_status(pedido["numero"], estado, detalle))
         except:
             pass
-        await mc.send_text(tel, msg_text)
         await asyncio.sleep(3)
-
-    # Send payment request
-    from datetime import datetime, timedelta
-    venc_date = datetime.now() + timedelta(days=plazo if plazo else 7)
-    venc = venc_date.strftime("%d/%m/%Y")
-    if monto and monto > 0:
-        await mc.send_buttons(
-            tel,
-            f"⏰ *Recordatorio de pago*\n\n"
-            f"Pedido *#{pedido.get('numero', '')}*:\n{items_text}\n"
-            f"Monto: *S/{monto:.2f}*\n"
-            f"Vence: *{venc}*\n\n"
-            f"Paga por Yape o Plin al:\n"
-            f"📱 *987 654 321*\n"
-            f"👤 Circa Pagos S.A.C.\n\n"
-            f"Cuando hayas pagado, toca el boton:",
-            [{"id": "YA_PAGUE", "title": "Ya pague ✅"}]
-        )
-
-    return {"ok": True, "message": "Demo flow completed"}
+    try:
+        send_whatsapp(tel, msg.msg_recordatorio(pedido["bodegas"]["nombre_comercial"], pedido["monto_total_credito"], pedido["fecha_vencimiento"], 5))
+    except:
+        pass
+    return {"ok": True, "message": "Flow simulated"}
 
 # ── RESET DEMO ──
 
@@ -1811,105 +332,3 @@ async def reset_demo(bodega_id: str):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000, reload=True)
-
-@app.get("/api/debug/catalogo-response")
-async def debug_catalogo_response():
-    """Debug: show what the catalog flow would return."""
-    from app.flows.catalogo import _screen_categorias
-    try:
-        result = await _screen_categorias({"bodega_id": "b1b2c3d4-0001-4000-8000-000000000001"})
-        return result
-    except Exception as e:
-        return {"error": str(e), "type": type(e).__name__}
-
-
-# ============================================================
-# Endpoint: motor de promociones por distribuidor
-# (Sprint promociones DIMAX 22-abr-2026)
-# ============================================================
-from app.services.promociones import evaluar_promociones as _evaluar_promociones, evaluar_bonificaciones as _evaluar_bonificaciones
-
-
-class _CartItem(BaseModel):
-    sku_distribuidor: str | None = None  # Opcional: si no viene, se resuelve desde catalogo_id
-    catalogo_id: str | None = None       # UUID de productos_circa (alternativa)
-    cantidad: int
-    formato: str  # "UND x 1", "TIRA x 10", "CJA x 24"
-    precio_unitario_formato: float
-
-
-class _EvaluarPromocionesReq(BaseModel):
-    bodega_id: str
-    cart: list[_CartItem]
-
-
-@app.post("/api/promociones/evaluar")
-async def api_evaluar_promociones(req: _EvaluarPromocionesReq):
-    """
-    Recibe el carrito y devuelve qué promociones aplican y siguientes escalones.
-    Llamado por el frontend cada vez que el carrito cambia.
-    """
-    if not req.cart:
-        return {"items": [], "ahorro_total": 0, "subtotal_total": 0, "total_final": 0}
-
-    distribuidor_id = db.get_distribuidor_de_bodega(req.bodega_id)
-    if not distribuidor_id:
-        return {"error": "Bodega no encontrada o sin distribuidor", "items": []}
-
-    reglas = db.get_promociones_activas(distribuidor_id)
-    reglas_bonif = db.get_bonificaciones_activas(distribuidor_id)
-    if not reglas and not reglas_bonif:
-        items = [{
-            "sku_distribuidor": i.sku_distribuidor,
-            "subtotal": round(i.cantidad * i.precio_unitario_formato, 2),
-            "descuento_aplicado": None,
-            "siguiente_escalon": None,
-        } for i in req.cart]
-        subtotal = sum(it["subtotal"] for it in items)
-        return {
-            "items": items, "ahorro_total": 0,
-            "subtotal_total": subtotal, "total_final": subtotal,
-            "bonificaciones_aplicables": [], "bonificaciones_proximas": [],
-            "valor_bonificaciones": 0
-        }
-
-    # Resolver catalogo_id (UUID) → sku_distribuidor si el frontend solo manda UUIDs
-    cat_ids_to_resolve = [i.catalogo_id for i in req.cart if i.catalogo_id and not i.sku_distribuidor]
-    sku_map = db.get_skus_for_catalogo_ids(distribuidor_id, cat_ids_to_resolve) if cat_ids_to_resolve else {}
-
-    # Construir lista de SKUs efectivos
-    skus_efectivos = []
-    for i in req.cart:
-        sku = i.sku_distribuidor or sku_map.get(i.catalogo_id, "")
-        skus_efectivos.append(sku)
-
-    info = db.get_catalogo_info_for_skus(distribuidor_id, [s for s in skus_efectivos if s])
-
-    cart_enriched = []
-    for i, sku in zip(req.cart, skus_efectivos):
-        ci = info.get(sku, {})
-        cart_enriched.append({
-            "sku_distribuidor": sku,
-            "cantidad": i.cantidad,
-            "formato": i.formato,
-            "precio_unitario_formato": i.precio_unitario_formato,
-            "categoria": ci.get("categoria"),
-            "marca": ci.get("marca"),
-            "contenido_caja": ci.get("contenido_caja"),
-            "contenido_pack": ci.get("contenido_pack"),
-        })
-
-    resultado = _evaluar_promociones(cart_enriched, reglas)
-
-    # Evaluar bonificaciones (productos regalo)
-    if reglas_bonif:
-        bonif = _evaluar_bonificaciones(cart_enriched, reglas_bonif)
-        resultado["bonificaciones_aplicables"] = bonif["aplicables"]
-        resultado["bonificaciones_proximas"] = bonif["proximas"]
-        resultado["valor_bonificaciones"] = bonif["valor_total_estimado"]
-    else:
-        resultado["bonificaciones_aplicables"] = []
-        resultado["bonificaciones_proximas"] = []
-        resultado["valor_bonificaciones"] = 0
-
-    return resultado
