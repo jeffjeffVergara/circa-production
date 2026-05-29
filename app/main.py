@@ -1440,44 +1440,6 @@ async def verify_pin_web(data: PinVerification):
         cart_total = sum(i.get("subtotal", 0) for i in cart)
         contado = cart_total - fin_amt
 
-        # ── CASO PREVENTA POR VENDEDOR ──
-        # Si la sesion viene de una preventa propuesta por un vendedor,
-        # actualizamos el pedido existente en lugar de crear uno nuevo.
-        if datos.get("pedido_id_preventa"):
-            pid_preventa = datos["pedido_id_preventa"]
-            try:
-                upd = {
-                    "estado": "preventa_aceptada",
-                    "monto_financiado": fin_amt,
-                    "monto_contado": contado,
-                    "fee_tasa": term["rate"],
-                    "fee_monto": term["fee"],
-                    "plazo_dias": term["days"],
-                    "metodo_auth": "pin_web",
-                }
-                db.sb.table("pedidos").update(upd).eq("id", pid_preventa).execute()
-
-                # Descontar línea (igual que un pedido normal)
-                bod_fresh = db.sb.table("bodegas").select("linea_disponible").eq("id", bodega["id"]).single().execute().data
-                linea_actual = float((bod_fresh or {}).get("linea_disponible") or 0)
-                nueva_linea = max(0.0, round(linea_actual - fin_amt, 2))
-                db.update_bodega(bodega["id"], {"linea_disponible": nueva_linea})
-
-                # Levantar numero del pedido de preventa para mostrar status al bodeguero
-                full = db.sb.table("pedidos").select("numero").eq("id", pid_preventa).limit(1).execute().data
-                num = (full[0].get("numero") if full else None) or ""
-
-                db.clear_carrito(bodega["id"])
-                datos["pedido_id"] = pid_preventa
-                datos["pedido_numero"] = num
-                datos["pin_web_confirmed"] = True
-                db.upsert_session(telefono, "pin_confirm", datos, bodega["id"])
-
-                return {"ok": True, "pedido_id": pid_preventa, "pedido_numero": num}
-            except Exception as e:
-                logger.error(f"Aprobar preventa via PIN web failed: {e}")
-                return {"ok": False, "error": "No pudimos cerrar la aprobación de la preventa. Intenta otra vez."}
-
         dist_pedido = db.get_distribuidor_pedido_de_bodega(bodega["id"])
         if not dist_pedido:
             return {"ok": False, "error": "Bodega no encontrada"}

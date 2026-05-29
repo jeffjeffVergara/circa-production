@@ -1320,14 +1320,12 @@ En menos de 24 horas validamos tu solicitud y activamos tu línea. Empiezas comp
     # ═══════════════════════════════════════════════
     if fase == "aprobar_preventa":
         if body_n in ("APROBAR", "APRUEBO", "SI", "OK", "ACEPTAR", "ACEPTO", "1"):
-            # Delegamos al flow normal de "Cómo quieres pagar?".
-            # Cargamos el carrito del pedido en la sesion y marcamos pedido_id_preventa
-            # para que el endpoint /api/pin/verify actualice el pedido existente
-            # en lugar de crear uno nuevo.
+            # Delegamos al flujo existente _send_payment_options del catalogo.
+            # Es el MISMO patron que usa el boton "Pagar mi preventa" del menu interactivo.
             pedido_id = datos.get("pedido_id")
-            link_token = datos.get("link_token")
+            total = float(datos.get("total") or 0)
 
-            # Levantar items del pedido para cargar en el carrito de sesion
+            # Levantar items del pedido para el menu de opciones de pago
             items = []
             try:
                 row = (
@@ -1346,23 +1344,29 @@ En menos de 24 horas validamos tu solicitud y activamos tu línea. Empiezas comp
             if not items:
                 return ["⚠️ No pudimos cargar los productos de la preventa. Pídele a tu vendedor que la rehaga."]
 
-            cart_total = _cart_total(items)
-            financiable_max = min(bodega["linea_disponible"], cart_total)
+            # Reconstruir items en formato esperado por el dispatcher de PREVENTA_PAYMENT_OPTIONS
+            # (que espera catalogo_distribuidor.productos_circa.nombre, no plain "nombre")
+            items_join = []
+            for i in items:
+                items_join.append({
+                    "cantidad": i.get("cantidad", 1),
+                    "subtotal": float(i.get("subtotal") or 0),
+                    "catalogo_distribuidor": {
+                        "productos_circa": {
+                            "nombre": i.get("nombre", "Producto"),
+                        }
+                    }
+                })
 
-            # Setear datos de sesion para el flow normal de cart_review
-            nueva_datos = {
-                "cart": items,
-                "tipo_operacion": "preventa",
-                "pedido_id_preventa": pedido_id,
-                "link_token_preventa": link_token,
-            }
-            db.upsert_session(telefono, "cart_review", nueva_datos, bodega["id"])
+            # Marcar la fase como menu para que el flow normal continue limpio
+            db.upsert_session(telefono, "menu", {}, bodega["id"])
 
             return [{
-                "signal": "CARRITO",
-                "items_text": _cart_items_text(items),
-                "total": cart_total,
-                "financiable": financiable_max,
+                "signal": "PREVENTA_PAYMENT_OPTIONS",
+                "pedido_id": pedido_id,
+                "total": total,
+                "items": items_join,
+                "bodega_id": bodega["id"],
             }]
 
         if body_n in ("RECHAZAR", "RECHAZO", "NO", "CANCELAR", "2"):
