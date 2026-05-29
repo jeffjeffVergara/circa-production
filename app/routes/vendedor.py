@@ -423,3 +423,125 @@ def vendedor_catalogo_redirect(
     # Redirect al catalogo web con params: bodega_id, modo preventa, token vendedor
     redirect_url = f"/static/catalogo_v2.html?b={bodega_id}&t=preventa&vt={token}"
     return RedirectResponse(url=redirect_url, status_code=302)
+
+
+# ==========================================================
+# ENDPOINT 5: QR + LINK PARA COMPARTIR  GET /v/{token}/preventa/{link_token}/share
+# ==========================================================
+
+# Numero de WhatsApp de Circa (donde el bodeguero abre el chat con su pedido)
+CIRCA_WA_NUMBER = os.getenv("CIRCA_WA_NUMBER", "51986311567")
+
+
+@router.get("/{token}/preventa/{link_token}/share", response_class=HTMLResponse)
+def vendedor_share_link(
+    token: str = Path(..., min_length=16, max_length=64),
+    link_token: str = Path(..., min_length=8, max_length=16),
+):
+    """Pantalla final del vendedor: QR + link wa.me para pasar al bodeguero."""
+    vendedor = _get_vendedor_by_token(token)
+    if not vendedor:
+        raise HTTPException(status_code=404, detail="Acceso no encontrado")
+
+    # Validar que el pedido existe, esta en preventa_confirmada, y pertenece a este vendedor
+    pedidos = _sb_get("pedidos", {
+        "select": "id,vendedor_id,estado,bodega_id,total_pedido,link_token",
+        "link_token": f"eq.{link_token}",
+        "limit": "1",
+    })
+    if not pedidos:
+        raise HTTPException(status_code=404, detail="Preventa no encontrada")
+    pedido = pedidos[0]
+
+    # Solo el vendedor que creo el pedido (o un admin) puede ver el link
+    if pedido.get("vendedor_id") != vendedor["id"] and not vendedor.get("es_admin"):
+        raise HTTPException(status_code=403, detail="Esta preventa no es tuya")
+
+    # Levantar datos de la bodega para mostrar nombre
+    bodega_rows = _sb_get("bodegas", {
+        "select": "razon_social,nombre_comercial",
+        "id": f"eq.{pedido['bodega_id']}",
+        "limit": "1",
+    })
+    bodega_nombre = ""
+    if bodega_rows:
+        b = bodega_rows[0]
+        bodega_nombre = b.get("nombre_comercial") or b.get("razon_social") or ""
+
+    total = float(pedido.get("total_pedido") or 0)
+    wa_link = f"https://wa.me/{CIRCA_WA_NUMBER}?text=Pedido%20{link_token}"
+
+    html = f"""<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
+  <title>Compartir preventa · Circa</title>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+  <style>
+    {CSS_BASE}
+    .preventa-meta{{background:rgba(34,211,238,0.08);border:1px solid rgba(34,211,238,0.2);border-radius:14px;padding:16px 18px;margin-top:24px}}
+    .preventa-meta .bodega{{font-size:15px;font-weight:600;color:#fff}}
+    .preventa-meta .total{{font-size:22px;font-weight:700;color:#22D3EE;margin-top:6px}}
+    .preventa-meta .codigo{{font-size:11px;color:rgba(255,255,255,0.4);margin-top:6px;letter-spacing:0.5px;font-family:monospace}}
+    .qr-wrap{{display:flex;justify-content:center;margin-top:28px;background:#fff;padding:20px;border-radius:14px}}
+    .qr-wrap img,.qr-wrap canvas{{display:block;max-width:220px;height:auto}}
+    .link-box{{margin-top:18px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:14px 16px;font-family:monospace;font-size:11px;color:rgba(255,255,255,0.7);word-break:break-all;line-height:1.5}}
+    .btn-copy{{margin-top:10px;width:100%;padding:12px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:10px;color:#fff;font-family:inherit;font-size:13px;font-weight:500;cursor:pointer}}
+    .btn-copy:active{{background:rgba(255,255,255,0.1)}}
+    .help{{margin-top:24px;font-size:12px;color:rgba(255,255,255,0.5);line-height:1.6;text-align:center}}
+    .btns-final{{margin-top:24px;display:flex;gap:10px}}
+    .btns-final .btn{{margin-top:0}}
+  </style>
+</head>
+<body>
+  <a href="/v/{token}" class="back">← Menú</a>
+  <div class="titulo">Preventa lista</div>
+  <div class="subtitulo">Pásale el link o el QR a tu cliente</div>
+
+  <div class="preventa-meta">
+    <div class="bodega">{bodega_nombre}</div>
+    <div class="total">S/ {total:.2f}</div>
+    <div class="codigo">Código {link_token}</div>
+  </div>
+
+  <div class="qr-wrap"><div id="qr"></div></div>
+
+  <div class="help">
+    El cliente abre el QR (o el link) y aprueba<br>la preventa con su clave Circa.
+  </div>
+
+  <div class="link-box" id="link-text">{wa_link}</div>
+  <button class="btn-copy" onclick="copiarLink()">📋 Copiar link</button>
+
+  <div class="btns-final">
+    <a href="/v/{token}/preventa" class="btn secondary">Nueva preventa</a>
+    <a href="https://wa.me/?text=Hola%20te%20paso%20el%20link%20para%20aprobar%20tu%20pedido%20Circa%3A%20{wa_link}" target="_blank" class="btn">Compartir</a>
+  </div>
+
+  <script>
+    // Genera el QR del wa.me link
+    new QRCode(document.getElementById("qr"), {{
+      text: "{wa_link}",
+      width: 220,
+      height: 220,
+      colorDark: "#0A0E1A",
+      colorLight: "#ffffff",
+      correctLevel: QRCode.CorrectLevel.M
+    }});
+
+    function copiarLink() {{
+      var t = document.getElementById('link-text').textContent;
+      navigator.clipboard.writeText(t).then(function(){{
+        var b = event.target;
+        var orig = b.textContent;
+        b.textContent = '✓ Copiado';
+        setTimeout(function(){{ b.textContent = orig; }}, 1500);
+      }}).catch(function(){{ alert('No se pudo copiar, seleccioná manualmente'); }});
+    }}
+  </script>
+</body>
+</html>"""
+
+    return HTMLResponse(content=html)

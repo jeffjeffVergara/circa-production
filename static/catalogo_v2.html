@@ -590,7 +590,12 @@ async function cfmOrder(){
   var resp=await fetch(API+'/api/catalogo/submit-cart',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
   var data={};try{data=await resp.json()}catch(_){}
   if(IS_VENDEDOR){
-   // Modo vendedor: el pedido queda en preventa_confirmada esperando aprobacion del bodeguero
+   // Modo vendedor: si el backend devolvio link_token, ir a la pantalla del QR.
+   // Si no, mostrar la pantalla de "preventa enviada" como fallback.
+   if(data&&data.link_token){
+    location.href='/v/'+VENDEDOR_TOKEN+'/preventa/'+data.link_token+'/share';
+    return;
+   }
    var nroPedido=data&&data.numero?data.numero:'';
    $('dTl').textContent='Preventa enviada';
    $('dI').innerHTML='<div style="text-align:center;padding:24px 8px">'+
