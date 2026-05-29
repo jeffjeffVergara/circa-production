@@ -192,7 +192,7 @@ tr:hover td{background:var(--card-hover)}
 <p>Panel de Administración</p>
 <div style="margin-bottom:16px">
 <label style="color:var(--muted);font-size:12px;display:block;margin-bottom:6px">Token de acceso</label>
-<input type="password" id="tokenInput" class="input" placeholder="circa-admin-..." onkeypress="if(event.key==='Enter')login()">
+<input type="password" id="tokenInput" class="input" placeholder="Token de acceso" autocomplete="off" autocapitalize="off" spellcheck="false" data-lpignore="true" onkeypress="if(event.key==='Enter')login()">
 </div>
 <button class="btn" style="width:100%" onclick="login()">Ingresar</button>
 <div id="loginError" style="color:var(--red);margin-top:12px;font-size:13px"></div>
@@ -336,7 +336,7 @@ tr:hover td{background:var(--card-hover)}
 <div class="section">
 <h2>🏪 Bodegas <span style="font-size:12px;color:var(--muted);font-weight:400" id="bodegasInfoLine">cargando...</span></h2>
 <div class="search-bar">
-<input type="text" id="bodegasSearch" placeholder="Buscar razón social, dueño, DNI, RUC o teléfono..." onkeyup="loadBodegas()">
+<input type="search" id="bodegasSearch" name="circa-bodegas-filter" placeholder="Buscar razón social, dueño, DNI, RUC o teléfono..." autocomplete="off" autocorrect="off" spellcheck="false" data-lpignore="true" data-form-type="other" oninput="onBodegasSearchInput()">
 <select id="bodegasFiltroEstado" onchange="loadBodegas()" style="padding:9px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px">
 <option value="">Todos los estados</option>
 <option value="activo">Activos</option>
@@ -382,6 +382,14 @@ var allPedidos = [];
 var allPagos = [];
 var statsDistribuidor = [];
 var bodegaModalId = null;
+var bodegasSearchTimer = null;
+var bodegasSearchSnapshot = '';
+
+function onBodegasSearchInput(){
+  if(bodegaModalId) return;
+  clearTimeout(bodegasSearchTimer);
+  bodegasSearchTimer = setTimeout(loadBodegas, 250);
+}
 
 function login(){
   var t = document.getElementById('tokenInput').value.trim();
@@ -845,6 +853,7 @@ function loadSobregiroAlert(){
 }
 
 function loadBodegas(){
+  if(bodegaModalId) return;
   var search = document.getElementById('bodegasSearch').value;
   var estado = document.getElementById('bodegasFiltroEstado').value;
   var url = '/api/distribuidor/admin/bodegas?';
@@ -878,7 +887,7 @@ function loadBodegas(){
       var aprob = (b.linea_aprobada||0).toFixed(0);
       var pedCount = b.pedidos_count || 0;
       var pedPagados = b.pedidos_pagados || 0;
-      return '<tr onclick="openBodegaDetail(\''+b.id+'\')">'+
+      return '<tr onclick="openBodegaDetail(\''+b.id+'\', event)">'+
         '<td><span class="status-dot '+clase+'">'+statusLabel+'</span></td>'+
         '<td><div style="font-weight:600">'+name+'</div><div style="font-size:11px;color:var(--muted)">'+dueno+'</div></td>'+
         '<td style="color:var(--muted);font-size:12px">'+tel+'</td>'+
@@ -906,8 +915,14 @@ function hacecuanto(iso){
   return d.toLocaleDateString('es-PE',{day:'2-digit',month:'short',year:'2-digit'});
 }
 
-function openBodegaDetail(id){
+function openBodegaDetail(id, ev){
+  if(ev){
+    ev.preventDefault();
+    ev.stopPropagation();
+  }
+  bodegasSearchSnapshot = document.getElementById('bodegasSearch').value;
   bodegaModalId = id;
+  document.getElementById('bodegasSearch').readOnly = true;
   document.getElementById('bodegaModal').classList.add('open');
   document.getElementById('bodegaModalBody').innerHTML = '<div class="empty">Cargando…</div>';
   api('/api/distribuidor/admin/bodega/'+id).then(function(d){
@@ -955,11 +970,11 @@ function openBodegaDetail(id){
           '<div style="grid-column:1/-1"><label>Motivo / comentario (mín. 8 caracteres)</label>'+
           '<textarea id="pinAdminComentario" placeholder="Ej.: Bodeguero olvidó clave, validé DNI por teléfono"></textarea></div>'+
           '<div style="grid-column:1/-1"><label>Autorización (token admin)</label>'+
-          '<input type="password" id="pinAdminAuth" placeholder="Reingresa tu token de acceso" autocomplete="off"></div>'+
+          '<input type="text" id="pinAdminAuth" placeholder="Reingresa tu token de acceso" autocomplete="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-form-type="other" style="-webkit-text-security:disc"></div>'+
           '<div><label>Nueva clave (4 dígitos)</label>'+
-          '<input type="password" id="pinAdminNew" maxlength="4" inputmode="numeric" pattern="[0-9]*" placeholder="••••"></div>'+
+          '<input type="text" id="pinAdminNew" maxlength="4" inputmode="numeric" pattern="[0-9]*" placeholder="••••" autocomplete="off" autocapitalize="off" spellcheck="false" data-lpignore="true" style="-webkit-text-security:disc"></div>'+
           '<div><label>Confirmar clave</label>'+
-          '<input type="password" id="pinAdminConfirm" maxlength="4" inputmode="numeric" pattern="[0-9]*" placeholder="••••"></div>'+
+          '<input type="text" id="pinAdminConfirm" maxlength="4" inputmode="numeric" pattern="[0-9]*" placeholder="••••" autocomplete="off" autocapitalize="off" spellcheck="false" data-lpignore="true" style="-webkit-text-security:disc"></div>'+
         '</div>'+
         '<div class="pin-admin-actions">'+
           '<button class="btn btn-green btn-small" onclick="adminSetPin()">Asignar clave</button>'+
@@ -1007,6 +1022,12 @@ function openBodegaDetail(id){
 function closeBodegaModal(){
   document.getElementById('bodegaModal').classList.remove('open');
   bodegaModalId = null;
+  var searchEl = document.getElementById('bodegasSearch');
+  searchEl.readOnly = false;
+  if(searchEl && searchEl.value !== bodegasSearchSnapshot){
+    searchEl.value = bodegasSearchSnapshot;
+  }
+  loadBodegas();
 }
 
 function _pinAdminPayload(){
