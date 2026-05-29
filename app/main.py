@@ -1502,6 +1502,9 @@ class CartSubmission(BaseModel):
     bodega_id: str
     items: list
     tipo_operacion: str = "venta"
+    # Modo vendedor (preventa presencial armada desde la app del vendedor)
+    vendedor_token: str | None = None
+    origen: str | None = None
 
 
 class AnalyticsEventIn(BaseModel):
@@ -1575,18 +1578,45 @@ async def submit_cart(data: CartSubmission):
     from app.services.analytics import track_event
     from app.services import meta_client
     items_list = [dict(i) if not isinstance(i, dict) else i for i in data.items]
+
+    # === MODO VENDEDOR: validar token y preparar campos extra ===
+    vendedor_id = None
+    is_vendedor_mode = False
+    link_token = None
+    if data.vendedor_token:
+        v_rows = db.sb.table("vendedores").select("id,activo,nombre").eq(
+            "access_token", data.vendedor_token
+        ).limit(1).execute()
+        if v_rows.data and v_rows.data[0].get("activo"):
+            vendedor_id = v_rows.data[0]["id"]
+            is_vendedor_mode = True
+            import secrets
+            link_token = secrets.token_hex(6)
+        else:
+            return {"ok": False, "error": "Token de vendedor invalido"}
+    # === FIN MODO VENDEDOR ===
+
     # Aplicar promociones ANTES de guardar: reescribe items_list con los
     # precios con descuento y devuelve total neto + descuento prorrateado.
     items_list, total, descuento = await _aplicar_promociones_a_cart(
         data.bodega_id, items_list
     )
     tipo = "preventa" if data.tipo_operacion == "preventa" else "venta"
-    estado_inicial = "preventa_borrador" if tipo == "preventa" else "borrador"
+
+    # En modo vendedor: siempre preventa y estado confirmada (saltea borrador,
+    # el vendedor ya confirmo). Sin modo vendedor: comportamiento original.
+    if is_vendedor_mode:
+        tipo = "preventa"
+        estado_inicial = "preventa_confirmada"
+    else:
+        estado_inicial = "preventa_borrador" if tipo == "preventa" else "borrador"
+
     dist_pedido = db.get_distribuidor_pedido_de_bodega(data.bodega_id)
     if not dist_pedido:
         return {"ok": False, "error": "Bodega no encontrada"}
+
     # Create order in pedidos
-    pedido = db.sb.table("pedidos").insert({
+    pedido_payload = {
         "bodega_id": data.bodega_id,
         "distribuidor_id": dist_pedido,
         "items_json": json.dumps(items_list),
@@ -1595,8 +1625,16 @@ async def submit_cart(data: CartSubmission):
         "descuento_prorrateado": descuento,
         "estado": estado_inicial,
         "tipo_operacion": tipo,
-    }).execute()
+    }
+    if is_vendedor_mode:
+        pedido_payload["vendedor_id"] = vendedor_id
+        pedido_payload["link_token"] = link_token
+        pedido_payload["origen"] = "preventa_vendedor_app"
+
+    pedido = db.sb.table("pedidos").insert(pedido_payload).execute()
     pedido_id = pedido.data[0]["id"] if pedido.data else None
+    pedido_numero = pedido.data[0].get("numero") if pedido.data else None
+
     if pedido_id:
         db.cerrar_borradores_abiertos(
             data.bodega_id, tipo, except_pedido_id=str(pedido_id)
@@ -1607,13 +1645,28 @@ async def submit_cart(data: CartSubmission):
             "preventa_created" if tipo == "preventa" else "order_created",
             bodega_id=data.bodega_id,
             pedido_id=pedido_id,
-            source="catalog_web",
+            source="vendedor_app" if is_vendedor_mode else "catalog_web",
             metadata={
                 "tipo_operacion": tipo,
                 "items_count": len(items_list),
                 "total": round(total, 2),
+                "vendedor_id": vendedor_id,
+                "link_token": link_token,
             },
         )
+
+    # === MODO VENDEDOR: NO mandar mensaje automatico al WhatsApp del bodeguero ===
+    # El vendedor mismo le va a pasar el link/QR al bodeguero.
+    if is_vendedor_mode:
+        return {
+            "ok": True,
+            "pedido_id": str(pedido_id) if pedido_id else None,
+            "numero": pedido_numero,
+            "link_token": link_token,
+        }
+    # === FIN MODO VENDEDOR ===
+
+    # Comportamiento original para bodeguero (catalog_web):
     # For venta: send proactive payment options right after cart submit.
     # For preventa: ask explicit confirm step (no payment options yet).
     if tipo == "venta":
