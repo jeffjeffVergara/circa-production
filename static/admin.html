@@ -197,6 +197,7 @@ tr:hover td{background:var(--card-hover)}
 /* Loader global al cambiar Real/Test */
 .panel-loader{position:fixed;inset:0;background:rgba(15,23,42,.58);backdrop-filter:blur(3px);z-index:900;display:none;align-items:center;justify-content:center;flex-direction:column;gap:14px}
 .panel-loader.open{display:flex}
+.panel-loader.top{z-index:1150}
 .panel-loader-spinner{width:42px;height:42px;border:3px solid var(--border);border-top-color:var(--blue-light);border-radius:50%;animation:panelSpin .75s linear infinite}
 .panel-loader-text{color:var(--text);font-size:14px;font-weight:600;letter-spacing:.2px}
 @keyframes panelSpin{to{transform:rotate(360deg)}}
@@ -863,16 +864,17 @@ function setMode(mode){
     });
 }
 
-function showPanelLoader(text){
+function showPanelLoader(text, onTop){
   var el = document.getElementById('panelLoader');
   if(text) document.getElementById('panelLoaderText').textContent = text;
+  el.classList.toggle('top', !!onTop);
   el.classList.add('open');
   el.setAttribute('aria-busy', 'true');
 }
 
 function hidePanelLoader(){
   var el = document.getElementById('panelLoader');
-  el.classList.remove('open');
+  el.classList.remove('open', 'top');
   el.setAttribute('aria-busy', 'false');
 }
 
@@ -1185,6 +1187,8 @@ function adminSetPin(){
 }
 
 function _executeAdminSetPin(p, pin, pinConfirm){
+  setPinAdminBusy(true);
+  showPanelLoader('Guardando clave…', true);
   fetch('/api/distribuidor/admin/bodega/'+bodegaModalId+'/pin/set', {
     method: 'POST',
     headers: {'Content-Type':'application/json', 'X-Admin-Token': TOKEN},
@@ -1197,7 +1201,11 @@ function _executeAdminSetPin(p, pin, pinConfirm){
       throw new Error(msg || x.d.error || 'No se pudo asignar');
     }
     notifyPinResult(x.d.mensaje || 'Clave asignada', 'success');
-  }).catch(function(e){ notifyPinResult(e.message, 'error'); });
+  }).catch(function(e){ notifyPinResult(e.message, 'error'); })
+  .finally(function(){
+    hidePanelLoader();
+    setPinAdminBusy(false);
+  });
 }
 
 function adminResetPin(){
@@ -1221,6 +1229,8 @@ function adminResetPin(){
 }
 
 function _executeAdminResetPin(p){
+  setPinAdminBusy(true);
+  showPanelLoader('Reseteando clave…', true);
   fetch('/api/distribuidor/admin/bodega/'+bodegaModalId+'/pin/reset', {
     method: 'POST',
     headers: {'Content-Type':'application/json', 'X-Admin-Token': TOKEN},
@@ -1233,7 +1243,17 @@ function _executeAdminResetPin(p){
       throw new Error(msg || x.d.error || 'No se pudo resetear');
     }
     notifyPinResult(x.d.mensaje || 'Clave reseteada', 'success');
-  }).catch(function(e){ notifyPinResult(e.message, 'error'); });
+  }).catch(function(e){ notifyPinResult(e.message, 'error'); })
+  .finally(function(){
+    hidePanelLoader();
+    setPinAdminBusy(false);
+  });
+}
+
+function setPinAdminBusy(on){
+  document.querySelectorAll('.pin-admin-actions button').forEach(function(btn){
+    btn.disabled = on;
+  });
 }
 
 // Inicialización del toggle al cargar
