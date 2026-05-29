@@ -79,7 +79,7 @@ tr:hover td{background:var(--card-hover)}
 .modal-info-row{display:flex;justify-content:space-between;padding:4px 0}
 .modal-info-row span:first-child{color:var(--muted)}
 .modal-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:20px}
-.toast{position:fixed;bottom:20px;right:20px;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:14px 18px;z-index:200;box-shadow:0 10px 30px rgba(0,0,0,.4);max-width:320px}
+.toast{position:fixed;bottom:20px;right:20px;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:14px 18px;z-index:1200;box-shadow:0 10px 30px rgba(0,0,0,.4);max-width:320px}
 .toast.success{border-color:var(--green)}
 .toast.error{border-color:var(--red)}
 .empty{text-align:center;padding:40px;color:var(--muted)}
@@ -800,7 +800,12 @@ function showToast(msg,type){
   el.className = 'toast '+(type||'');
   el.textContent = msg;
   document.getElementById('toastContainer').appendChild(el);
-  setTimeout(function(){el.remove()},3000);
+  setTimeout(function(){el.remove()}, type === 'error' ? 5000 : 3500);
+}
+
+function notifyPinResult(msg, type){
+  closeBodegaModal();
+  setTimeout(function(){ showToast(msg, type); }, 80);
 }
 
 // Auto login
@@ -815,12 +820,27 @@ if(savedToken){
 // FASE 3: Toggle Real/Test, alerta sobregiro, tab Bodegas
 // ============================================================
 
+function clearAdminFilters(){
+  ['bodegasSearch','cobFiltroBodega','pedFiltroBodega','pedFiltroDist'].forEach(function(id){
+    var el = document.getElementById(id);
+    if(el) el.value = '';
+  });
+  ['bodegasFiltroEstado','cobFiltroEstado','cobFiltroDist','pedFiltroTipo','pedFiltroEstado'].forEach(function(id){
+    var el = document.getElementById(id);
+    if(el) el.value = '';
+  });
+  bodegasSearchSnapshot = '';
+}
+
 function setMode(mode){
   var current = window.MODE_FILTER || localStorage.getItem('circa_mode') || 'real';
   if(mode === current) return;
 
   window.MODE_FILTER = mode;
   localStorage.setItem('circa_mode', mode);
+  clearAdminFilters();
+  if(bodegaModalId) closeBodegaModal();
+
   document.querySelectorAll('#modeToggle button').forEach(function(b){
     b.classList.toggle('active', b.dataset.mode === mode);
     b.disabled = true;
@@ -1176,9 +1196,8 @@ function _executeAdminSetPin(p, pin, pinConfirm){
       if(Array.isArray(msg)) msg = msg.map(function(e){ return e.msg || e; }).join(', ');
       throw new Error(msg || x.d.error || 'No se pudo asignar');
     }
-    showToast(x.d.mensaje || 'Clave asignada','success');
-    closeBodegaModal();
-  }).catch(function(e){ showToast(e.message,'error'); });
+    notifyPinResult(x.d.mensaje || 'Clave asignada', 'success');
+  }).catch(function(e){ notifyPinResult(e.message, 'error'); });
 }
 
 function adminResetPin(){
@@ -1213,9 +1232,8 @@ function _executeAdminResetPin(p){
       if(Array.isArray(msg)) msg = msg.map(function(e){ return e.msg || e; }).join(', ');
       throw new Error(msg || x.d.error || 'No se pudo resetear');
     }
-    showToast(x.d.mensaje || 'Clave reseteada','success');
-    closeBodegaModal();
-  }).catch(function(e){ showToast(e.message,'error'); });
+    notifyPinResult(x.d.mensaje || 'Clave reseteada', 'success');
+  }).catch(function(e){ notifyPinResult(e.message, 'error'); });
 }
 
 // Inicialización del toggle al cargar

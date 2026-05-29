@@ -68,6 +68,8 @@ a{color:var(--accent)}
 .composer{border-top:1px solid var(--brd);padding:14px 18px;background:var(--card)}
 .composer textarea{width:100%;min-height:72px;padding:12px;border-radius:var(--rs);border:1px solid var(--brd);background:var(--bg);color:var(--t1);font-family:inherit;font-size:13px;resize:vertical}
 .composer-actions{display:flex;justify-content:space-between;align-items:center;margin-top:10px;gap:10px;flex-wrap:wrap}
+.composer-actions button.primary:disabled,.composer-actions button.primary.sending{opacity:.65;cursor:wait}
+.composer textarea:read-only{opacity:.75;cursor:wait}
 .super-assign{display:none;align-items:center;gap:8px;font-size:12px;color:var(--t2)}
 .super-assign.on{display:flex}
 .super-assign select{min-width:160px;padding:8px;border-radius:var(--rs);border:1px solid var(--brd);background:var(--bg);color:var(--t1);font-family:inherit}
@@ -187,6 +189,7 @@ a{color:var(--accent)}
   var selectedId=null;
   var ws=null;
   var typingTimer=null;
+  var sendingReply=false;
 
   function esc(s){
     if(s==null)return'';
@@ -271,6 +274,7 @@ a{color:var(--accent)}
     document.getElementById('presence').value=me.status||'online';
     var sup=me.role==='supervisor';
     document.getElementById('lblScope').style.display=sup?'flex':'none';
+    document.getElementById('scopeAll').checked=!!sup;
     document.getElementById('superAssign').classList.toggle('on',sup);
     if(sup){
       agents=await api('GET','/api/support/agents');
@@ -367,8 +371,18 @@ a{color:var(--accent)}
     box.scrollTop=box.scrollHeight;
   }
 
+  function setSendingReply(on){
+    sendingReply=on;
+    var btn=document.getElementById('btnSend');
+    var ta=document.getElementById('replyTa');
+    btn.disabled=on;
+    btn.classList.toggle('sending',on);
+    btn.textContent=on?'Enviando…':'Enviar';
+    ta.readOnly=on;
+  }
+
   async function sendReply(){
-    if(!selectedId)return;
+    if(!selectedId||sendingReply)return;
     var t=document.getElementById('replyTa').value.trim();
     var img=document.getElementById('replyImg').value.trim();
     var doc=document.getElementById('replyDoc').value.trim();
@@ -387,6 +401,7 @@ a{color:var(--accent)}
       return;
     }
     try{
+      setSendingReply(true);
       await api('POST','/api/support/conversations/'+encodeURIComponent(selectedId)+'/reply',payload);
       document.getElementById('replyTa').value='';
       document.getElementById('replyImg').value='';
@@ -397,6 +412,7 @@ a{color:var(--accent)}
       await loadConversations();
       toast('Enviado');
     }catch(e){toast('Error: '+e.message);}
+    finally{setSendingReply(false);}
   }
 
   function wire(){
@@ -432,7 +448,7 @@ a{color:var(--accent)}
     };
     document.getElementById('btnSend').onclick=sendReply;
     document.getElementById('replyTa').onkeydown=function(e){
-      if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendReply();}
+      if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();if(!sendingReply)sendReply();}
       if(selectedId){
         clearTimeout(typingTimer);
         typingTimer=setTimeout(function(){
