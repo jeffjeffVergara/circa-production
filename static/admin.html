@@ -172,8 +172,8 @@ tr:hover td{background:var(--card-hover)}
 .timeline-time{font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
 .timeline-event{font-size:13px;font-weight:500;margin-top:1px}
 .timeline-detail{font-size:11px;color:var(--muted);margin-top:1px}
-.pin-admin{background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:20px}
-.pin-admin h3{font-size:14px;font-weight:700;margin-bottom:8px;color:var(--blue-light)}
+.pin-admin{background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:20px;margin-top:8px}
+.pin-admin h3{font-size:13px;font-weight:700;margin-bottom:8px;color:var(--muted)}
 .pin-admin .hint{font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.45}
 .pin-admin-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
 .pin-admin-grid label{display:block;font-size:11px;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.4px}
@@ -182,7 +182,25 @@ tr:hover td{background:var(--card-hover)}
 .pin-admin-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
 .pin-status{font-size:12px;color:var(--muted);margin-bottom:10px}
 .pin-status strong{color:var(--text)}
-@media(max-width:640px){.pin-admin-grid{grid-template-columns:1fr}}
+.pin-admin-collapsed{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:24px 0 8px;padding:10px 12px;background:transparent;border-top:1px dashed var(--border);border-radius:0}
+.pin-admin-summary{font-size:12px;color:var(--muted);min-width:0}
+.pin-admin-summary-label{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px;color:var(--muted)}
+.pin-admin-summary-status{font-size:12px;color:var(--text)}
+.pin-admin-toggle{font-size:11px;padding:6px 10px;white-space:nowrap}
+.pin-admin-hidden{display:none}
+.pin-admin-hidden.open{display:block}
+.confirm-overlay{z-index:1100}
+.confirm-modal h3{margin:0 0 4px;font-size:17px;color:var(--text)}
+.confirm-modal .confirm-body{color:var(--muted);margin:12px 0 20px;line-height:1.55;font-size:14px}
+@media(max-width:640px){.pin-admin-grid{grid-template-columns:1fr}.pin-admin-collapsed{flex-direction:column;align-items:flex-start}}
+
+/* Loader global al cambiar Real/Test */
+.panel-loader{position:fixed;inset:0;background:rgba(15,23,42,.58);backdrop-filter:blur(3px);z-index:900;display:none;align-items:center;justify-content:center;flex-direction:column;gap:14px}
+.panel-loader.open{display:flex}
+.panel-loader-spinner{width:42px;height:42px;border:3px solid var(--border);border-top-color:var(--blue-light);border-radius:50%;animation:panelSpin .75s linear infinite}
+.panel-loader-text{color:var(--text);font-size:14px;font-weight:600;letter-spacing:.2px}
+@keyframes panelSpin{to{transform:rotate(360deg)}}
+.mode-toggle.loading{opacity:.65;pointer-events:none}
 </style>
 </head>
 <body>
@@ -374,6 +392,10 @@ tr:hover td{background:var(--card-hover)}
 
 <div id="modalContainer"></div>
 <div id="toastContainer"></div>
+<div id="panelLoader" class="panel-loader" aria-live="polite" aria-busy="false">
+<div class="panel-loader-spinner" role="status"></div>
+<div class="panel-loader-text" id="panelLoaderText">Cargando…</div>
+</div>
 
 <script>
 var TOKEN = "";
@@ -446,40 +468,37 @@ function nombreBodega(b){
 }
 
 function refreshAll(){
-  api('/api/distribuidor/admin/resumen').then(function(d){
-    document.getElementById('kpiActivos').textContent = d.total_pedidos || 0;
-    document.getElementById('kpiPagar').textContent = 'S/'+(d.circa_cobra_bodegas||0).toFixed(2);
-  }).catch(console.error);
-  
-  api('/api/distribuidor/admin/cobranzas').then(function(d){
-    allCobranzas = d.cobranzas || [];
-    statsDistribuidor = d.stats_distribuidor || [];
-    var vencidas = allCobranzas.filter(function(c){return c.status_cobranza==='vencido'});
-    document.getElementById('kpiVencidas').textContent = vencidas.length;
-    document.getElementById('kpiMontoVencido').textContent = 'S/'+vencidas.reduce(function(s,c){return s+c.total_pagar},0).toFixed(2);
-    renderRankings();
-    // Populate distributor filter
-    var sel = document.getElementById('cobFiltroDist');
-    var dists = new Set();
-    allCobranzas.forEach(function(c){if(c.distribuidor && c.distribuidor.nombre_comercial)dists.add(c.distribuidor.nombre_comercial)});
-    sel.innerHTML = '<option value="">Todos los distribuidores</option>' + Array.from(dists).map(function(d){return '<option value="'+d+'">'+d+'</option>'}).join('');
-  }).catch(console.error);
-
-  // NUEVO Fase 3: cargar alerta sobregiro y conteos del toggle
-  loadSobregiroAlert();
-  loadModeCounts();
-  
-  api('/api/distribuidor/admin/analytics-resumen').then(function(a){
-    var f = a.funnel || {};
-    var m = a.messages || {};
-    document.getElementById('kpiCatalogOpened').textContent = f.catalog_opened || 0;
-    document.getElementById('kpiOrdersCreated7d').textContent = f.order_created || 0;
-    document.getElementById('kpiResponseRate').textContent = (m.response_rate_pct||0).toFixed(1)+'%';
-    document.getElementById('kpiActiveBodegas30d').textContent = a.active_bodegas_30d || 0;
-    renderAnalyticsPanels(a);
-  }).catch(function(){
-    document.getElementById('analyticsGrid').innerHTML = '<div class="ranking-card"><div class="empty">Sin datos analíticos</div></div>';
-  });
+  return Promise.all([
+    api('/api/distribuidor/admin/resumen').then(function(d){
+      document.getElementById('kpiActivos').textContent = d.total_pedidos || 0;
+      document.getElementById('kpiPagar').textContent = 'S/'+(d.circa_cobra_bodegas||0).toFixed(2);
+    }).catch(console.error),
+    api('/api/distribuidor/admin/cobranzas').then(function(d){
+      allCobranzas = d.cobranzas || [];
+      statsDistribuidor = d.stats_distribuidor || [];
+      var vencidas = allCobranzas.filter(function(c){return c.status_cobranza==='vencido'});
+      document.getElementById('kpiVencidas').textContent = vencidas.length;
+      document.getElementById('kpiMontoVencido').textContent = 'S/'+vencidas.reduce(function(s,c){return s+c.total_pagar},0).toFixed(2);
+      renderRankings();
+      var sel = document.getElementById('cobFiltroDist');
+      var dists = new Set();
+      allCobranzas.forEach(function(c){if(c.distribuidor && c.distribuidor.nombre_comercial)dists.add(c.distribuidor.nombre_comercial)});
+      sel.innerHTML = '<option value="">Todos los distribuidores</option>' + Array.from(dists).map(function(d){return '<option value="'+d+'">'+d+'</option>'}).join('');
+    }).catch(console.error),
+    loadSobregiroAlert(),
+    loadModeCounts(),
+    api('/api/distribuidor/admin/analytics-resumen').then(function(a){
+      var f = a.funnel || {};
+      var m = a.messages || {};
+      document.getElementById('kpiCatalogOpened').textContent = f.catalog_opened || 0;
+      document.getElementById('kpiOrdersCreated7d').textContent = f.order_created || 0;
+      document.getElementById('kpiResponseRate').textContent = (m.response_rate_pct||0).toFixed(1)+'%';
+      document.getElementById('kpiActiveBodegas30d').textContent = a.active_bodegas_30d || 0;
+      renderAnalyticsPanels(a);
+    }).catch(function(){
+      document.getElementById('analyticsGrid').innerHTML = '<div class="ranking-card"><div class="empty">Sin datos analíticos</div></div>';
+    })
+  ]);
 }
 
 function renderAnalyticsPanels(a){
@@ -545,7 +564,7 @@ function loadPagos(){
   var url = '/api/distribuidor/admin/export-pagos-distribuidor?';
   if(fd) url += 'fecha_desde='+fd+'&';
   if(fh) url += 'fecha_hasta='+fh;
-  api(url).then(function(d){
+  return api(url).then(function(d){
     allPagos = d.grupos || [];
     var html = '';
     allPagos.forEach(function(g){
@@ -589,7 +608,7 @@ function loadCobranzas(){
   if(estado) url += 'estado='+estado+'&';
   if(fd) url += 'fecha_desde='+fd+'&';
   if(fh) url += 'fecha_hasta='+fh;
-  api(url).then(function(d){
+  return api(url).then(function(d){
     allCobranzas = d.cobranzas || [];
     statsDistribuidor = d.stats_distribuidor || [];
     
@@ -644,7 +663,7 @@ function loadPedidos(){
   if(dist) url += 'distribuidor='+encodeURIComponent(dist)+'&';
   if(tipo) url += 'tipo='+encodeURIComponent(tipo)+'&';
   if(estado) url += 'estado='+estado;
-  api(url).then(function(d){
+  return api(url).then(function(d){
     allPedidos = d.pedidos || [];
     document.getElementById('pedidosBody').innerHTML = allPedidos.length ? allPedidos.map(function(p){
       var b = p.bodega || {};
@@ -797,38 +816,76 @@ if(savedToken){
 // ============================================================
 
 function setMode(mode){
+  var current = window.MODE_FILTER || localStorage.getItem('circa_mode') || 'real';
+  if(mode === current) return;
+
   window.MODE_FILTER = mode;
   localStorage.setItem('circa_mode', mode);
   document.querySelectorAll('#modeToggle button').forEach(function(b){
     b.classList.toggle('active', b.dataset.mode === mode);
+    b.disabled = true;
   });
-  refreshAll();
-  // Re-load la tab actual si no es dashboard
+  document.getElementById('modeToggle').classList.add('loading');
+
+  var loaderText = mode === 'test'
+    ? 'Cargando bodegas de prueba…'
+    : 'Cargando bodegas reales…';
+  showPanelLoader(loaderText);
+
+  refreshAll()
+    .then(function(){ return reloadActiveTab(); })
+    .finally(function(){
+      hidePanelLoader();
+      document.getElementById('modeToggle').classList.remove('loading');
+      document.querySelectorAll('#modeToggle button').forEach(function(b){
+        b.disabled = false;
+      });
+    });
+}
+
+function showPanelLoader(text){
+  var el = document.getElementById('panelLoader');
+  if(text) document.getElementById('panelLoaderText').textContent = text;
+  el.classList.add('open');
+  el.setAttribute('aria-busy', 'true');
+}
+
+function hidePanelLoader(){
+  var el = document.getElementById('panelLoader');
+  el.classList.remove('open');
+  el.setAttribute('aria-busy', 'false');
+}
+
+function reloadActiveTab(){
   var activeTab = document.querySelector('.tab.active');
-  if(activeTab){
-    var id = activeTab.id.replace('tab-','');
-    if(id !== 'dashboard') showTab(id);
-  }
+  if(!activeTab) return Promise.resolve();
+  var id = activeTab.id.replace('tab-','');
+  if(id === 'pagos') return loadPagos();
+  if(id === 'cobranzas') return loadCobranzas();
+  if(id === 'pedidos') return loadPedidos();
+  if(id === 'bodegas') return loadBodegas();
+  return Promise.resolve();
 }
 
 function loadModeCounts(){
-  // Cuenta cuántas reales y cuántas tests hay (para los chips del toggle)
-  // Hacemos 2 llamadas independientes con test=all para contar
   var prev = window.MODE_FILTER;
   window.MODE_FILTER = 'real';
-  fetch('/api/distribuidor/admin/bodegas?test=real&estado=', {headers:{'X-Admin-Token':TOKEN}})
-    .then(r=>r.json()).then(d=>{
-      document.getElementById('cntReales').textContent = d.total || 0;
-    }).catch(()=>{});
-  fetch('/api/distribuidor/admin/bodegas?test=test&estado=', {headers:{'X-Admin-Token':TOKEN}})
-    .then(r=>r.json()).then(d=>{
-      document.getElementById('cntTests').textContent = d.total || 0;
-    }).catch(()=>{});
-  window.MODE_FILTER = prev;
+  return Promise.all([
+    fetch('/api/distribuidor/admin/bodegas?test=real&estado=', {headers:{'X-Admin-Token':TOKEN}})
+      .then(function(r){ return r.json(); })
+      .then(function(d){ document.getElementById('cntReales').textContent = d.total || 0; })
+      .catch(function(){}),
+    fetch('/api/distribuidor/admin/bodegas?test=test&estado=', {headers:{'X-Admin-Token':TOKEN}})
+      .then(function(r){ return r.json(); })
+      .then(function(d){ document.getElementById('cntTests').textContent = d.total || 0; })
+      .catch(function(){})
+  ]).finally(function(){
+    window.MODE_FILTER = prev;
+  });
 }
 
 function loadSobregiroAlert(){
-  api('/api/distribuidor/admin/alerts/sobregiro').then(function(d){
+  return api('/api/distribuidor/admin/alerts/sobregiro').then(function(d){
     var box = document.getElementById('sobregiroAlert');
     var cnt = document.getElementById('sobregiroCnt');
     var body = document.getElementById('sobregiroBody');
@@ -853,13 +910,13 @@ function loadSobregiroAlert(){
 }
 
 function loadBodegas(){
-  if(bodegaModalId) return;
+  if(bodegaModalId) return Promise.resolve();
   var search = document.getElementById('bodegasSearch').value;
   var estado = document.getElementById('bodegasFiltroEstado').value;
   var url = '/api/distribuidor/admin/bodegas?';
   if(search) url += 'search='+encodeURIComponent(search)+'&';
   if(estado) url += 'estado='+estado;
-  api(url).then(function(d){
+  return api(url).then(function(d){
     var bodegas = d.bodegas || [];
     document.getElementById('bodegasInfoLine').textContent =
       '· '+bodegas.length+' bodegas · filtro: '+(window.MODE_FILTER||'real');
@@ -961,11 +1018,16 @@ function openBodegaDetail(id, ev){
     }
 
     var pinAdminHtml =
-      '<div class="pin-admin">'+
-        '<h3>🔐 Clave Circa (soporte)</h3>'+
-        '<div class="pin-status">Estado: <strong>'+pinStatus+'</strong></div>'+
-        '<p class="hint">Acciones sensibles: indica el motivo y reingresa tu token admin. '+
-        'La clave asignada no se muestra aquí; comunícala al bodeguero por teléfono.</p>'+
+      '<div class="pin-admin-collapsed">'+
+        '<div class="pin-admin-summary">'+
+          '<span class="pin-admin-summary-label">Clave Circa</span>'+
+          '<span class="pin-admin-summary-status">'+pinStatus+'</span>'+
+        '</div>'+
+        '<button type="button" class="btn btn-outline btn-small pin-admin-toggle" onclick="togglePinAdminPanel()">Gestión de clave (soporte)</button>'+
+      '</div>'+
+      '<div class="pin-admin pin-admin-hidden" id="pinAdminPanel">'+
+        '<h3>Acciones de soporte</h3>'+
+        '<p class="hint">Indica el motivo y reingresa tu token admin. Comunica la clave al bodeguero por teléfono.</p>'+
         '<div class="pin-admin-grid">'+
           '<div style="grid-column:1/-1"><label>Motivo / comentario (mín. 8 caracteres)</label>'+
           '<textarea id="pinAdminComentario" placeholder="Ej.: Bodeguero olvidó clave, validé DNI por teléfono"></textarea></div>'+
@@ -977,8 +1039,8 @@ function openBodegaDetail(id, ev){
           '<input type="text" id="pinAdminConfirm" maxlength="4" inputmode="numeric" pattern="[0-9]*" placeholder="••••" autocomplete="off" autocapitalize="off" spellcheck="false" data-lpignore="true" style="-webkit-text-security:disc"></div>'+
         '</div>'+
         '<div class="pin-admin-actions">'+
-          '<button class="btn btn-green btn-small" onclick="adminSetPin()">Asignar clave</button>'+
-          '<button class="btn btn-secondary btn-small" onclick="adminResetPin()">Resetear (bodeguero crea nueva)</button>'+
+          '<button type="button" class="btn btn-green btn-small" onclick="adminSetPin()">Asignar clave</button>'+
+          '<button type="button" class="btn btn-secondary btn-small" onclick="adminResetPin()">Resetear (bodeguero crea nueva)</button>'+
         '</div>'+
       '</div>';
 
@@ -1013,7 +1075,7 @@ function openBodegaDetail(id, ev){
       pedidosHtml += '</tbody></table>';
     }
 
-    document.getElementById('bodegaModalBody').innerHTML = infoGrid + pinAdminHtml + timelineHtml + pedidosHtml;
+    document.getElementById('bodegaModalBody').innerHTML = infoGrid + timelineHtml + pedidosHtml + pinAdminHtml;
   }).catch(function(e){
     document.getElementById('bodegaModalBody').innerHTML = '<div class="empty">Error: '+e.message+'</div>';
   });
@@ -1028,6 +1090,42 @@ function closeBodegaModal(){
     searchEl.value = bodegasSearchSnapshot;
   }
   loadBodegas();
+}
+
+function togglePinAdminPanel(){
+  var panel = document.getElementById('pinAdminPanel');
+  if(!panel) return;
+  panel.classList.toggle('open');
+  var btn = document.querySelector('.pin-admin-toggle');
+  if(btn){
+    btn.textContent = panel.classList.contains('open')
+      ? 'Ocultar gestión de clave'
+      : 'Gestión de clave (soporte)';
+  }
+}
+
+function showConfirmDialog(title, message, confirmLabel, onConfirm, opts){
+  opts = opts || {};
+  var btnClass = opts.danger ? 'btn-red' : 'btn-green';
+  document.getElementById('modalContainer').innerHTML =
+    '<div class="modal-overlay confirm-overlay open" onclick="if(event.target===this)closeConfirmDialog()">'+
+      '<div class="modal confirm-modal" role="dialog" aria-modal="true">'+
+        '<h3>'+title+'</h3>'+
+        '<div class="confirm-body">'+message+'</div>'+
+        '<div class="modal-actions">'+
+          '<button type="button" class="btn btn-outline" onclick="closeConfirmDialog()">Cancelar</button>'+
+          '<button type="button" class="btn '+btnClass+'" id="confirmDialogOk">'+confirmLabel+'</button>'+
+        '</div>'+
+      '</div>'+
+    '</div>';
+  document.getElementById('confirmDialogOk').onclick = function(){
+    closeConfirmDialog();
+    if(onConfirm) onConfirm();
+  };
+}
+
+function closeConfirmDialog(){
+  document.getElementById('modalContainer').innerHTML = '';
 }
 
 function _pinAdminPayload(){
@@ -1054,7 +1152,19 @@ function adminSetPin(){
     showToast('La clave debe ser de 4 dígitos','error');
     return;
   }
-  if(!confirm('¿Asignar nueva clave a esta bodega? Se registrará en auditoría.')) return;
+  if(pin !== pinConfirm){
+    showToast('Las claves no coinciden','error');
+    return;
+  }
+  showConfirmDialog(
+    'Asignar nueva clave',
+    'Se guardará una clave nueva para esta bodega y quedará registrado en auditoría. Comunícala al bodeguero por teléfono.',
+    'Sí, asignar clave',
+    function(){ _executeAdminSetPin(p, pin, pinConfirm); }
+  );
+}
+
+function _executeAdminSetPin(p, pin, pinConfirm){
   fetch('/api/distribuidor/admin/bodega/'+bodegaModalId+'/pin/set', {
     method: 'POST',
     headers: {'Content-Type':'application/json', 'X-Admin-Token': TOKEN},
@@ -1067,10 +1177,7 @@ function adminSetPin(){
       throw new Error(msg || x.d.error || 'No se pudo asignar');
     }
     showToast(x.d.mensaje || 'Clave asignada','success');
-    document.getElementById('pinAdminNew').value = '';
-    document.getElementById('pinAdminConfirm').value = '';
-    document.getElementById('pinAdminAuth').value = '';
-    openBodegaDetail(bodegaModalId);
+    closeBodegaModal();
   }).catch(function(e){ showToast(e.message,'error'); });
 }
 
@@ -1085,7 +1192,16 @@ function adminResetPin(){
     showToast('Reingresa tu token de autorización','error');
     return;
   }
-  if(!confirm('¿Resetear clave? El bodeguero recibirá link para crear una nueva.')) return;
+  showConfirmDialog(
+    'Resetear clave',
+    'Se borrará la clave actual y el bodeguero recibirá un link por WhatsApp para crear una nueva.',
+    'Sí, resetear',
+    function(){ _executeAdminResetPin(p); },
+    {danger: true}
+  );
+}
+
+function _executeAdminResetPin(p){
   fetch('/api/distribuidor/admin/bodega/'+bodegaModalId+'/pin/reset', {
     method: 'POST',
     headers: {'Content-Type':'application/json', 'X-Admin-Token': TOKEN},
@@ -1098,8 +1214,7 @@ function adminResetPin(){
       throw new Error(msg || x.d.error || 'No se pudo resetear');
     }
     showToast(x.d.mensaje || 'Clave reseteada','success');
-    document.getElementById('pinAdminAuth').value = '';
-    openBodegaDetail(bodegaModalId);
+    closeBodegaModal();
   }).catch(function(e){ showToast(e.message,'error'); });
 }
 
