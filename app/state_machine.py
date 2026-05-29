@@ -273,64 +273,6 @@ def _handler_preventa_propuesta(telefono: str, link_token: str, bodega: dict) ->
     ]
 
 
-def _aprobar_preventa(telefono: str, bodega: dict, datos: dict, metodo_auth: str) -> list:
-    """Aprueba el pedido de preventa: cambia estado + descuenta linea_disponible.
-    metodo_auth: 'pin_chat' | 'ruc_ultimos_4' | 'dni_ultimos_4'. Se guarda en pedidos.metodo_auth para auditoria.
-    Pago mixto: financiable se descuenta de la linea; efectivo lo paga la bodega al vendedor.
-    """
-    pedido_id = datos.get("pedido_id")
-    total = float(datos.get("total") or 0)
-    financiable = float(datos.get("financiable") or total)
-    efectivo = float(datos.get("efectivo") or 0)
-
-    try:
-        db.sb.table("pedidos").update({
-            "estado": "preventa_aceptada",
-            "metodo_auth": metodo_auth,
-        }).eq("id", pedido_id).execute()
-
-        # Descontar SOLO la parte financiada (no el total)
-        bod_fresh = (
-            db.sb.table("bodegas")
-            .select("linea_disponible")
-            .eq("id", bodega["id"])
-            .single()
-            .execute()
-            .data
-        )
-        linea_actual = float(bod_fresh.get("linea_disponible") or 0) if bod_fresh else 0
-        nueva_linea = max(0.0, round(linea_actual - financiable, 2))
-        db.sb.table("bodegas").update({
-            "linea_disponible": nueva_linea
-        }).eq("id", bodega["id"]).execute()
-    except Exception as e:
-        return [f"⚠️ No pudimos cerrar la aprobación. Intenta de nuevo en un momento.\n\nReferencia: {str(e)[:80]}"]
-
-    db.upsert_session(telefono, "menu", {}, bodega["id"])
-
-    # Mensaje final adaptado al pago mixto
-    if efectivo > 0:
-        cuerpo = (
-            f"✅ *Preventa aprobada*\n\n"
-            f"💳 Financiado con Circa: S/ {financiable:.2f}\n"
-            f"💵 Pagas en efectivo al vendedor: S/ {efectivo:.2f}\n"
-            f"📊 Nueva línea disponible: S/ {nueva_linea:.2f}\n\n"
-            f"Tu vendedor coordinará la entrega contigo. 📦"
-        )
-    else:
-        cuerpo = (
-            f"✅ *Preventa aprobada*\n\n"
-            f"Total financiado: S/ {financiable:.2f}\n"
-            f"Nueva línea disponible: S/ {nueva_linea:.2f}\n\n"
-            f"Tu vendedor coordinará la entrega contigo. 📦"
-        )
-
-    if metodo_auth in ("ruc_ultimos_4", "dni_ultimos_4"):
-        cuerpo += "\n\n💡 Te recomendamos crear tu clave Circa nueva pronto. Escribe *OLVIDÉ* para recuperarla."
-
-    return [cuerpo, {"signal": "MENU", "linea": nueva_linea}]
-
-
 def handle_message(telefono: str, body: str, media_url: str = None) -> list:
     body_raw = (body or "").strip()
     body_n = normalize(body_raw)
@@ -396,7 +338,6 @@ En menos de 24 horas validamos tu solicitud y activamos tu línea. Empiezas comp
             )
         if is_olvide_trigger(body_n) and fase not in (
             "welcome", "reg_ruc", "reg_biometria", "reg_contrato", "reg_linea_acepta",
-            "aprobar_preventa_pin", "aprobar_preventa_ruc",
         ) and not (fase == "reg_pin" and not datos.get("is_reset")):
             return start_pin_reset(telefono, bodega, session)
 
@@ -1379,22 +1320,50 @@ En menos de 24 horas validamos tu solicitud y activamos tu línea. Empiezas comp
     # ═══════════════════════════════════════════════
     if fase == "aprobar_preventa":
         if body_n in ("APROBAR", "APRUEBO", "SI", "OK", "ACEPTAR", "ACEPTO", "1"):
-            # Pedir PIN en chat (mismo patron que reg_pin)
-            db.upsert_session(telefono, "aprobar_preventa_pin", datos, bodega["id"])
-            financiable = float(datos.get("financiable") or datos.get("total") or 0)
-            efectivo = float(datos.get("efectivo") or 0)
-            if efectivo > 0:
-                detalle = (
-                    f"Al confirmar, descontaremos S/{financiable:.2f} de tu línea Circa.\n"
-                    f"El saldo de S/{efectivo:.2f} lo pagas en efectivo al vendedor."
+            # Delegamos al flow normal de "Cómo quieres pagar?".
+            # Cargamos el carrito del pedido en la sesion y marcamos pedido_id_preventa
+            # para que el endpoint /api/pin/verify actualice el pedido existente
+            # en lugar de crear uno nuevo.
+            pedido_id = datos.get("pedido_id")
+            link_token = datos.get("link_token")
+
+            # Levantar items del pedido para cargar en el carrito de sesion
+            items = []
+            try:
+                row = (
+                    db.sb.table("pedidos")
+                    .select("items_json")
+                    .eq("id", pedido_id)
+                    .limit(1)
+                    .execute()
                 )
-            else:
-                detalle = f"Al confirmar, descontaremos S/{financiable:.2f} de tu línea."
-            return [
-                f"🔐 Escribe tu *clave Circa* de 4 dígitos para aprobar la preventa.\n\n"
-                f"{detalle}\n\n"
-                f"💡 Si olvidaste tu clave, escribe *OLVIDÉ* para usar tu RUC/DNI."
-            ]
+                if row.data:
+                    raw = row.data[0].get("items_json")
+                    items = json.loads(raw) if isinstance(raw, str) else (raw or [])
+            except Exception:
+                items = []
+
+            if not items:
+                return ["⚠️ No pudimos cargar los productos de la preventa. Pídele a tu vendedor que la rehaga."]
+
+            cart_total = _cart_total(items)
+            financiable_max = min(bodega["linea_disponible"], cart_total)
+
+            # Setear datos de sesion para el flow normal de cart_review
+            nueva_datos = {
+                "cart": items,
+                "tipo_operacion": "preventa",
+                "pedido_id_preventa": pedido_id,
+                "link_token_preventa": link_token,
+            }
+            db.upsert_session(telefono, "cart_review", nueva_datos, bodega["id"])
+
+            return [{
+                "signal": "CARRITO",
+                "items_text": _cart_items_text(items),
+                "total": cart_total,
+                "financiable": financiable_max,
+            }]
 
         if body_n in ("RECHAZAR", "RECHAZO", "NO", "CANCELAR", "2"):
             pedido_id = datos.get("pedido_id")
@@ -1414,101 +1383,6 @@ En menos de 24 horas validamos tu solicitud y activamos tu línea. Empiezas comp
         return [
             "Responde *APROBAR* para confirmar la preventa y financiar con Circa, o *RECHAZAR* para cancelarla."
         ]
-
-    # ═══════════════════════════════════════════════
-    # APROBAR PREVENTA — INGRESO DE PIN EN CHAT
-    # ═══════════════════════════════════════════════
-    if fase == "aprobar_preventa_pin":
-        # Volver atras
-        if body_n in ("VOLVER", "CANCELAR", "MENU"):
-            db.upsert_session(telefono, "menu", {}, bodega["id"])
-            return [
-                "Ok, cancelamos la aprobación. Tu línea no fue tocada.",
-                {"signal": "MENU", "linea": bodega["linea_disponible"]},
-            ]
-
-        # OLVIDÉ → fallback con ultimos 4 del RUC/DNI
-        if is_olvide_trigger(body_n):
-            solo_dni = bool(bodega.get("solo_dni_sin_ruc"))
-            documento = bodega.get("dni_representante" if solo_dni else "ruc") or ""
-            if not documento or len(documento) < 4:
-                # Sin documento para validar — pedir que reintente con PIN
-                return ["⚠️ No tenemos un documento registrado para verificar tu identidad. Intenta con tu clave Circa de 4 dígitos."]
-
-            datos["intentos_ruc"] = 0
-            db.upsert_session(telefono, "aprobar_preventa_ruc", datos, bodega["id"])
-            tipo_doc = "DNI" if solo_dni else "RUC"
-            return [
-                f"🔓 *Recuperación rápida*\n\n"
-                f"Para esta preventa, escribe los *últimos 4 dígitos* de tu {tipo_doc}.\n\n"
-                f"(Solo válido para aprobar esta preventa. Después te ayudamos a crear una clave nueva.)"
-            ]
-
-        pin_raw = body_raw.strip()
-        if not (len(pin_raw) == 4 and pin_raw.isdigit()):
-            return ["Escribe tu clave Circa de *4 dígitos*. Si no la recuerdas, escribe *OLVIDÉ*."]
-
-        # Validar PIN
-        pin_hash = bodega.get("pin_hash")
-        if not pin_hash:
-            return ["⚠️ No tienes una clave Circa configurada. Escribe *OLVIDÉ* para usar tu RUC/DNI."]
-
-        if not check_pin(pin_raw, pin_hash):
-            intentos = int(datos.get("intentos_pin", 0)) + 1
-            if intentos >= 3:
-                db.upsert_session(telefono, "menu", {}, bodega["id"])
-                return [
-                    "❌ Clave incorrecta 3 veces. Por seguridad, cancelamos la aprobación.\n\n"
-                    "Si olvidaste tu clave, escribe *OLVIDÉ* para recuperarla.",
-                    {"signal": "MENU", "linea": bodega["linea_disponible"]},
-                ]
-            datos["intentos_pin"] = intentos
-            db.upsert_session(telefono, "aprobar_preventa_pin", datos, bodega["id"])
-            return [f"❌ Clave incorrecta. Te quedan {3 - intentos} intento(s).\n\nEscribe tu clave Circa de 4 dígitos:"]
-
-        # PIN OK — aprobar
-        return _aprobar_preventa(telefono, bodega, datos, "pin_chat")
-
-    # ═══════════════════════════════════════════════
-    # APROBAR PREVENTA — FALLBACK ULTIMOS 4 RUC/DNI
-    # ═══════════════════════════════════════════════
-    if fase == "aprobar_preventa_ruc":
-        if body_n in ("VOLVER", "CANCELAR", "MENU"):
-            # Volver a pedir PIN
-            datos["intentos_ruc"] = 0
-            db.upsert_session(telefono, "aprobar_preventa_pin", datos, bodega["id"])
-            return ["Ok. Escribe tu clave Circa de 4 dígitos:"]
-
-        solo_dni = bool(bodega.get("solo_dni_sin_ruc"))
-        documento = bodega.get("dni_representante" if solo_dni else "ruc") or ""
-        tipo_doc = "DNI" if solo_dni else "RUC"
-
-        if not documento or len(documento) < 4:
-            db.upsert_session(telefono, "aprobar_preventa_pin", datos, bodega["id"])
-            return ["⚠️ No tenemos un documento registrado. Intenta con tu clave Circa de 4 dígitos."]
-
-        ultimos_4_ok = documento[-4:]
-        entrada = body_raw.strip().replace(" ", "")
-
-        if not (len(entrada) == 4 and entrada.isdigit()):
-            return [f"Escribe los *últimos 4 dígitos* de tu {tipo_doc} (solo números)."]
-
-        if entrada != ultimos_4_ok:
-            intentos = int(datos.get("intentos_ruc", 0)) + 1
-            if intentos >= 3:
-                db.upsert_session(telefono, "menu", {}, bodega["id"])
-                return [
-                    "❌ Datos incorrectos 3 veces. Por seguridad, cancelamos la aprobación.\n\n"
-                    "Contacta a Circa si necesitas ayuda.",
-                    {"signal": "MENU", "linea": bodega["linea_disponible"]},
-                ]
-            datos["intentos_ruc"] = intentos
-            db.upsert_session(telefono, "aprobar_preventa_ruc", datos, bodega["id"])
-            return [f"❌ Datos incorrectos. Te quedan {3 - intentos} intento(s).\n\nEscribe los últimos 4 dígitos de tu {tipo_doc}:"]
-
-        # RUC/DNI ultimos 4 OK — aprobar
-        metodo = "dni_ultimos_4" if solo_dni else "ruc_ultimos_4"
-        return _aprobar_preventa(telefono, bodega, datos, metodo)
 
     # ═══ DEFAULT ═══
     if bodega and bodega["estado"] == "activo":
