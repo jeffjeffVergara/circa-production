@@ -10,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from app.routes.distribuidor import router as distribuidor_router
 from app.routes.support_inbox import router as support_inbox_router
+from app.routes.vendedor import router as vendedor_router
 from twilio.twiml.messaging_response import MessagingResponse
 from app.state_machine import handle_message
 from app.services.twilio_client import (
@@ -66,6 +67,7 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 app.mount("/static", StaticFiles(directory="static"), name="static")
 app.include_router(distribuidor_router)
 app.include_router(support_inbox_router)
+app.include_router(vendedor_router)
 
 
 def _bot_wa_number() -> str:
