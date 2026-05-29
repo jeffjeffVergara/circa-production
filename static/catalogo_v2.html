@@ -111,7 +111,7 @@ html,body{height:100%;font-family:'Plus Jakarta Sans',sans-serif;background:var(
 <div class="df" id="dF"></div></div>
 <div class="toast" id="tt"></div>
 <script>
-var API=location.origin,QS=new URLSearchParams(location.search),BID=QS.get('b')||'b1b2c3d4-0001-4000-8000-000000000001';
+var API=location.origin,QS=new URLSearchParams(location.search),BID=QS.get('b')||'';
 var TIPO_OPERACION=(QS.get('t')==='preventa'?'preventa':'venta');
 var P=[],cart=[],linea=0,fm='cat',sel='Todos',step='cart',selUnits={};
 var CATS=['Todos'];
@@ -250,6 +250,10 @@ async function loadCartFromServer(){
 }
 
 async function init(){
+ if(!BID){
+  $('mA').innerHTML='<div class="empty">Falta el enlace de tu bodega. Abre el catálogo desde WhatsApp (PEDIDO).</div>';
+  return;
+ }
  try{
   sendEvent('catalog_opened',{tipo_operacion:TIPO_OPERACION});
   var r=await Promise.all([

@@ -22,3 +22,10 @@ def test_pedido_test_zoom_real_dimax():
     assert distribuidor_id_para_pedido({"es_test": True}) == ZOOM_DISTRIBUIDOR_ID
     assert distribuidor_id_para_pedido({"es_test": False, "en_piloto": True}) == DIMAX_DISTRIBUIDOR_ID
     assert distribuidor_id_para_pedido({"es_test": False, "en_piloto": False}) == DIMAX_DISTRIBUIDOR_ID
+
+
+def test_get_distribuidor_de_bodega_siempre_dimax(monkeypatch):
+    from app.services import db
+
+    monkeypatch.setattr(db, "get_bodega_routing", lambda _bid: None)
+    assert db.get_distribuidor_de_bodega("00000000-0000-0000-0000-000000000099") == DIMAX_DISTRIBUIDOR_ID

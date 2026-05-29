@@ -44,7 +44,12 @@ async def handle_catalogo(flow_data: dict) -> dict:
     if action == "ping":
         return {"version": "3.0", "data": {"status": "active"}}
 
-    bodega_id = data.get("bodega_id", "") or "b1b2c3d4-0001-4000-8000-000000000001"
+    bodega_id = (data.get("bodega_id") or "").strip()
+    if not bodega_id:
+        return _make_response(
+            [{"id": "ERR", "main-content": {"title": "Abre el catálogo desde WhatsApp", "description": "Falta bodega"}}],
+            "",
+        )
 
     if action == "INIT":
         return _build_categories(bodega_id)

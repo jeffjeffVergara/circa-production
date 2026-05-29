@@ -172,6 +172,17 @@ tr:hover td{background:var(--card-hover)}
 .timeline-time{font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
 .timeline-event{font-size:13px;font-weight:500;margin-top:1px}
 .timeline-detail{font-size:11px;color:var(--muted);margin-top:1px}
+.pin-admin{background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:20px}
+.pin-admin h3{font-size:14px;font-weight:700;margin-bottom:8px;color:var(--blue-light)}
+.pin-admin .hint{font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.45}
+.pin-admin-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
+.pin-admin-grid label{display:block;font-size:11px;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.4px}
+.pin-admin-grid input,.pin-admin textarea{width:100%;padding:10px;background:var(--card);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px}
+.pin-admin textarea{min-height:72px;resize:vertical}
+.pin-admin-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+.pin-status{font-size:12px;color:var(--muted);margin-bottom:10px}
+.pin-status strong{color:var(--text)}
+@media(max-width:640px){.pin-admin-grid{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -370,6 +381,7 @@ var allCobranzas = [];
 var allPedidos = [];
 var allPagos = [];
 var statsDistribuidor = [];
+var bodegaModalId = null;
 
 function login(){
   var t = document.getElementById('tokenInput').value.trim();
@@ -895,6 +907,7 @@ function hacecuanto(iso){
 }
 
 function openBodegaDetail(id){
+  bodegaModalId = id;
   document.getElementById('bodegaModal').classList.add('open');
   document.getElementById('bodegaModalBody').innerHTML = '<div class="empty">Cargando…</div>';
   api('/api/distribuidor/admin/bodega/'+id).then(function(d){
@@ -921,6 +934,37 @@ function openBodegaDetail(id){
         '<div class="info-card"><div class="info-label">DNI dueño</div><div class="info-value" style="font-size:13px">'+(b.dni_representante||'-')+'</div></div>'+
         '<div class="info-card"><div class="info-label">Pedidos totales</div><div class="info-value">'+stats.total_pedidos+' <span style="font-size:11px;color:var(--green)">('+(stats.pedidos_pagados||0)+' pagados)</span></div></div>'+
         '<div class="info-card"><div class="info-label">Financiado pendiente</div><div class="info-value" style="color:var(--orange)">S/ '+(stats.monto_financiado_pendiente||0).toFixed(2)+'</div></div>'+
+      '</div>';
+
+    var tienePin = !!b.pin_hash;
+    var bloqueada = b.pin_bloqueado_hasta && new Date(b.pin_bloqueado_hasta) > new Date();
+    var pinStatus = tienePin
+      ? (bloqueada ? '🔒 Bloqueada hasta '+new Date(b.pin_bloqueado_hasta).toLocaleString('es-PE') : '✅ Clave activa')
+      : '⚠️ Sin clave';
+    if(b.pin_intentos > 0 && !bloqueada){
+      pinStatus += ' · '+b.pin_intentos+' intento(s) fallidos';
+    }
+
+    var pinAdminHtml =
+      '<div class="pin-admin">'+
+        '<h3>🔐 Clave Circa (soporte)</h3>'+
+        '<div class="pin-status">Estado: <strong>'+pinStatus+'</strong></div>'+
+        '<p class="hint">Acciones sensibles: indica el motivo y reingresa tu token admin. '+
+        'La clave asignada no se muestra aquí; comunícala al bodeguero por teléfono.</p>'+
+        '<div class="pin-admin-grid">'+
+          '<div style="grid-column:1/-1"><label>Motivo / comentario (mín. 8 caracteres)</label>'+
+          '<textarea id="pinAdminComentario" placeholder="Ej.: Bodeguero olvidó clave, validé DNI por teléfono"></textarea></div>'+
+          '<div style="grid-column:1/-1"><label>Autorización (token admin)</label>'+
+          '<input type="password" id="pinAdminAuth" placeholder="Reingresa tu token de acceso" autocomplete="off"></div>'+
+          '<div><label>Nueva clave (4 dígitos)</label>'+
+          '<input type="password" id="pinAdminNew" maxlength="4" inputmode="numeric" pattern="[0-9]*" placeholder="••••"></div>'+
+          '<div><label>Confirmar clave</label>'+
+          '<input type="password" id="pinAdminConfirm" maxlength="4" inputmode="numeric" pattern="[0-9]*" placeholder="••••"></div>'+
+        '</div>'+
+        '<div class="pin-admin-actions">'+
+          '<button class="btn btn-green btn-small" onclick="adminSetPin()">Asignar clave</button>'+
+          '<button class="btn btn-secondary btn-small" onclick="adminResetPin()">Resetear (bodeguero crea nueva)</button>'+
+        '</div>'+
       '</div>';
 
     var timelineHtml = '<div class="section-label">Timeline de eventos (últimos 50)</div>';
@@ -954,7 +998,7 @@ function openBodegaDetail(id){
       pedidosHtml += '</tbody></table>';
     }
 
-    document.getElementById('bodegaModalBody').innerHTML = infoGrid + timelineHtml + pedidosHtml;
+    document.getElementById('bodegaModalBody').innerHTML = infoGrid + pinAdminHtml + timelineHtml + pedidosHtml;
   }).catch(function(e){
     document.getElementById('bodegaModalBody').innerHTML = '<div class="empty">Error: '+e.message+'</div>';
   });
@@ -962,6 +1006,80 @@ function openBodegaDetail(id){
 
 function closeBodegaModal(){
   document.getElementById('bodegaModal').classList.remove('open');
+  bodegaModalId = null;
+}
+
+function _pinAdminPayload(){
+  return {
+    comentario: (document.getElementById('pinAdminComentario').value || '').trim(),
+    autorizacion: (document.getElementById('pinAdminAuth').value || '').trim()
+  };
+}
+
+function adminSetPin(){
+  if(!bodegaModalId){ showToast('Abre una bodega primero','error'); return; }
+  var p = _pinAdminPayload();
+  var pin = (document.getElementById('pinAdminNew').value || '').trim();
+  var pinConfirm = (document.getElementById('pinAdminConfirm').value || '').trim();
+  if(p.comentario.length < 8){
+    showToast('El comentario debe tener al menos 8 caracteres','error');
+    return;
+  }
+  if(!p.autorizacion){
+    showToast('Reingresa tu token de autorización','error');
+    return;
+  }
+  if(pin.length !== 4 || pinConfirm.length !== 4){
+    showToast('La clave debe ser de 4 dígitos','error');
+    return;
+  }
+  if(!confirm('¿Asignar nueva clave a esta bodega? Se registrará en auditoría.')) return;
+  fetch('/api/distribuidor/admin/bodega/'+bodegaModalId+'/pin/set', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json', 'X-Admin-Token': TOKEN},
+    body: JSON.stringify({comentario: p.comentario, autorizacion: p.autorizacion, pin: pin, pin_confirm: pinConfirm})
+  }).then(function(r){ return r.json().then(function(d){ return {ok:r.ok, d:d}; }); })
+  .then(function(x){
+    if(!x.ok){
+      var msg = x.d.detail;
+      if(Array.isArray(msg)) msg = msg.map(function(e){ return e.msg || e; }).join(', ');
+      throw new Error(msg || x.d.error || 'No se pudo asignar');
+    }
+    showToast(x.d.mensaje || 'Clave asignada','success');
+    document.getElementById('pinAdminNew').value = '';
+    document.getElementById('pinAdminConfirm').value = '';
+    document.getElementById('pinAdminAuth').value = '';
+    openBodegaDetail(bodegaModalId);
+  }).catch(function(e){ showToast(e.message,'error'); });
+}
+
+function adminResetPin(){
+  if(!bodegaModalId){ showToast('Abre una bodega primero','error'); return; }
+  var p = _pinAdminPayload();
+  if(p.comentario.length < 8){
+    showToast('El comentario debe tener al menos 8 caracteres','error');
+    return;
+  }
+  if(!p.autorizacion){
+    showToast('Reingresa tu token de autorización','error');
+    return;
+  }
+  if(!confirm('¿Resetear clave? El bodeguero recibirá link para crear una nueva.')) return;
+  fetch('/api/distribuidor/admin/bodega/'+bodegaModalId+'/pin/reset', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json', 'X-Admin-Token': TOKEN},
+    body: JSON.stringify(p)
+  }).then(function(r){ return r.json().then(function(d){ return {ok:r.ok, d:d}; }); })
+  .then(function(x){
+    if(!x.ok){
+      var msg = x.d.detail;
+      if(Array.isArray(msg)) msg = msg.map(function(e){ return e.msg || e; }).join(', ');
+      throw new Error(msg || x.d.error || 'No se pudo resetear');
+    }
+    showToast(x.d.mensaje || 'Clave reseteada','success');
+    document.getElementById('pinAdminAuth').value = '';
+    openBodegaDetail(bodegaModalId);
+  }).catch(function(e){ showToast(e.message,'error'); });
 }
 
 // Inicialización del toggle al cargar

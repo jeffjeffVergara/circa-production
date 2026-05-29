@@ -1322,14 +1322,22 @@ async def get_bodega(bodega_id: str):
 
 @app.get("/api/catalogo")
 async def list_catalogo(distribuidor_id: str = None, bodega_id: str = None, marca: str = None, categoria: str = None):
-    # Si viene bodega_id, resolver su distribuidor automáticamente (modular)
-    if bodega_id and not distribuidor_id:
-        try:
+    from app.services.distribuidor_routing import DIMAX_DISTRIBUIDOR_ID
+
+    # Catálogo web: siempre DIMAX (ignora FK legacy Zoom en bodegas y ?distribuidor_id=Zoom).
+    try:
+        if bodega_id:
             distribuidor_id = db.get_distribuidor_de_bodega(bodega_id)
-        except Exception:
-            pass
-    q = db.sb.table("catalogo_distribuidor").select("*, productos_circa(*)").eq("activo", True)
-    if distribuidor_id: q = q.eq("distribuidor_id", distribuidor_id)
+        else:
+            distribuidor_id = DIMAX_DISTRIBUIDOR_ID
+    except Exception:
+        distribuidor_id = DIMAX_DISTRIBUIDOR_ID
+    q = (
+        db.sb.table("catalogo_distribuidor")
+        .select("*, productos_circa(*)")
+        .eq("activo", True)
+        .eq("distribuidor_id", distribuidor_id)
+    )
     rows = q.execute().data
     result = []
     for row in rows:

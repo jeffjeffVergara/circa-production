@@ -2,7 +2,7 @@
 Distribuidor Portal API — Circa
 """
 from fastapi import APIRouter, HTTPException, Header, Depends, UploadFile, File
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional, List
 import os, httpx
 from datetime import datetime, timezone
@@ -413,6 +413,29 @@ async def verify_admin(x_admin_token: str = Header(..., alias="X-Admin-Token")):
     if x_admin_token != ADMIN_TOKEN:
         raise HTTPException(status_code=401, detail="Token admin invalido")
     return True
+
+
+def _verify_admin_action(autorizacion: str) -> None:
+    """Segunda confirmación: token escrito en el formulario de soporte."""
+    if (autorizacion or "").strip() != ADMIN_TOKEN:
+        raise HTTPException(status_code=403, detail="Autorización inválida")
+
+
+def _pin_url(bodega_id: str, mode: str = "create") -> str:
+    base = os.getenv("APP_BASE_URL", "http://localhost:8000").rstrip("/")
+    phone_id = os.getenv("META_PHONE_NUMBER_ID", os.getenv("PHONE_NUMBER_ID", ""))
+    to = phone_id.strip() if phone_id else ""
+    return f"{base}/pin?b={bodega_id}&mode={mode}&to={to}"
+
+
+class AdminPinAction(BaseModel):
+    comentario: str = Field(..., min_length=8, max_length=500)
+    autorizacion: str = Field(..., min_length=1)
+
+
+class AdminPinSet(AdminPinAction):
+    pin: str
+    pin_confirm: str
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -1250,6 +1273,124 @@ async def admin_bodega_detalle(
             ), 2),
         }
     }
+
+
+@router.post("/admin/bodega/{bodega_id}/pin/reset")
+async def admin_reset_pin(
+    bodega_id: str,
+    payload: AdminPinAction,
+    admin: bool = Depends(verify_admin),
+):
+    """Resetea PIN: bodeguero crea clave nueva vía Flow/web. Requiere comentario y re-autorización."""
+    from app.services import db
+    from app.services.analytics import track_event
+    from app.services.twilio_client import send_whatsapp
+
+    _verify_admin_action(payload.autorizacion)
+    comentario = payload.comentario.strip()
+
+    rows = _sb_get("bodegas", {"select": "id,telefono_whatsapp,nombre_comercial", "id": f"eq.{bodega_id}"})
+    if not rows:
+        raise HTTPException(status_code=404, detail="Bodega no encontrada")
+    bodega = rows[0]
+    tel = bodega.get("telefono_whatsapp") or ""
+    if not tel:
+        raise HTTPException(status_code=400, detail="Bodega sin teléfono WhatsApp")
+
+    db.update_bodega(bodega_id, {
+        "pin_hash": None,
+        "pin_intentos": 0,
+        "pin_bloqueado_hasta": None,
+    })
+    db.upsert_session(
+        tel,
+        "reg_pin",
+        {"bodega_id": bodega_id, "ruc": "reset", "is_reset": True},
+        bodega_id,
+    )
+
+    track_event(
+        "pin_reset_admin",
+        bodega_id=bodega_id,
+        telefono=tel,
+        source="admin",
+        channel="web",
+        metadata={"comentario": comentario, "accion": "reset"},
+    )
+
+    wa_msg = (
+        "🔐 *Soporte Circa* reseteó tu clave.\n\n"
+        "Crea una clave nueva de 4 dígitos aquí:\n"
+        f"👉 {_pin_url(bodega_id, 'create')}"
+    )
+    try:
+        send_whatsapp(tel, wa_msg)
+    except Exception:
+        pass
+
+    return {"ok": True, "mensaje": "Clave reseteada. Se envió link al bodeguero por WhatsApp."}
+
+
+@router.post("/admin/bodega/{bodega_id}/pin/set")
+async def admin_set_pin(
+    bodega_id: str,
+    payload: AdminPinSet,
+    admin: bool = Depends(verify_admin),
+):
+    """Asigna PIN desde soporte (hash en BD). Requiere comentario y re-autorización."""
+    from app.services import db
+    from app.services.analytics import track_event
+    from app.services.pin import hash_pin, validate_pin_format
+    from app.services.twilio_client import send_whatsapp
+
+    _verify_admin_action(payload.autorizacion)
+    comentario = payload.comentario.strip()
+
+    if payload.pin != payload.pin_confirm:
+        raise HTTPException(status_code=400, detail="Las claves no coinciden")
+
+    valid, error_msg = validate_pin_format(payload.pin)
+    if not valid:
+        raise HTTPException(status_code=400, detail=error_msg)
+
+    rows = _sb_get("bodegas", {"select": "id,telefono_whatsapp", "id": f"eq.{bodega_id}"})
+    if not rows:
+        raise HTTPException(status_code=404, detail="Bodega no encontrada")
+    bodega = rows[0]
+    tel = bodega.get("telefono_whatsapp") or ""
+
+    pin_hashed = hash_pin(payload.pin)
+    db.update_bodega(bodega_id, {
+        "estado": "activo",
+        "pin_hash": pin_hashed,
+        "pin_intentos": 0,
+        "pin_bloqueado_hasta": None,
+    })
+
+    if tel:
+        db.upsert_session(tel, "menu", {}, bodega_id)
+
+    track_event(
+        "pin_set_admin",
+        bodega_id=bodega_id,
+        telefono=tel or None,
+        source="admin",
+        channel="web",
+        metadata={"comentario": comentario, "accion": "set"},
+    )
+
+    if tel:
+        try:
+            send_whatsapp(
+                tel,
+                "🔐 *Soporte Circa* actualizó tu clave Circa.\n\n"
+                "Si no la recuerdas, escríbenos por este chat.\n\n"
+                "Escribe *MENU* para continuar.",
+            )
+        except Exception:
+            pass
+
+    return {"ok": True, "mensaje": "Clave asignada. Comunícala al bodeguero por un canal seguro (teléfono)."}
 
 
 # ============================================================
