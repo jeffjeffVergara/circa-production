@@ -223,21 +223,26 @@ def _handler_preventa_propuesta(telefono: str, link_token: str, bodega: dict) ->
     total = float(pedido.get("total_pedido") or 0)
     linea = float(bodega.get("linea_disponible") or 0)
 
+    # Pago mixto: si total > linea, financiamos lo que entra en la linea y el resto va en efectivo
+    financiable = round(min(total, linea), 2)
+    efectivo = round(max(0.0, total - linea), 2)
+
     # Nombre para el saludo (representante)
     saludo = nombre_para_comunicar_representante(bodega) or (bodega.get("nombre_comercial") or "Hola")
 
-    # Validar linea suficiente
-    if total > linea:
-        return [
-            f"🛒 *{saludo}, tu preventa*\n"
-            f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"{items_text}\n"
-            f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"💰 TOTAL: *S/ {total:.2f}*\n"
-            f"📊 Tu línea disponible: S/ {linea:.2f}\n"
-            f"👤 Armada por *{vendedor_nombre}*\n\n"
-            f"⚠️ El total supera tu línea. Contacta a {vendedor_nombre} para ajustar el pedido."
-        ]
+    # Bloque desglose (solo si hay parte en efectivo)
+    if efectivo > 0:
+        desglose = (
+            f"💰 *TOTAL: S/ {total:.2f}*\n"
+            f"📊 Tu línea: S/ {linea:.2f}\n\n"
+            f"💳 Financias con Circa: *S/ {financiable:.2f}*\n"
+            f"💵 Pagas en efectivo al vendedor: *S/ {efectivo:.2f}*"
+        )
+    else:
+        desglose = (
+            f"💰 *TOTAL: S/ {total:.2f}*\n"
+            f"📊 Línea disponible: S/ {linea:.2f}"
+        )
 
     # Guardar en sesión y pedir confirmacion
     db.upsert_session(
@@ -248,6 +253,8 @@ def _handler_preventa_propuesta(telefono: str, link_token: str, bodega: dict) ->
             "pedido_numero": pedido.get("numero") or "",
             "link_token": link_token,
             "total": total,
+            "financiable": financiable,
+            "efectivo": efectivo,
             "vendedor_nombre": vendedor_nombre,
             "intentos_pin": 0,
         },
@@ -259,8 +266,7 @@ def _handler_preventa_propuesta(telefono: str, link_token: str, bodega: dict) ->
         f"━━━━━━━━━━━━━━━━━━━━\n"
         f"{items_text}\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"💰 *TOTAL: S/ {total:.2f}*\n"
-        f"📊 Línea disponible: S/ {linea:.2f}\n"
+        f"{desglose}\n"
         f"👤 Preventa armada por *{vendedor_nombre}*\n\n"
         f"Si todo está bien, escribe *APROBAR* para confirmar y financiar con tu línea Circa.\n"
         f"Si no quieres aprobarla, escribe *RECHAZAR*."
@@ -270,9 +276,12 @@ def _handler_preventa_propuesta(telefono: str, link_token: str, bodega: dict) ->
 def _aprobar_preventa(telefono: str, bodega: dict, datos: dict, metodo_auth: str) -> list:
     """Aprueba el pedido de preventa: cambia estado + descuenta linea_disponible.
     metodo_auth: 'pin_chat' | 'ruc_ultimos_4' | 'dni_ultimos_4'. Se guarda en pedidos.metodo_auth para auditoria.
+    Pago mixto: financiable se descuenta de la linea; efectivo lo paga la bodega al vendedor.
     """
     pedido_id = datos.get("pedido_id")
     total = float(datos.get("total") or 0)
+    financiable = float(datos.get("financiable") or total)
+    efectivo = float(datos.get("efectivo") or 0)
 
     try:
         db.sb.table("pedidos").update({
@@ -280,6 +289,7 @@ def _aprobar_preventa(telefono: str, bodega: dict, datos: dict, metodo_auth: str
             "metodo_auth": metodo_auth,
         }).eq("id", pedido_id).execute()
 
+        # Descontar SOLO la parte financiada (no el total)
         bod_fresh = (
             db.sb.table("bodegas")
             .select("linea_disponible")
@@ -289,7 +299,7 @@ def _aprobar_preventa(telefono: str, bodega: dict, datos: dict, metodo_auth: str
             .data
         )
         linea_actual = float(bod_fresh.get("linea_disponible") or 0) if bod_fresh else 0
-        nueva_linea = max(0.0, round(linea_actual - total, 2))
+        nueva_linea = max(0.0, round(linea_actual - financiable, 2))
         db.sb.table("bodegas").update({
             "linea_disponible": nueva_linea
         }).eq("id", bodega["id"]).execute()
@@ -298,18 +308,27 @@ def _aprobar_preventa(telefono: str, bodega: dict, datos: dict, metodo_auth: str
 
     db.upsert_session(telefono, "menu", {}, bodega["id"])
 
-    extra_reco = ""
-    if metodo_auth in ("ruc_ultimos_4", "dni_ultimos_4"):
-        extra_reco = "\n\n💡 Te recomendamos crear tu clave Circa nueva pronto. Escribe *OLVIDÉ* para recuperarla."
+    # Mensaje final adaptado al pago mixto
+    if efectivo > 0:
+        cuerpo = (
+            f"✅ *Preventa aprobada*\n\n"
+            f"💳 Financiado con Circa: S/ {financiable:.2f}\n"
+            f"💵 Pagas en efectivo al vendedor: S/ {efectivo:.2f}\n"
+            f"📊 Nueva línea disponible: S/ {nueva_linea:.2f}\n\n"
+            f"Tu vendedor coordinará la entrega contigo. 📦"
+        )
+    else:
+        cuerpo = (
+            f"✅ *Preventa aprobada*\n\n"
+            f"Total financiado: S/ {financiable:.2f}\n"
+            f"Nueva línea disponible: S/ {nueva_linea:.2f}\n\n"
+            f"Tu vendedor coordinará la entrega contigo. 📦"
+        )
 
-    return [
-        f"✅ *Preventa aprobada*\n\n"
-        f"Total financiado: S/{total:.2f}\n"
-        f"Nueva línea disponible: S/{nueva_linea:.2f}\n\n"
-        f"Tu vendedor coordinará la entrega contigo. 📦"
-        f"{extra_reco}",
-        {"signal": "MENU", "linea": nueva_linea},
-    ]
+    if metodo_auth in ("ruc_ultimos_4", "dni_ultimos_4"):
+        cuerpo += "\n\n💡 Te recomendamos crear tu clave Circa nueva pronto. Escribe *OLVIDÉ* para recuperarla."
+
+    return [cuerpo, {"signal": "MENU", "linea": nueva_linea}]
 
 
 def handle_message(telefono: str, body: str, media_url: str = None) -> list:
@@ -1362,9 +1381,18 @@ En menos de 24 horas validamos tu solicitud y activamos tu línea. Empiezas comp
         if body_n in ("APROBAR", "APRUEBO", "SI", "OK", "ACEPTAR", "ACEPTO", "1"):
             # Pedir PIN en chat (mismo patron que reg_pin)
             db.upsert_session(telefono, "aprobar_preventa_pin", datos, bodega["id"])
+            financiable = float(datos.get("financiable") or datos.get("total") or 0)
+            efectivo = float(datos.get("efectivo") or 0)
+            if efectivo > 0:
+                detalle = (
+                    f"Al confirmar, descontaremos S/{financiable:.2f} de tu línea Circa.\n"
+                    f"El saldo de S/{efectivo:.2f} lo pagas en efectivo al vendedor."
+                )
+            else:
+                detalle = f"Al confirmar, descontaremos S/{financiable:.2f} de tu línea."
             return [
                 f"🔐 Escribe tu *clave Circa* de 4 dígitos para aprobar la preventa.\n\n"
-                f"Al confirmar, descontaremos S/{datos.get('total', 0):.2f} de tu línea.\n\n"
+                f"{detalle}\n\n"
                 f"💡 Si olvidaste tu clave, escribe *OLVIDÉ* para usar tu RUC/DNI."
             ]
 
