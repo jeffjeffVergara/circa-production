@@ -16,7 +16,7 @@ Template signals use the format:
   {"signal": "PLAZO", "monto": 72.0, ...}
   {"signal": "MENU", "linea": 500.0}
 """
-import json, hashlib, unicodedata, os
+import json, hashlib, unicodedata, os, re
 from datetime import datetime, date, timedelta
 from app.services import db, messages as msg, fees
 from app.services.representante_comms import nombre_para_comunicar_representante
@@ -119,6 +119,199 @@ def _cart_items_text(cart: list) -> str:
     return "\n".join(lines) if lines else "(vacío)"
 
 
+# ═══════════════════════════════════════════════
+# PREVENTA PROPUESTA POR VENDEDOR (link/QR)
+# ═══════════════════════════════════════════════
+# Patron: el vendedor arma una preventa en bodega y comparte con el bodeguero
+# un link wa.me con texto "Pedido <link_token>". Al abrirlo, el bodeguero
+# manda ese texto al bot Circa y debe ver el resumen + opcion de aprobar con PIN.
+
+_PREVENTA_PROPUESTA_RE = re.compile(r"\bPedido\s+([a-f0-9]{12})\b", re.IGNORECASE)
+
+
+def _detect_preventa_propuesta(body: str):
+    """Si el mensaje contiene 'Pedido XXXXXXXXXXXX' (12 hex), devuelve el link_token. Si no, None."""
+    if not body:
+        return None
+    m = _PREVENTA_PROPUESTA_RE.search(body)
+    return m.group(1).lower() if m else None
+
+
+def _nombre_corto_vendedor(nombre_completo: str) -> str:
+    """De 'APELLIDO_P APELLIDO_M NOMBRE1 NOMBRE2' devuelve 'Nombre1' (formato BDD vendedores)."""
+    if not nombre_completo:
+        return "tu vendedor"
+    tokens = nombre_completo.strip().split()
+    if len(tokens) >= 3:
+        return tokens[2].capitalize()
+    if tokens:
+        return tokens[0].capitalize()
+    return "tu vendedor"
+
+
+def _resumen_items_text(items: list, max_lineas: int = 10) -> str:
+    """Convierte items_json en texto plano para el mensaje WhatsApp."""
+    out = []
+    for i in items[:max_lineas]:
+        qty = i.get("cantidad", 1)
+        nom = (i.get("nombre") or "")[:45]
+        sub = float(i.get("subtotal") or 0)
+        out.append(f"{qty}x {nom} — S/{sub:.2f}")
+    if len(items) > max_lineas:
+        out.append(f"... y {len(items) - max_lineas} productos más")
+    return "\n".join(out)
+
+
+def _handler_preventa_propuesta(telefono: str, link_token: str, bodega: dict) -> list:
+    """Procesa cuando el bodeguero abre el link/QR de una preventa armada por un vendedor."""
+    # Levantar pedido por link_token
+    rows = (
+        db.sb.table("pedidos")
+        .select("id,numero,bodega_id,estado,total_pedido,items_json,vendedor_id")
+        .eq("link_token", link_token)
+        .limit(1)
+        .execute()
+    )
+    if not rows.data:
+        return ["⚠️ No encontramos esa preventa.\n\nEl código pudo haber expirado o ser incorrecto. Pídele a tu vendedor que te comparta un nuevo link."]
+
+    pedido = rows.data[0]
+
+    # Validar estado
+    if pedido["estado"] != "preventa_confirmada":
+        labels = {
+            "preventa_aceptada": "ya aprobada ✓",
+            "preventa_rechazada": "rechazada",
+            "preventa_cancelada": "cancelada",
+            "preventa_despachada": "ya despachada 📦",
+            "preventa_entregada": "ya entregada ✓",
+            "aprobado": "ya aprobada ✓",
+            "confirmado": "ya confirmada ✓",
+        }
+        estado_label = labels.get(pedido["estado"], pedido["estado"])
+        return [f"⚠️ Esta preventa está *{estado_label}*. No se puede aprobar de nuevo."]
+
+    # Validar ownership: el WhatsApp del que escribe debe ser dueño de la bodega del pedido
+    if bodega["id"] != pedido["bodega_id"]:
+        return ["⚠️ Esta preventa no está asociada a tu número de WhatsApp.\n\nSi crees que es un error, contacta a tu vendedor."]
+
+    # Levantar nombre del vendedor
+    vendedor_nombre = "tu vendedor"
+    if pedido.get("vendedor_id"):
+        try:
+            v = (
+                db.sb.table("vendedores")
+                .select("nombre")
+                .eq("id", pedido["vendedor_id"])
+                .limit(1)
+                .execute()
+            )
+            if v.data:
+                vendedor_nombre = _nombre_corto_vendedor(v.data[0].get("nombre") or "")
+        except Exception:
+            pass
+
+    # Parsear items
+    items = []
+    try:
+        raw = pedido.get("items_json")
+        items = json.loads(raw) if isinstance(raw, str) else (raw or [])
+    except Exception:
+        items = []
+
+    items_text = _resumen_items_text(items)
+    total = float(pedido.get("total_pedido") or 0)
+    linea = float(bodega.get("linea_disponible") or 0)
+
+    # Nombre para el saludo (representante)
+    saludo = nombre_para_comunicar_representante(bodega) or (bodega.get("nombre_comercial") or "Hola")
+
+    # Validar linea suficiente
+    if total > linea:
+        return [
+            f"🛒 *{saludo}, tu preventa*\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"{items_text}\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"💰 TOTAL: *S/ {total:.2f}*\n"
+            f"📊 Tu línea disponible: S/ {linea:.2f}\n"
+            f"👤 Armada por *{vendedor_nombre}*\n\n"
+            f"⚠️ El total supera tu línea. Contacta a {vendedor_nombre} para ajustar el pedido."
+        ]
+
+    # Guardar en sesión y pedir confirmacion
+    db.upsert_session(
+        telefono,
+        "aprobar_preventa",
+        {
+            "pedido_id": pedido["id"],
+            "pedido_numero": pedido.get("numero") or "",
+            "link_token": link_token,
+            "total": total,
+            "vendedor_nombre": vendedor_nombre,
+            "intentos_pin": 0,
+        },
+        bodega["id"],
+    )
+
+    return [
+        f"🛒 *{saludo}, tu preventa está lista*\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"{items_text}\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"💰 *TOTAL: S/ {total:.2f}*\n"
+        f"📊 Línea disponible: S/ {linea:.2f}\n"
+        f"👤 Preventa armada por *{vendedor_nombre}*\n\n"
+        f"Si todo está bien, escribe *APROBAR* para confirmar y financiar con tu línea Circa.\n"
+        f"Si no quieres aprobarla, escribe *RECHAZAR*."
+    ]
+
+
+def _aprobar_preventa(telefono: str, bodega: dict, datos: dict, metodo_auth: str) -> list:
+    """Aprueba el pedido de preventa: cambia estado + descuenta linea_disponible.
+    metodo_auth: 'pin_chat' | 'ruc_ultimos_4' | 'dni_ultimos_4'. Se guarda en pedidos.metodo_auth para auditoria.
+    """
+    pedido_id = datos.get("pedido_id")
+    total = float(datos.get("total") or 0)
+
+    try:
+        db.sb.table("pedidos").update({
+            "estado": "preventa_aceptada",
+            "metodo_auth": metodo_auth,
+        }).eq("id", pedido_id).execute()
+
+        bod_fresh = (
+            db.sb.table("bodegas")
+            .select("linea_disponible")
+            .eq("id", bodega["id"])
+            .single()
+            .execute()
+            .data
+        )
+        linea_actual = float(bod_fresh.get("linea_disponible") or 0) if bod_fresh else 0
+        nueva_linea = max(0.0, round(linea_actual - total, 2))
+        db.sb.table("bodegas").update({
+            "linea_disponible": nueva_linea
+        }).eq("id", bodega["id"]).execute()
+    except Exception as e:
+        return [f"⚠️ No pudimos cerrar la aprobación. Intenta de nuevo en un momento.\n\nReferencia: {str(e)[:80]}"]
+
+    db.upsert_session(telefono, "menu", {}, bodega["id"])
+
+    extra_reco = ""
+    if metodo_auth in ("ruc_ultimos_4", "dni_ultimos_4"):
+        extra_reco = "\n\n💡 Te recomendamos crear tu clave Circa nueva pronto. Escribe *OLVIDÉ* para recuperarla."
+
+    return [
+        f"✅ *Preventa aprobada*\n\n"
+        f"Total financiado: S/{total:.2f}\n"
+        f"Nueva línea disponible: S/{nueva_linea:.2f}\n\n"
+        f"Tu vendedor coordinará la entrega contigo. 📦"
+        f"{extra_reco}",
+        {"signal": "MENU", "linea": nueva_linea},
+    ]
+
+
 def handle_message(telefono: str, body: str, media_url: str = None) -> list:
     body_raw = (body or "").strip()
     body_n = normalize(body_raw)
@@ -128,6 +321,13 @@ def handle_message(telefono: str, body: str, media_url: str = None) -> list:
 
     if body_n and body_n in _TEXTO_PIDE_CONTACTO_CIRCA:
         return _desvio_contacto_circa_responses()
+
+    # ── PREVENTA PROPUESTA POR VENDEDOR ──
+    # Si el mensaje contiene "Pedido <link_token>" y la bodega esta activa,
+    # interrumpimos el flujo actual y mostramos el resumen para aprobar.
+    preventa_token = _detect_preventa_propuesta(body_raw)
+    if preventa_token and bodega and bodega.get("estado") == "activo":
+        return _handler_preventa_propuesta(telefono, preventa_token, bodega)
 
     # ── NO SESSION ──
     if not session:
@@ -177,6 +377,7 @@ En menos de 24 horas validamos tu solicitud y activamos tu línea. Empiezas comp
             )
         if is_olvide_trigger(body_n) and fase not in (
             "welcome", "reg_ruc", "reg_biometria", "reg_contrato", "reg_linea_acepta",
+            "aprobar_preventa_pin", "aprobar_preventa_ruc",
         ) and not (fase == "reg_pin" and not datos.get("is_reset")):
             return start_pin_reset(telefono, bodega, session)
 
@@ -1153,6 +1354,133 @@ En menos de 24 horas validamos tu solicitud y activamos tu línea. Empiezas comp
         return [
             f"🔐 *Confirma tu pedido*\n\nUsa el teclado seguro aquí:\n👉 {pin_url}\n\nCuando termines, vuelve a WhatsApp para continuar."
         ]
+
+    # ═══════════════════════════════════════════════
+    # APROBAR PREVENTA (link de vendedor)
+    # ═══════════════════════════════════════════════
+    if fase == "aprobar_preventa":
+        if body_n in ("APROBAR", "APRUEBO", "SI", "OK", "ACEPTAR", "ACEPTO", "1"):
+            # Pedir PIN en chat (mismo patron que reg_pin)
+            db.upsert_session(telefono, "aprobar_preventa_pin", datos, bodega["id"])
+            return [
+                f"🔐 Escribe tu *clave Circa* de 4 dígitos para aprobar la preventa.\n\n"
+                f"Al confirmar, descontaremos S/{datos.get('total', 0):.2f} de tu línea.\n\n"
+                f"💡 Si olvidaste tu clave, escribe *OLVIDÉ* para usar tu RUC/DNI."
+            ]
+
+        if body_n in ("RECHAZAR", "RECHAZO", "NO", "CANCELAR", "2"):
+            pedido_id = datos.get("pedido_id")
+            if pedido_id:
+                try:
+                    db.sb.table("pedidos").update({
+                        "estado": "preventa_rechazada"
+                    }).eq("id", pedido_id).execute()
+                except Exception:
+                    pass
+            db.upsert_session(telefono, "menu", {}, bodega["id"])
+            return [
+                "❌ Preventa rechazada. Tu línea no fue tocada.\n\nContacta a tu vendedor si quieres armar una nueva.",
+                {"signal": "MENU", "linea": bodega["linea_disponible"]},
+            ]
+
+        return [
+            "Responde *APROBAR* para confirmar la preventa y financiar con Circa, o *RECHAZAR* para cancelarla."
+        ]
+
+    # ═══════════════════════════════════════════════
+    # APROBAR PREVENTA — INGRESO DE PIN EN CHAT
+    # ═══════════════════════════════════════════════
+    if fase == "aprobar_preventa_pin":
+        # Volver atras
+        if body_n in ("VOLVER", "CANCELAR", "MENU"):
+            db.upsert_session(telefono, "menu", {}, bodega["id"])
+            return [
+                "Ok, cancelamos la aprobación. Tu línea no fue tocada.",
+                {"signal": "MENU", "linea": bodega["linea_disponible"]},
+            ]
+
+        # OLVIDÉ → fallback con ultimos 4 del RUC/DNI
+        if is_olvide_trigger(body_n):
+            solo_dni = bool(bodega.get("solo_dni_sin_ruc"))
+            documento = bodega.get("dni_representante" if solo_dni else "ruc") or ""
+            if not documento or len(documento) < 4:
+                # Sin documento para validar — pedir que reintente con PIN
+                return ["⚠️ No tenemos un documento registrado para verificar tu identidad. Intenta con tu clave Circa de 4 dígitos."]
+
+            datos["intentos_ruc"] = 0
+            db.upsert_session(telefono, "aprobar_preventa_ruc", datos, bodega["id"])
+            tipo_doc = "DNI" if solo_dni else "RUC"
+            return [
+                f"🔓 *Recuperación rápida*\n\n"
+                f"Para esta preventa, escribe los *últimos 4 dígitos* de tu {tipo_doc}.\n\n"
+                f"(Solo válido para aprobar esta preventa. Después te ayudamos a crear una clave nueva.)"
+            ]
+
+        pin_raw = body_raw.strip()
+        if not (len(pin_raw) == 4 and pin_raw.isdigit()):
+            return ["Escribe tu clave Circa de *4 dígitos*. Si no la recuerdas, escribe *OLVIDÉ*."]
+
+        # Validar PIN
+        pin_hash = bodega.get("pin_hash")
+        if not pin_hash:
+            return ["⚠️ No tienes una clave Circa configurada. Escribe *OLVIDÉ* para usar tu RUC/DNI."]
+
+        if not check_pin(pin_raw, pin_hash):
+            intentos = int(datos.get("intentos_pin", 0)) + 1
+            if intentos >= 3:
+                db.upsert_session(telefono, "menu", {}, bodega["id"])
+                return [
+                    "❌ Clave incorrecta 3 veces. Por seguridad, cancelamos la aprobación.\n\n"
+                    "Si olvidaste tu clave, escribe *OLVIDÉ* para recuperarla.",
+                    {"signal": "MENU", "linea": bodega["linea_disponible"]},
+                ]
+            datos["intentos_pin"] = intentos
+            db.upsert_session(telefono, "aprobar_preventa_pin", datos, bodega["id"])
+            return [f"❌ Clave incorrecta. Te quedan {3 - intentos} intento(s).\n\nEscribe tu clave Circa de 4 dígitos:"]
+
+        # PIN OK — aprobar
+        return _aprobar_preventa(telefono, bodega, datos, "pin_chat")
+
+    # ═══════════════════════════════════════════════
+    # APROBAR PREVENTA — FALLBACK ULTIMOS 4 RUC/DNI
+    # ═══════════════════════════════════════════════
+    if fase == "aprobar_preventa_ruc":
+        if body_n in ("VOLVER", "CANCELAR", "MENU"):
+            # Volver a pedir PIN
+            datos["intentos_ruc"] = 0
+            db.upsert_session(telefono, "aprobar_preventa_pin", datos, bodega["id"])
+            return ["Ok. Escribe tu clave Circa de 4 dígitos:"]
+
+        solo_dni = bool(bodega.get("solo_dni_sin_ruc"))
+        documento = bodega.get("dni_representante" if solo_dni else "ruc") or ""
+        tipo_doc = "DNI" if solo_dni else "RUC"
+
+        if not documento or len(documento) < 4:
+            db.upsert_session(telefono, "aprobar_preventa_pin", datos, bodega["id"])
+            return ["⚠️ No tenemos un documento registrado. Intenta con tu clave Circa de 4 dígitos."]
+
+        ultimos_4_ok = documento[-4:]
+        entrada = body_raw.strip().replace(" ", "")
+
+        if not (len(entrada) == 4 and entrada.isdigit()):
+            return [f"Escribe los *últimos 4 dígitos* de tu {tipo_doc} (solo números)."]
+
+        if entrada != ultimos_4_ok:
+            intentos = int(datos.get("intentos_ruc", 0)) + 1
+            if intentos >= 3:
+                db.upsert_session(telefono, "menu", {}, bodega["id"])
+                return [
+                    "❌ Datos incorrectos 3 veces. Por seguridad, cancelamos la aprobación.\n\n"
+                    "Contacta a Circa si necesitas ayuda.",
+                    {"signal": "MENU", "linea": bodega["linea_disponible"]},
+                ]
+            datos["intentos_ruc"] = intentos
+            db.upsert_session(telefono, "aprobar_preventa_ruc", datos, bodega["id"])
+            return [f"❌ Datos incorrectos. Te quedan {3 - intentos} intento(s).\n\nEscribe los últimos 4 dígitos de tu {tipo_doc}:"]
+
+        # RUC/DNI ultimos 4 OK — aprobar
+        metodo = "dni_ultimos_4" if solo_dni else "ruc_ultimos_4"
+        return _aprobar_preventa(telefono, bodega, datos, metodo)
 
     # ═══ DEFAULT ═══
     if bodega and bodega["estado"] == "activo":
