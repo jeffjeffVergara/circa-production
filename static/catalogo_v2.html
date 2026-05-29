@@ -113,9 +113,6 @@ html,body{height:100%;font-family:'Plus Jakarta Sans',sans-serif;background:var(
 <script>
 var API=location.origin,QS=new URLSearchParams(location.search),BID=QS.get('b')||'';
 var TIPO_OPERACION=(QS.get('t')==='preventa'?'preventa':'venta');
-// Modo vendedor: si viene ?vt=<access_token> es preventa armada por un vendedor
-var VENDEDOR_TOKEN=QS.get('vt')||'';
-var IS_VENDEDOR=!!VENDEDOR_TOKEN;
 var P=[],cart=[],linea=0,fm='cat',sel='Todos',step='cart',selUnits={};
 var CATS=['Todos'];
 var promosResult={items:[],ahorro_total:0,bonificaciones_aplicables:[],bonificaciones_proximas:[],valor_bonificaciones:0};
@@ -439,7 +436,7 @@ function cQ(id,d,u){
  if(!i)return;i.qty+=d;if(i.qty<=0)cart=cart.filter(function(c){return String(c.id)+'_'+c.unit!==key});uC();rend();evaluarPromos();syncCartToServer()}
 
 function clearCart(){if(carritoSyncTimer){clearTimeout(carritoSyncTimer);carritoSyncTimer=null}cart=[];promosResult={items:[],ahorro_total:0,bonificaciones_aplicables:[],bonificaciones_proximas:[],valor_bonificaciones:0};uC();rend();toast('Carrito limpiado');fetch(API+'/api/carrito/clear',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({bodega_id:BID})}).catch(function(){})}
-function goBack(){if(IS_VENDEDOR){window.location.href='/v/'+VENDEDOR_TOKEN+'/preventa';return}window.close();window.location.href='https://wa.me/51986311567?text=MENU'}
+function goBack(){window.close();window.location.href='https://wa.me/51986311567?text=MENU'}
 function uC(){
  var t=cart.reduce(function(s,c){return s+c.precio*c.qty},0),n=cart.reduce(function(s,c){return s+c.qty},0);
  if(n>0){$('sB').classList.remove('hide');$('sL').innerHTML=n+' items - <b>'+fmt(t)+'</b>'}
@@ -509,9 +506,6 @@ function pillHTMLForCartItem(idx){
 function rD(){
  var t=cart.reduce(function(s,c){return s+c.precio*c.qty},0),n=cart.reduce(function(s,c){return s+c.qty},0);
  var ahorro=(promosResult&&promosResult.ahorro_total)||0;
- // Bonificaciones (compartido entre step=cart y step=summary)
- var bonifAplicables=(promosResult&&promosResult.bonificaciones_aplicables)||[];
- var bonifProximas=(promosResult&&promosResult.bonificaciones_proximas)||[];
  if(step==='cart'){
   $('dTl').textContent='Tu pedido';
   $('dI').innerHTML=cart.map(function(c,idx){
@@ -523,6 +517,9 @@ function rD(){
   var dl=t<=linea?'<div class="dfli ok">Todo financiable — línea Circa: '+fmt(linea)+'</div>':
    linea>0?'<div class="dfli warn">Financiable hasta '+fmt(linea)+'</div>':'<div class="dfli bad">Sin línea disponible</div>';
   var ahorroLine=ahorro>0?'<div class="dfr"><span class="dfl" style="color:#5eead4">🎁 Ahorras</span><span class="dfv" style="color:#5eead4;font-size:14px">'+fmt(ahorro)+'</span></div>':'';
+  // Bonificaciones (productos regalo): sección dedicada en el drawer
+  var bonifAplicables=(promosResult&&promosResult.bonificaciones_aplicables)||[];
+  var bonifProximas=(promosResult&&promosResult.bonificaciones_proximas)||[];
   var bonifHTML='';
   if(bonifAplicables.length){
    bonifHTML+='<div class="bonif-section"><div class="bonif-title">🎁 ¡Te llevás gratis!</div>';
@@ -542,36 +539,10 @@ function rD(){
    '<div class="btn-row"><button class="btn-sec" onclick="closeD()">Seguir comprando</button><button class="btn-pri" onclick="goFin()">Continuar</button></div>';
  }else if(step==='summary'){
   $('dTl').textContent='Resumen del pedido';
-  // Linea de productos
-  var prodHTML='<div class="fin-section"><div class="fin-title">Productos</div>'+
+  $('dI').innerHTML='<div class="fin-section"><div class="fin-title">Productos</div>'+
    cart.map(function(c){return'<div class="fin-row"><span class="lbl">'+c.qty+'x '+esc(c.nombre).slice(0,28)+'</span><span class="val">'+fmt(c.precio*c.qty)+'</span></div>'}).join('')+
-   '<div class="fin-row" style="border-top:1px solid var(--brd);padding-top:6px;margin-top:4px"><span class="lbl"><b>Total del pedido</b></span><span class="val hl"><b>'+fmt(t)+'</b></span></div>'+
-   (ahorro>0?'<div class="fin-row" style="margin-top:4px"><span class="lbl" style="color:#5eead4">🎁 Ahorras</span><span class="val" style="color:#5eead4;font-weight:700">'+fmt(ahorro)+'</span></div>':'')+
-   '</div>';
-  // Bonificaciones aplicables (te llevas gratis)
-  var bonifSummaryHTML='';
-  if(bonifAplicables.length){
-   bonifSummaryHTML+='<div class="bonif-section"><div class="bonif-title">🎁 ¡Te llevás gratis!</div>';
-   bonifAplicables.forEach(function(b){
-    bonifSummaryHTML+='<div class="pp gift"><span class="pi">🎁</span><span class="pt">'+esc(b.mensaje_corto||'')+'</span></div>';
-   });
-   bonifSummaryHTML+='</div>';
-  }
-  if(bonifProximas.length){
-   bonifSummaryHTML+='<div class="bonif-section"><div class="bonif-title">Casi alcanzas</div>';
-   bonifProximas.forEach(function(b){
-    bonifSummaryHTML+='<div class="pp gift-up"><span class="pi">🎁</span><span class="pt">'+esc(b.mensaje_corto||'')+'</span></div>';
-   });
-   bonifSummaryHTML+='</div>';
-  }
-  // Estado de linea
-  var dlSummary=t<=linea?'<div class="dfli ok" style="margin-top:8px">Todo financiable — línea Circa: '+fmt(linea)+'</div>':
-   linea>0?'<div class="dfli warn" style="margin-top:8px">Financiable hasta '+fmt(linea)+'</div>':'<div class="dfli bad" style="margin-top:8px">Sin línea disponible</div>';
-  // Mensaje cierre (cambia segun modo)
-  var msgCierre=IS_VENDEDOR
-   ?'<div style="text-align:center;padding:10px 0;font-size:12px;color:var(--t2)">Cuando confirmes, generamos un<br>link para que tu cliente apruebe</div>'
-   :'<div style="text-align:center;padding:10px 0;font-size:12px;color:var(--t2)">En el siguiente paso te ayudamos<br>a financiar tu compra con Circa</div>';
-  $('dI').innerHTML=prodHTML+bonifSummaryHTML+dlSummary+msgCierre;
+   '<div class="fin-row" style="border-top:1px solid var(--brd);padding-top:6px;margin-top:4px"><span class="lbl"><b>Total del pedido</b></span><span class="val hl"><b>'+fmt(t)+'</b></span></div></div>'+
+   '<div style="text-align:center;padding:10px 0;font-size:12px;color:var(--t2)">En el siguiente paso te ayudamos<br>a financiar tu compra con Circa</div>';
   $('dF').innerHTML='<div class="btn-row"><button type="button" class="btn-edit" onclick="step=\'cart\';rD()">✏️ Editar pedido</button><button type="button" class="btn-pri" id="cfB" onclick="cfmOrder()">Continuar pedido</button></div>';
  }
 }
@@ -582,33 +553,10 @@ async function cfmOrder(){
  var b=$('cfB');b.disabled=true;b.textContent='Procesando...';
  try{
   var items=cart.map(function(c){return{catalogo_id:c.id,nombre:c.nombre,marca:c.marca,pack_size:c.unit,cantidad:c.qty,precio:c.precio,subtotal:c.precio*c.qty}});
-  var payload={bodega_id:BID,items:items,tipo_operacion:TIPO_OPERACION};
-  if(IS_VENDEDOR){
-   payload.vendedor_token=VENDEDOR_TOKEN;
-   payload.origen='preventa_vendedor_app';
-  }
-  var resp=await fetch(API+'/api/catalogo/submit-cart',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
-  var data={};try{data=await resp.json()}catch(_){}
-  if(IS_VENDEDOR){
-   // Modo vendedor: el pedido queda en preventa_confirmada esperando aprobacion del bodeguero
-   var nroPedido=data&&data.numero?data.numero:'';
-   $('dTl').textContent='Preventa enviada';
-   $('dI').innerHTML='<div style="text-align:center;padding:24px 8px">'+
-    '<div style="font-size:44px;margin-bottom:10px">✅</div>'+
-    '<div style="font-size:15px;font-weight:700;margin-bottom:8px;color:var(--accent)">Preventa lista</div>'+
-    (nroPedido?'<div style="font-size:12px;color:var(--t2);margin-bottom:10px">Nº '+esc(nroPedido)+'</div>':'')+
-    '<div style="font-size:12px;color:var(--t2);line-height:1.5">El cliente recibirá un link para<br>aprobar y financiar con Circa.</div>'+
-    '</div>';
-   $('dF').innerHTML='<div class="btn-row">'+
-    '<button class="btn-sec" onclick="location.href=\x27/v/'+VENDEDOR_TOKEN+'/preventa\x27">Nueva preventa</button>'+
-    '<button class="btn-pri" onclick="location.href=\x27/v/'+VENDEDOR_TOKEN+'\x27">Ir al menú</button>'+
-    '</div>';
-  }else{
-   // Modo bodeguero (flujo original sin cambios)
-   $('dTl').textContent='Carrito listo';
-   $('dI').innerHTML='<div style="text-align:center;padding:24px 0"><div style="font-size:44px;margin-bottom:10px">🛒</div><div style="font-size:15px;font-weight:700;margin-bottom:8px;color:var(--accent)">Carrito listo</div><div style="font-size:12px;color:var(--t2);line-height:1.5">Avancemos con el pago. Elige tu plazo y confirma<br>con tu clave Circa en el chat.</div></div>';
-   $('dF').innerHTML='<button class="btn-pri" onclick="location.href=\x27https://wa.me/51986311567\x27" style="width:100%">Avanzar con el pago</button>';
-  }
+  await fetch(API+'/api/catalogo/submit-cart',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({bodega_id:BID,items:items,tipo_operacion:TIPO_OPERACION})});
+  $('dTl').textContent='Carrito listo';
+  $('dI').innerHTML='<div style="text-align:center;padding:24px 0"><div style="font-size:44px;margin-bottom:10px">🛒</div><div style="font-size:15px;font-weight:700;margin-bottom:8px;color:var(--accent)">Carrito listo</div><div style="font-size:12px;color:var(--t2);line-height:1.5">Avancemos con el pago. Elige tu plazo y confirma<br>con tu clave Circa en el chat.</div></div>';
+  $('dF').innerHTML='<button class="btn-pri" onclick="location.href=\x27https://wa.me/51986311567\x27" style="width:100%">Avanzar con el pago</button>';
   cart=[];promosResult={items:[],ahorro_total:0,bonificaciones_aplicables:[],bonificaciones_proximas:[],valor_bonificaciones:0};uC();rend();
  }catch(e){b.disabled=false;b.textContent='Continuar pedido';toast('Error al enviar')}
 }
