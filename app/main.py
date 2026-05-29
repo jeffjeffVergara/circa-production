@@ -1116,10 +1116,19 @@ async def meta_webhook_incoming(request: Request):
                             intentos = bodega.data[0].get("pin_intentos", 0) + 1
                             db.sb.table("bodegas").update({"pin_intentos": intentos}).eq("id", bod_id).execute()
                             if intentos >= 3:
-                                db.sb.table("sesiones").update({"fase": "menu", "datos": "{}"}).eq("telefono", telefono).execute()
-                                await meta_client.send_text(telefono, "❌ Clave incorrecta 3 veces. Pedido cancelado.")
+                                await meta_client.send_text(
+                                    telefono,
+                                    "❌ Demasiados intentos incorrectos.\n\n"
+                                    "Escribe *Me olvidé mi clave* para crear una nueva "
+                                    "sin perder tu pedido.\n\n"
+                                    "O escribe *MENU* para volver al menú.",
+                                )
                             else:
-                                await meta_client.send_text(telefono, f"❌ Clave incorrecta. Intento {intentos}/3. Ingresa tu clave:")
+                                await meta_client.send_text(
+                                    telefono,
+                                    f"❌ Clave incorrecta. Intento {intentos}/3.\n\n"
+                                    "¿La olvidaste? Escribe *Me olvidé mi clave*.",
+                                )
                     if msg["message_id"]:
                         await meta_client.mark_as_read(msg["message_id"])
                     continue

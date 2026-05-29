@@ -77,7 +77,8 @@ def msg_cuenta_activa(linea: float) -> str:
         f"2️⃣ *LINEA* - Ver mi línea\n"
         f"3️⃣ *ESTADO* - Mis pedidos\n"
         f"4️⃣ *REPETIR* - Repetir último pedido\n"
-        f"5️⃣ *AYUDA* - Soporte"
+        f"5️⃣ *Me olvidé mi clave* - Recuperar clave\n"
+        f"6️⃣ *AYUDA* - Soporte"
     )
 
 # ── CATÁLOGO ──────────────────────────────────
@@ -245,6 +246,7 @@ def msg_no_entiendo() -> str:
         "• *LINEA* - Ver mi línea\n"
         "• *ESTADO* - Mis pedidos\n"
         "• *REPETIR* - Repetir último pedido\n"
+        "• *Me olvidé mi clave* - Recuperar clave Circa\n"
         "• *AYUDA* - Soporte"
     )
 

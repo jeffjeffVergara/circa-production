@@ -21,6 +21,13 @@ from datetime import datetime, date, timedelta
 from app.services import db, messages as msg, fees
 from app.services.representante_comms import nombre_para_comunicar_representante
 from app.services.pin import check_pin
+from app.services.pin_reset_flow import (
+    handle_reset_clave,
+    is_olvide_trigger,
+    msg_pin_pago_ayuda,
+    start_pin_reset,
+    after_pin_created_responses,
+)
 from app.services.identity import consultar_ruc_sync, consultar_dni_sync, validate_ruc_format, validate_dni_format, is_ruc_eligible
 
 # Test phones — bypass SUNAT/RENIEC/Vision validation
@@ -162,6 +169,16 @@ En menos de 24 horas validamos tu solicitud y activamos tu línea. Empiezas comp
 
     fase = session["fase"]
     datos = json.loads(session["datos"]) if isinstance(session["datos"], str) else (session["datos"] or {})
+
+    if bodega and bodega.get("estado") == "activo":
+        if fase == "reset_clave":
+            return handle_reset_clave(
+                telefono, body_raw, body_n, bodega, datos, test_phones=TEST_PHONES,
+            )
+        if is_olvide_trigger(body_n) and fase not in (
+            "welcome", "reg_ruc", "reg_biometria", "reg_contrato", "reg_linea_acepta",
+        ) and not (fase == "reg_pin" and not datos.get("is_reset")):
+            return start_pin_reset(telefono, bodega, session)
 
     # ═══ WELCOME ═══
     if fase == "welcome":
@@ -662,14 +679,20 @@ En menos de 24 horas validamos tu solicitud y activamos tu línea. Empiezas comp
                 "pin_bloqueado_hasta": None,
             })
             bodega_updated = db.sb.table("bodegas").select("linea_disponible").eq("id", datos["bodega_id"]).single().execute().data
+            linea = bodega_updated["linea_disponible"] if bodega_updated else 0
+            if datos.get("is_reset"):
+                return after_pin_created_responses(telefono, datos["bodega_id"], datos, linea)
             db.upsert_session(telefono, "menu", {}, datos["bodega_id"])
-            return [{"signal": "CUENTA_ACTIVA", "linea": bodega_updated["linea_disponible"]}]
+            return [{"signal": "CUENTA_ACTIVA", "linea": linea}]
 
         if body_n == "PIN_CREADO":
             bodega_pin = db.sb.table("bodegas").select("linea_disponible, pin_hash, estado").eq("id", datos["bodega_id"]).single().execute().data
             if bodega_pin and bodega_pin.get("pin_hash"):
+                linea = bodega_pin["linea_disponible"]
+                if datos.get("is_reset"):
+                    return after_pin_created_responses(telefono, datos["bodega_id"], datos, linea)
                 db.upsert_session(telefono, "menu", {}, datos["bodega_id"])
-                return [{"signal": "CUENTA_ACTIVA", "linea": bodega_pin["linea_disponible"]}]
+                return [{"signal": "CUENTA_ACTIVA", "linea": linea}]
 
         return [{"signal": "PIN_ASK", "mode": "create", "bodega_id": datos.get("bodega_id", "")}]
 
@@ -778,11 +801,6 @@ En menos de 24 horas validamos tu solicitud y activamos tu línea. Empiezas comp
             if reportados:
                 return ["\u23f3 Tu pago ya fue reportado. Estamos verificandolo. Te avisamos pronto!"]
             return ["No tienes pagos pendientes."]
-
-        if body_n in ("OLVIDE", "RESET", "OLVIDE MI CLAVE", "CAMBIAR CLAVE"):
-            db.update_bodega(bodega["id"], {"pin_hash": None, "pin_intentos": 0, "pin_bloqueado_hasta": None})
-            db.upsert_session(telefono, "reg_dni", {"bodega_id": bodega["id"], "is_reset": True}, bodega["id"])
-            return ["🔐 Para resetear tu clave, envía una *foto de tu DNI* para verificar tu identidad.\n\n📷 Envía la foto como imagen en este chat."]
 
         # Default: volver a mostrar el menú (sin clasificar saludos/despedidas/modales).
         return [{"signal": "MENU", "linea": bodega["linea_disponible"]}]
@@ -1098,8 +1116,14 @@ En menos de 24 horas validamos tu solicitud y activamos tu línea. Empiezas comp
         return [msg.msg_finance_terms(amount, terms)]
 
     # ═══════════════════════════════════════════════
-    # CONFIRMAR PIN
+    # CONFIRMAR PIN (web overlay)
     # ═══════════════════════════════════════════════
+    if fase == "pin_pago":
+        if body_n in ("MENU", "CANCELAR", "VOLVER"):
+            db.upsert_session(telefono, "menu", {}, bodega["id"])
+            return [{"signal": "MENU", "linea": bodega["linea_disponible"]}]
+        return [msg_pin_pago_ayuda()]
+
     if fase == "pin_confirm":
         if body_n == "OK":
             pedido_id = datos.get("pedido_id")
