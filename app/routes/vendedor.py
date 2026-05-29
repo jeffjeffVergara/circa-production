@@ -11,7 +11,7 @@ URLs:
   ... (mas endpoints proximamente: catalogo, pedido confirmado)
 """
 from fastapi import APIRouter, HTTPException, Path, Query
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from datetime import datetime, timezone
 import os, httpx, logging
 
@@ -383,3 +383,43 @@ def api_buscar_bodega(
         response["warning"] = "Esta bodega no tiene línea disponible ahora mismo"
 
     return response
+
+
+# ==========================================================
+# ENDPOINT 4: REDIRECT AL CATALOGO  GET /v/{token}/catalogo/{bodega_id}
+# ==========================================================
+
+@router.get("/{token}/catalogo/{bodega_id}")
+def vendedor_catalogo_redirect(
+    token: str = Path(..., min_length=16, max_length=64),
+    bodega_id: str = Path(...),
+):
+    """Valida token + bodega-en-cartera, redirige al catalogo web con params modo vendedor."""
+    vendedor = _get_vendedor_by_token(token)
+    if not vendedor:
+        raise HTTPException(status_code=404, detail="Acceso no encontrado")
+
+    # Validar que la bodega exista
+    bodega_rows = _sb_get("bodegas", {
+        "select": "id,estado",
+        "id": f"eq.{bodega_id}",
+        "limit": "1",
+    })
+    if not bodega_rows:
+        raise HTTPException(status_code=404, detail="Bodega no encontrada")
+
+    # Validar cartera (excepto admin)
+    if not vendedor.get("es_admin"):
+        cartera = _sb_get("bodega_vendedores", {
+            "select": "id",
+            "vendedor_id": f"eq.{vendedor['id']}",
+            "bodega_id": f"eq.{bodega_id}",
+            "activo": "eq.true",
+            "limit": "1",
+        })
+        if not cartera:
+            raise HTTPException(status_code=403, detail="Esta bodega no esta en tu cartera")
+
+    # Redirect al catalogo web con params: bodega_id, modo preventa, token vendedor
+    redirect_url = f"/static/catalogo_v2.html?b={bodega_id}&t=preventa&vt={token}"
+    return RedirectResponse(url=redirect_url, status_code=302)
