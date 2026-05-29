@@ -485,13 +485,15 @@ def vendedor_share_link(
     .preventa-meta .bodega{{font-size:15px;font-weight:600;color:#fff}}
     .preventa-meta .total{{font-size:22px;font-weight:700;color:#22D3EE;margin-top:6px}}
     .preventa-meta .codigo{{font-size:11px;color:rgba(255,255,255,0.4);margin-top:6px;letter-spacing:0.5px;font-family:monospace}}
-    .qr-wrap{{display:flex;justify-content:center;margin-top:28px;background:#fff;padding:20px;border-radius:14px}}
-    .qr-wrap img,.qr-wrap canvas{{display:block;max-width:220px;height:auto}}
-    .link-box{{margin-top:18px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:14px 16px;font-family:monospace;font-size:11px;color:rgba(255,255,255,0.7);word-break:break-all;line-height:1.5}}
-    .btn-copy{{margin-top:10px;width:100%;padding:12px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:10px;color:#fff;font-family:inherit;font-size:13px;font-weight:500;cursor:pointer}}
-    .btn-copy:active{{background:rgba(255,255,255,0.1)}}
+    .btn-copy-big{{width:100%;margin-top:20px;padding:18px 22px;background:#22D3EE;color:#0A0E1A;border:none;border-radius:14px;font-family:inherit;font-size:16px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px;transition:transform 0.1s ease;letter-spacing:0.2px}}
+    .btn-copy-big:active{{transform:scale(0.98)}}
+    .btn-copy-big.ok{{background:#10b981;color:#fff}}
+    .btn-copy-big .ico{{font-size:20px}}
+    .qr-wrap{{display:flex;justify-content:center;margin-top:20px;background:#fff;padding:18px;border-radius:14px}}
+    .qr-wrap img,.qr-wrap canvas{{display:block;max-width:200px;height:auto}}
+    .link-text-small{{margin-top:12px;font-family:monospace;font-size:10px;color:rgba(255,255,255,0.35);word-break:break-all;text-align:center;line-height:1.5;padding:0 10px}}
     .help{{margin-top:24px;font-size:12px;color:rgba(255,255,255,0.5);line-height:1.6;text-align:center}}
-    .btns-final{{margin-top:24px;display:flex;gap:10px}}
+    .btns-final{{margin-top:24px;display:flex;gap:10px;padding-bottom:24px}}
     .btns-final .btn{{margin-top:0}}
   </style>
 </head>
@@ -506,14 +508,17 @@ def vendedor_share_link(
     <div class="codigo">Código {link_token}</div>
   </div>
 
+  <button class="btn-copy-big" id="btnCopy" onclick="copiarLink()">
+    <span class="ico">📋</span>
+    <span id="btnCopyText">Copiar link para enviar</span>
+  </button>
+
   <div class="qr-wrap"><div id="qr"></div></div>
+  <div class="link-text-small" id="link-text">{wa_link}</div>
 
   <div class="help">
-    El cliente abre el QR (o el link) y aprueba<br>la preventa con su clave Circa.
+    El cliente abre el QR (o pega el link en WhatsApp)<br>y aprueba la preventa con su clave Circa.
   </div>
-
-  <div class="link-box" id="link-text">{wa_link}</div>
-  <button class="btn-copy" onclick="copiarLink()">📋 Copiar link</button>
 
   <div class="btns-final">
     <a href="/v/{token}/preventa" class="btn secondary">Nueva preventa</a>
@@ -524,21 +529,50 @@ def vendedor_share_link(
     // Genera el QR del wa.me link
     new QRCode(document.getElementById("qr"), {{
       text: "{wa_link}",
-      width: 220,
-      height: 220,
+      width: 200,
+      height: 200,
       colorDark: "#0A0E1A",
       colorLight: "#ffffff",
       correctLevel: QRCode.CorrectLevel.M
     }});
 
+    var LINK = "{wa_link}";
+    var btn = document.getElementById('btnCopy');
+    var btnText = document.getElementById('btnCopyText');
+
     function copiarLink() {{
-      var t = document.getElementById('link-text').textContent;
-      navigator.clipboard.writeText(t).then(function(){{
-        var b = event.target;
-        var orig = b.textContent;
-        b.textContent = '✓ Copiado';
-        setTimeout(function(){{ b.textContent = orig; }}, 1500);
-      }}).catch(function(){{ alert('No se pudo copiar, seleccioná manualmente'); }});
+      // Metodo moderno
+      if(navigator.clipboard && window.isSecureContext){{
+        navigator.clipboard.writeText(LINK).then(showOK).catch(fallback);
+      }} else {{
+        fallback();
+      }}
+    }}
+
+    function fallback(){{
+      // Fallback con textarea temporal
+      var ta = document.createElement('textarea');
+      ta.value = LINK;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.focus(); ta.select();
+      try {{
+        document.execCommand('copy');
+        showOK();
+      }} catch(e) {{
+        alert('No se pudo copiar. Selecciona el link manualmente.');
+      }}
+      document.body.removeChild(ta);
+    }}
+
+    function showOK(){{
+      btn.classList.add('ok');
+      btnText.textContent = '✓ Copiado, pégalo en WhatsApp';
+      setTimeout(function(){{
+        btn.classList.remove('ok');
+        btnText.textContent = 'Copiar link para enviar';
+      }}, 2500);
     }}
   </script>
 </body>
