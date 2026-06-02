@@ -374,7 +374,8 @@ En menos de 24 horas validamos tu solicitud y activamos tu línea. Empiezas comp
                 return [{"signal": "RUC_ASK"}]
             return ["Escribe *SI* si los datos son correctos, o *NO* para corregir."]
 
-        ruc = body_raw.replace(" ", "")
+        # Solo digitos: defensivo contra newlines / espacios no-ASCII / BOM
+        ruc = "".join(c for c in body_raw if c.isdigit())
         if len(ruc) != 11 or not ruc.isdigit() or ruc[:2] not in ("10", "20"):
             return ["❌ RUC inválido. Debe tener 11 dígitos y empezar con 10 o 20.\n\n📝 Escribe tu RUC:"]
 
@@ -538,7 +539,8 @@ En menos de 24 horas validamos tu solicitud y activamos tu línea. Empiezas comp
             ]
 
         # ── Step 1: User types DNI number (8 digits) ──
-        dni = body_raw.replace(" ", "")
+        # Solo digitos: defensivo contra newlines / espacios no-ASCII / BOM
+        dni = "".join(c for c in body_raw if c.isdigit())
         valid, error_msg = validate_dni_format(dni)
         if not valid:
             if datos.get("is_reset"):
