@@ -22,7 +22,7 @@ Backend **MVP** de **Circa**: crédito embebido orientado a **bodegas en Perú**
 | `app/services/` | Negocio: `db`, `meta_client`, identidad (RUC/DNI), tracking, cobranza, contratos, PIN, fees, etc. |
 | `app/routes/distribuidor.py` | API del distribuidor (token) para pedidos y estados. |
 | `app/flows/` | Handlers de **WhatsApp Flows** (onboarding, catálogo, PIN) y cifrado (`crypto`). |
-| `static/` | HTML del catálogo web, PIN y admin distribuidor. |
+| `static/` | HTML del catálogo web, PIN, admin distribuidor y **backoffice** (`/backoffice`). |
 
 ## Flujo de negocio (resumido)
 

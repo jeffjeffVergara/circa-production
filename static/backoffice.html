@@ -1,0 +1,1523 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Circa Backoffice</title>
+<style>
+:root{--bg:#0f172a;--card:#1e293b;--card-hover:#263449;--border:#334155;--text:#e2e8f0;--muted:#94a3b8;--blue:#2563eb;--blue-light:#60a5fa;--green:#10b981;--yellow:#eab308;--orange:#f97316;--red:#ef4444;--purple:#a855f7}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:var(--bg);color:var(--text);font-size:14px}
+.login{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px}
+.login-box{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:40px;width:100%;max-width:420px}
+.login-box h1{color:var(--blue-light);margin-bottom:8px;letter-spacing:4px;font-size:32px}
+.login-box p{color:var(--muted);margin-bottom:24px}
+.input{width:100%;padding:12px 14px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px}
+.input:focus{outline:none;border-color:var(--blue)}
+.btn{padding:10px 16px;background:var(--blue);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;transition:all .2s}
+.btn:hover{opacity:.9}
+.btn-secondary{background:var(--border);color:var(--text)}
+.btn-green{background:var(--green)}
+.btn-red{background:var(--red)}
+.btn-outline{background:transparent;border:1px solid var(--border);color:var(--text)}
+.btn-small{padding:6px 10px;font-size:12px}
+.header{background:var(--card);border-bottom:1px solid var(--border);padding:14px 24px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:10}
+.header-left{display:flex;align-items:center;gap:20px}
+.logo{color:var(--blue-light);font-weight:900;letter-spacing:4px;font-size:20px}
+.header-sub{color:var(--muted);font-size:12px}
+.header-right{display:flex;gap:10px;align-items:center}
+.container{padding:24px;max-width:1600px;margin:0 auto}
+.tabs{display:flex;gap:4px;background:var(--card);padding:4px;border-radius:10px;margin-bottom:20px;border:1px solid var(--border)}
+.tab{flex:1;padding:10px 16px;background:transparent;border:none;color:var(--muted);font-size:14px;font-weight:600;cursor:pointer;border-radius:8px;transition:all .2s}
+.tab.active{background:var(--blue);color:#fff}
+.tab:hover:not(.active){background:var(--border);color:var(--text)}
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin-bottom:24px}
+.kpi{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px}
+.kpi-label{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px}
+.kpi-value{font-size:28px;font-weight:700}
+.kpi-value.blue{color:var(--blue-light)}
+.kpi-value.green{color:var(--green)}
+.kpi-value.orange{color:var(--orange)}
+.kpi-value.red{color:var(--red)}
+.section{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:20px}
+.section h2{font-size:16px;font-weight:700;margin-bottom:16px;color:var(--text);display:flex;align-items:center;justify-content:space-between}
+.filters{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px}
+.filters input,.filters select{padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;min-width:150px}
+.dist-group{border:1px solid var(--border);border-radius:10px;margin-bottom:14px;overflow:hidden}
+.dist-header{background:var(--card-hover);padding:14px 18px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.dist-name{font-weight:700;font-size:15px;color:var(--blue-light)}
+.dist-total{color:var(--green);font-weight:700;font-size:16px}
+.dist-body{padding:14px 18px}
+.pedido-row{display:grid;grid-template-columns:100px 1fr 1fr 120px 120px;gap:12px;padding:10px 0;border-top:1px solid var(--border);align-items:center}
+.pedido-row:first-child{border-top:none}
+.pedido-num{color:var(--blue-light);font-weight:600}
+.pedido-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:12px;flex-wrap:wrap}
+.table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.table-wrap-cobranzas{border:1px solid var(--border);border-radius:8px;background:var(--card)}
+.cobranzas-scroll-hint{display:none;color:var(--muted);font-size:12px;margin:0 0 10px;padding:8px 10px;background:var(--bg);border-radius:6px;border:1px dashed var(--border)}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;padding:10px;color:var(--muted);font-weight:600;text-transform:uppercase;font-size:11px;letter-spacing:.5px;border-bottom:1px solid var(--border)}
+td{padding:12px 10px;border-bottom:1px solid var(--border);vertical-align:middle}
+tr:hover td{background:var(--card-hover)}
+.badge{display:inline-block;padding:3px 8px;border-radius:12px;font-size:11px;font-weight:600;text-transform:uppercase}
+.badge-al_dia{background:rgba(16,185,129,.2);color:var(--green)}
+.badge-por_vencer{background:rgba(234,179,8,.2);color:var(--yellow)}
+.badge-vencido{background:rgba(239,68,68,.2);color:var(--red)}
+.badge-pagado{background:rgba(168,85,247,.2);color:var(--purple)}
+.badge-pendiente{background:rgba(148,163,184,.2);color:var(--muted)}
+.badge-confirmado{background:rgba(96,165,250,.2);color:var(--blue-light)}
+.badge-despachado{background:rgba(249,115,22,.2);color:var(--orange)}
+.badge-entregado{background:rgba(16,185,129,.2);color:var(--green)}
+.badge-pago_reportado{background:rgba(234,179,8,.3);color:#fbbf24;font-weight:700}
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:100;padding:20px}
+.modal{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:24px;width:100%;max-width:500px;max-height:90vh;overflow-y:auto}
+.modal h3{margin-bottom:16px;color:var(--blue-light)}
+.modal-field{margin-bottom:14px}
+.modal-field label{display:block;color:var(--muted);font-size:12px;margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px}
+.modal-field input,.modal-field select{width:100%;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text)}
+.modal-info{background:var(--bg);padding:12px;border-radius:8px;margin-bottom:16px}
+.modal-info-row{display:flex;justify-content:space-between;padding:4px 0}
+.modal-info-row span:first-child{color:var(--muted)}
+.modal-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:20px}
+.toast{position:fixed;bottom:20px;right:20px;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:14px 18px;z-index:1200;box-shadow:0 10px 30px rgba(0,0,0,.4);max-width:320px}
+.toast.success{border-color:var(--green)}
+.toast.error{border-color:var(--red)}
+.empty{text-align:center;padding:40px;color:var(--muted)}
+.mono{font-family:monospace}
+.ranking-card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px}
+.ranking-card h3{font-size:13px;margin-bottom:12px;color:var(--text)}
+.ranking-item{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px}
+.ranking-item:last-child{border:none}
+.ranking-num{color:var(--muted);margin-right:8px}
+@media (max-width:1024px){
+  .pedido-row{grid-template-columns:1fr 1fr;gap:8px}
+  .container{padding:12px}
+  .kpi-grid{grid-template-columns:1fr 1fr}
+  .cobranzas-scroll-hint{display:block}
+  /* Cobranzas: cada fila = tarjeta; todas las celdas visibles (Acciones nunca oculta) */
+  .table-wrap-cobranzas{border:none;background:transparent}
+  .table-cobranzas{width:100%;border-collapse:separate;border-spacing:0 10px}
+  .table-cobranzas thead{display:none}
+  .table-cobranzas tbody{display:block;width:100%}
+  .table-cobranzas tbody tr{display:block;width:100%;margin:0;padding:0;background:var(--card);border:1px solid var(--border);border-radius:10px;overflow:hidden;box-sizing:border-box}
+  .table-cobranzas tbody tr:hover td{background:transparent}
+  .table-cobranzas tbody td{display:block;width:100%!important;box-sizing:border-box;border:none;border-bottom:1px solid var(--border);text-align:right;padding:10px 12px 10px 44%;position:relative;min-height:44px}
+  .table-cobranzas tbody td:last-child{border-bottom:none}
+  .table-cobranzas tbody td::before{content:attr(data-label);position:absolute;left:12px;top:50%;transform:translateY(-50%);width:40%;text-align:left;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);line-height:1.3}
+  .table-cobranzas tbody td.cob-col-actions{padding:14px 12px;text-align:center}
+  .table-cobranzas tbody td.cob-col-actions::before{position:static;transform:none;width:100%;display:block;text-align:center;margin:0 0 10px;padding:0}
+  .table-cobranzas tbody td.cob-col-actions .btn{display:inline-block;width:calc(50% - 8px);min-width:120px;max-width:100%;margin:4px;vertical-align:middle;box-sizing:border-box}
+  @media (max-width:380px){
+    .table-cobranzas tbody td.cob-col-actions .btn{display:block;width:100%;margin:6px 0}
+  }
+  /* Pedidos: ocultar montos */
+  .table-pedidos th:nth-child(5),
+  .table-pedidos td:nth-child(5),
+  .table-pedidos th:nth-child(6),
+  .table-pedidos td:nth-child(6){
+    display:none
+  }
+}
+
+/* ====== FASE 3: Toggle Real/Test, alerta sobregiro, tab Bodegas ====== */
+.mode-toggle{display:flex;background:var(--bg);border:1px solid var(--border);border-radius:999px;padding:3px;gap:0}
+.mode-toggle button{background:transparent;border:none;color:var(--muted);padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;border-radius:999px;transition:all .15s}
+.mode-toggle button.active{background:var(--blue);color:#fff;box-shadow:0 2px 8px rgba(37,99,235,.4)}
+.mode-toggle button:not(.active):hover{color:var(--text)}
+.mode-toggle .cnt{margin-left:6px;background:rgba(255,255,255,.18);padding:1px 7px;border-radius:8px;font-size:10px;font-weight:700}
+.mode-toggle button:not(.active) .cnt{background:var(--border);color:var(--muted)}
+
+/* Alerta sobregiro */
+.alert-sobregiro{background:linear-gradient(90deg,rgba(239,68,68,.12),rgba(239,68,68,.04));border:1px solid var(--red);border-left:4px solid var(--red);border-radius:10px;padding:16px 20px;margin-bottom:20px}
+.alert-sobregiro.empty{display:none}
+.alert-sobregiro h3{color:var(--red);font-size:14px;font-weight:700;margin-bottom:8px;display:flex;align-items:center;gap:10px}
+.alert-sobregiro .alert-cnt{background:var(--red);color:#fff;padding:2px 10px;border-radius:12px;font-size:11px;font-weight:700}
+.alert-sobregiro-row{display:grid;grid-template-columns:1fr 100px 100px 130px;gap:12px;padding:10px 0;border-top:1px solid var(--border);align-items:center;font-size:13px}
+.alert-sobregiro-row:first-of-type{border-top:1px solid var(--red);margin-top:8px}
+.alert-sobregiro .badge-test{background:rgba(249,115,22,.15);color:var(--orange);font-size:10px;padding:1px 6px;border-radius:6px;margin-left:6px}
+
+/* Bodegas tab */
+.search-bar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;align-items:center}
+.search-bar input{padding:9px 14px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;min-width:280px}
+.search-bar input:focus{outline:none;border-color:var(--blue)}
+.bodegas-table th, .bodegas-table td{font-size:13px}
+.bodegas-table tbody tr{cursor:pointer;transition:background .15s}
+.bodegas-table tbody tr:hover{background:var(--card-hover)}
+.status-dot{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600}
+.status-dot::before{content:'';width:8px;height:8px;border-radius:50%;background:currentColor}
+.status-active{color:var(--green)}
+.status-warning{color:var(--yellow)}
+.status-stale{color:var(--muted)}
+.status-no-session{color:var(--muted);opacity:.6}
+
+/* Modal bodega detalle */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.65);backdrop-filter:blur(4px);z-index:1000;display:none;align-items:flex-start;justify-content:center;padding:40px 20px;overflow-y:auto}
+.modal-overlay.open{display:flex}
+.modal-box{background:var(--card);border:1px solid var(--border);border-radius:14px;width:100%;max-width:920px;max-height:calc(100vh - 80px);overflow:hidden;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.6)}
+.modal-head{padding:18px 22px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:flex-start;gap:16px}
+.modal-head h2{font-size:18px;font-weight:700;color:var(--text);margin:0}
+.modal-head .sub{color:var(--muted);font-size:12px;margin-top:4px}
+.modal-close{background:transparent;border:none;color:var(--muted);font-size:22px;cursor:pointer;padding:0 8px;line-height:1}
+.modal-close:hover{color:var(--text)}
+.modal-body{padding:18px 22px;overflow-y:auto;flex:1}
+.info-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px}
+.info-card{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 12px}
+.info-label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}
+.info-value{font-size:15px;font-weight:600}
+.section-label{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin:20px 0 10px;border-left:2px solid var(--blue);padding-left:8px}
+.timeline{position:relative;padding-left:22px}
+.timeline::before{content:'';position:absolute;left:6px;top:4px;bottom:4px;width:1px;background:var(--border)}
+.timeline-item{position:relative;padding:6px 0}
+.timeline-item::before{content:'';position:absolute;left:-19px;top:11px;width:8px;height:8px;background:var(--blue);border-radius:50%;border:2px solid var(--card)}
+.timeline-time{font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
+.timeline-event{font-size:13px;font-weight:500;margin-top:1px}
+.timeline-detail{font-size:11px;color:var(--muted);margin-top:1px}
+.pin-admin{background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:20px;margin-top:8px}
+.pin-admin h3{font-size:13px;font-weight:700;margin-bottom:8px;color:var(--muted)}
+.pin-admin .hint{font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.45}
+.pin-admin-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
+.pin-admin-grid label{display:block;font-size:11px;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.4px}
+.pin-admin-grid input,.pin-admin textarea{width:100%;padding:10px;background:var(--card);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px}
+.pin-admin textarea{min-height:72px;resize:vertical}
+.pin-admin-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+.pin-status{font-size:12px;color:var(--muted);margin-bottom:10px}
+.pin-status strong{color:var(--text)}
+.pin-admin-collapsed{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:24px 0 8px;padding:10px 12px;background:transparent;border-top:1px dashed var(--border);border-radius:0}
+.pin-admin-summary{font-size:12px;color:var(--muted);min-width:0}
+.pin-admin-summary-label{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px;color:var(--muted)}
+.pin-admin-summary-status{font-size:12px;color:var(--text)}
+.pin-admin-toggle{font-size:11px;padding:6px 10px;white-space:nowrap}
+.pin-admin-hidden{display:none}
+.pin-admin-hidden.open{display:block}
+.confirm-overlay{z-index:1100}
+.confirm-modal h3{margin:0 0 4px;font-size:17px;color:var(--text)}
+.confirm-modal .confirm-body{color:var(--muted);margin:12px 0 20px;line-height:1.55;font-size:14px}
+@media(max-width:640px){.pin-admin-grid{grid-template-columns:1fr}.pin-admin-collapsed{flex-direction:column;align-items:flex-start}}
+
+/* Loader global al cambiar Real/Test */
+.panel-loader{position:fixed;inset:0;background:rgba(15,23,42,.58);backdrop-filter:blur(3px);z-index:900;display:none;align-items:center;justify-content:center;flex-direction:column;gap:14px}
+.panel-loader.open{display:flex}
+.panel-loader.top{z-index:1150}
+.panel-loader-spinner{width:42px;height:42px;border:3px solid var(--border);border-top-color:var(--blue-light);border-radius:50%;animation:panelSpin .75s linear infinite}
+.panel-loader-text{color:var(--text);font-size:14px;font-weight:600;letter-spacing:.2px}
+@keyframes panelSpin{to{transform:rotate(360deg)}}
+.mode-toggle.loading{opacity:.65;pointer-events:none}
+</style>
+</head>
+<body>
+<div id="loginScreen" class="login">
+<div class="login-box">
+<h1>CIRCA</h1>
+<p>Backoffice de soporte</p>
+<div style="margin-bottom:12px">
+<label style="color:var(--muted);font-size:12px;display:block;margin-bottom:6px">Correo</label>
+<input type="email" id="emailInput" class="input" placeholder="soporte@circa.pe" autocomplete="username">
+</div>
+<div style="margin-bottom:16px">
+<label style="color:var(--muted);font-size:12px;display:block;margin-bottom:6px">Contraseña</label>
+<input type="password" id="passwordInput" class="input" placeholder="Contraseña" autocomplete="current-password" onkeypress="if(event.key==='Enter')login()">
+</div>
+<button class="btn" style="width:100%" onclick="login()">Ingresar</button>
+<div id="loginError" style="color:var(--red);margin-top:12px;font-size:13px"></div>
+</div>
+</div>
+
+<div id="app" style="display:none">
+<div class="header">
+<div class="header-left">
+<div class="logo">CIRCA</div>
+<div class="header-sub" id="fechaHeader"></div>
+<div class="header-sub" id="userHeader" style="color:var(--blue-light)"></div>
+</div>
+<div class="header-right">
+<div class="mode-toggle" id="modeToggle" title="Filtra bodegas reales vs de prueba en todo el panel">
+<button class="active" data-mode="real" onclick="setMode('real')">🏪 Reales <span class="cnt" id="cntReales">—</span></button>
+<button data-mode="test" onclick="setMode('test')">🧪 Pruebas <span class="cnt" id="cntTests">—</span></button>
+</div>
+<button class="btn btn-secondary btn-small" onclick="refreshAll()">🔄 Actualizar</button>
+<button class="btn btn-outline btn-small" onclick="logout()">Salir</button>
+</div>
+</div>
+
+<div class="container">
+
+<div class="tabs">
+<button class="tab active" onclick="showTab('dashboard')" id="tab-dashboard">📊 Dashboard</button>
+<button class="tab" onclick="showTab('bodegas')" id="tab-bodegas">🏪 Bodegas</button>
+<button class="tab" onclick="showTab('pagos')" id="tab-pagos">💸 Pagos a distribuidores</button>
+<button class="tab" onclick="showTab('cobranzas')" id="tab-cobranzas">💰 Cobranzas</button>
+<button class="tab" onclick="showTab('pedidos')" id="tab-pedidos">📋 Pedidos</button>
+<button class="tab" onclick="showTab('vendedores')" id="tab-vendedores">🧑‍💼 Vendedores</button>
+<button class="tab" onclick="showTab('soporte')" id="tab-soporte">💬 Soporte WA</button>
+</div>
+
+<!-- DASHBOARD TAB -->
+<div id="view-dashboard">
+
+<!-- Alerta sobregiro (compliance) - NUEVO Fase 3 -->
+<div class="alert-sobregiro empty" id="sobregiroAlert">
+<h3>🟥 Bodegas con sobregiro de línea — RIESGO COMPLIANCE <span class="alert-cnt" id="sobregiroCnt">0</span></h3>
+<div id="sobregiroBody"></div>
+</div>
+
+<div class="kpi-grid">
+<div class="kpi"><div class="kpi-label">A pagar hoy a distribuidores</div><div class="kpi-value blue" id="kpiPagar">S/0.00</div></div>
+<div class="kpi"><div class="kpi-label">Pedidos activos</div><div class="kpi-value green" id="kpiActivos">0</div></div>
+<div class="kpi"><div class="kpi-label">Cobranzas vencidas</div><div class="kpi-value red" id="kpiVencidas">0</div></div>
+<div class="kpi"><div class="kpi-label">Monto vencido</div><div class="kpi-value orange" id="kpiMontoVencido">S/0.00</div></div>
+</div>
+
+<div class="kpi-grid">
+<div class="kpi"><div class="kpi-label">Catálogos abiertos (7d)</div><div class="kpi-value blue" id="kpiCatalogOpened">0</div></div>
+<div class="kpi"><div class="kpi-label">Órdenes creadas (7d)</div><div class="kpi-value green" id="kpiOrdersCreated7d">0</div></div>
+<div class="kpi"><div class="kpi-label">Tasa de respuesta WA (7d)</div><div class="kpi-value orange" id="kpiResponseRate">0%</div></div>
+<div class="kpi"><div class="kpi-label">Bodegas activas (30d)</div><div class="kpi-value blue" id="kpiActiveBodegas30d">0</div></div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px" id="rankingGrid"></div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px" id="analyticsGrid"></div>
+</div>
+
+<!-- PAGOS A DISTRIBUIDORES TAB -->
+<div id="view-pagos" style="display:none">
+<div class="section">
+<h2>💸 Pagos pendientes a distribuidores <span style="font-size:12px;color:var(--muted);font-weight:normal">(pedidos confirmados que Circa debe transferir)</span></h2>
+<div class="filters">
+<input type="date" id="pagosFechaDesde" onchange="loadPagos()">
+<input type="date" id="pagosFechaHasta" onchange="loadPagos()">
+<button class="btn btn-green btn-small" onclick="exportPagosCSV()">📥 Descargar resumen consolidado</button>
+</div>
+<div id="pagosList"></div>
+</div>
+</div>
+
+<!-- COBRANZAS TAB -->
+<div id="view-cobranzas" style="display:none">
+<div class="section">
+<h2>💰 Cobranzas (bodegas que deben pagar a Circa)</h2>
+<div class="filters">
+<input type="text" id="cobFiltroBodega" placeholder="Buscar bodega..." onkeyup="loadCobranzas()">
+<select id="cobFiltroDist" onchange="loadCobranzas()"><option value="">Todos los distribuidores</option></select>
+<select id="cobFiltroEstado" onchange="loadCobranzas()">
+<option value="todos">Todos</option>
+<option value="al_dia">Al día</option>
+<option value="por_vencer">Por vencer</option>
+<option value="vencido">Vencido</option>
+<option value="pagado">Pagado</option>
+</select>
+<input type="date" id="cobFechaDesde" onchange="loadCobranzas()">
+<input type="date" id="cobFechaHasta" onchange="loadCobranzas()">
+<button class="btn btn-green btn-small" onclick="exportCobranzasCSV()">📥 Descargar CSV</button>
+</div>
+
+<div id="statsDistribuidorGrid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;margin-bottom:20px"></div>
+
+<p class="cobranzas-scroll-hint" aria-hidden="true">En móvil cada cobranza se muestra como tarjeta; <strong>Acciones</strong> va al final de cada una.</p>
+<div class="table-wrap table-wrap-cobranzas">
+<table class="table-cobranzas">
+<thead><tr><th>Pedido</th><th>Bodega</th><th>Distribuidor</th><th>Entregado</th><th>Vence</th><th>Días</th><th>Monto</th><th>Estado</th><th>Acciones</th></tr></thead>
+<tbody id="cobranzasBody"></tbody>
+</table>
+</div>
+</div>
+</div>
+
+<!-- PEDIDOS TAB -->
+<div id="view-pedidos" style="display:none">
+<div class="section">
+<h2>📋 Todos los pedidos</h2>
+<div class="filters">
+<input type="text" id="pedFiltroBodega" placeholder="Buscar bodega..." onkeyup="loadPedidos()">
+<input type="text" id="pedFiltroDist" placeholder="Distribuidor..." onkeyup="loadPedidos()">
+<select id="pedFiltroTipo" onchange="loadPedidos()">
+<option value="">Venta y pre-venta</option>
+<option value="venta">Solo venta</option>
+<option value="preventa">Solo pre-venta</option>
+</select>
+<select id="pedFiltroEstado" onchange="loadPedidos()">
+<option value="">Todos</option>
+<option value="confirmado">Confirmado</option>
+<option value="recibido">Recibido</option>
+<option value="en_preparacion">Preparando</option>
+<option value="despachado">Despachado</option>
+<option value="en_camino">En camino</option>
+<option value="entregado">Entregado</option>
+<option value="pagado">Pagado</option>
+</select>
+<button class="btn btn-green btn-small" onclick="exportPedidosCSV()">📥 Descargar CSV</button>
+</div>
+<div class="table-wrap">
+<table class="table-pedidos">
+<thead><tr><th>Fecha</th><th>Pedido</th><th>Tipo</th><th>Bodega</th><th>Distribuidor</th><th>Total</th><th>Circa paga</th><th>Estado</th><th>Acciones</th></tr></thead>
+<tbody id="pedidosBody"></tbody>
+</table>
+</div>
+</div>
+</div>
+
+</div>
+
+<!-- BODEGAS TAB -->
+<div id="view-bodegas" style="display:none">
+<div class="section">
+<h2>🏪 Bodegas <span style="font-size:12px;color:var(--muted);font-weight:400" id="bodegasInfoLine">cargando...</span>
+<button class="btn btn-green btn-small" style="float:right;margin-top:-4px" onclick="openCreateBodega()">+ Nueva bodega</button>
+</h2>
+<div class="search-bar">
+<input type="search" id="bodegasSearch" name="circa-bodegas-filter" placeholder="Buscar razón social, dueño, DNI, RUC o teléfono..." autocomplete="off" autocorrect="off" spellcheck="false" data-lpignore="true" data-form-type="other" oninput="onBodegasSearchInput()">
+<select id="bodegasFiltroEstado" onchange="loadBodegas()" style="padding:9px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px">
+<option value="">Todos los estados</option>
+<option value="activo">Activos</option>
+<option value="inactivo">Inactivos</option>
+<option value="suspendido">Suspendidos</option>
+<option value="bloqueado">Bloqueados</option>
+</select>
+</div>
+<div class="table-wrap">
+<table class="bodegas-table">
+<thead><tr>
+<th></th><th>Bodega / Dueño</th><th>Teléfono</th><th>Fase bot</th><th>Última actividad</th><th>Línea (disp/aprob)</th><th>Pedidos</th><th></th>
+</tr></thead>
+<tbody id="bodegasBody"><tr><td colspan="8" class="empty">Cargando...</td></tr></tbody>
+</table>
+</div>
+</div>
+</div>
+
+<!-- VENDEDORES TAB -->
+<div id="view-vendedores" style="display:none">
+<div class="section">
+<h2>🧑‍💼 Vendedores de campo
+<button class="btn btn-green btn-small" style="float:right;margin-top:-4px" onclick="openCreateVendedor()">+ Nuevo vendedor</button>
+</h2>
+<div class="table-wrap">
+<table><thead><tr><th>Código</th><th>Nombre</th><th>Estado</th><th>Último acceso</th><th>App</th><th></th></tr></thead>
+<tbody id="vendedoresBody"><tr><td colspan="6" class="empty">Cargando...</td></tr></tbody>
+</table>
+</div>
+</div>
+</div>
+
+<!-- SOPORTE WA TAB -->
+<div id="view-soporte" style="display:none">
+<div class="section">
+<h2>💬 Inbox WhatsApp</h2>
+<p style="color:var(--muted);margin-bottom:16px;font-size:13px">Conversaciones humanas con bodegueros.</p>
+<div id="soporteFrameWrap" style="border:1px solid var(--border);border-radius:10px;overflow:hidden;min-height:70vh;background:var(--bg)">
+<div class="empty" id="soportePlaceholder">Conectando inbox…</div>
+<iframe id="soporteFrame" title="Support inbox" style="display:none;width:100%;height:75vh;border:none"></iframe>
+</div>
+</div>
+</div>
+
+</div>
+
+<!-- MODAL DETALLE BODEGA (NUEVO) -->
+<div class="modal-overlay" id="bodegaModal" onclick="if(event.target===this) closeBodegaModal()">
+<div class="modal-box">
+<div class="modal-head">
+<div>
+<h2 id="bodegaModalTitle">Bodega</h2>
+<div class="sub" id="bodegaModalSubtitle">—</div>
+</div>
+<button class="modal-close" onclick="closeBodegaModal()">×</button>
+</div>
+<div class="modal-body" id="bodegaModalBody">Cargando...</div>
+</div>
+</div>
+
+<div id="modalContainer"></div>
+<div id="toastContainer"></div>
+<div id="panelLoader" class="panel-loader" aria-live="polite" aria-busy="false">
+<div class="panel-loader-spinner" role="status"></div>
+<div class="panel-loader-text" id="panelLoaderText">Cargando…</div>
+</div>
+
+<script>
+var AUTH_TOKEN = "";
+var USER_EMAIL = "";
+var USER_PASSWORD = "";
+var allCobranzas = [];
+var allPedidos = [];
+var allPagos = [];
+var statsDistribuidor = [];
+var bodegaModalId = null;
+var bodegasSearchTimer = null;
+var bodegasSearchSnapshot = '';
+
+function onBodegasSearchInput(){
+  if(bodegaModalId) return;
+  clearTimeout(bodegasSearchTimer);
+  bodegasSearchTimer = setTimeout(loadBodegas, 250);
+}
+
+function login(){
+  var email = document.getElementById('emailInput').value.trim();
+  var pass = document.getElementById('passwordInput').value;
+  if(!email || !pass){document.getElementById('loginError').textContent='Ingresa correo y contraseña';return}
+  fetch('/api/backoffice/auth/login', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({email: email, password: pass})
+  }).then(function(r){ return r.json().then(function(d){ return {ok:r.ok,d:d}; }); })
+    .then(function(x){
+      if(!x.ok) throw new Error(x.d.detail || 'Credenciales inválidas');
+      AUTH_TOKEN = x.d.token;
+      USER_EMAIL = x.d.user.email;
+      USER_PASSWORD = pass;
+      sessionStorage.setItem('circa_bo_token', AUTH_TOKEN);
+      sessionStorage.setItem('circa_bo_email', USER_EMAIL);
+      document.getElementById('loginScreen').style.display='none';
+      document.getElementById('app').style.display='block';
+      document.getElementById('fechaHeader').textContent = new Date().toLocaleDateString('es-PE',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+      document.getElementById('userHeader').textContent = USER_EMAIL;
+      refreshAll();
+    })
+    .catch(function(e){document.getElementById('loginError').textContent = e.message});
+}
+
+function logout(){
+  AUTH_TOKEN = "";
+  USER_EMAIL = "";
+  USER_PASSWORD = "";
+  sessionStorage.removeItem('circa_bo_token');
+  sessionStorage.removeItem('circa_bo_email');
+  location.reload();
+}
+
+function authHeaders(extra){
+  var h = {'Authorization': 'Bearer '+AUTH_TOKEN};
+  if(extra) Object.keys(extra).forEach(function(k){ h[k]=extra[k]; });
+  return h;
+}
+
+function apiPost(path, body){
+  return fetch(path, {
+    method:'POST',
+    headers: authHeaders({'Content-Type':'application/json'}),
+    body: JSON.stringify(body || {})
+  }).then(function(r){ return r.json().then(function(d){ return {ok:r.ok,d:d}; }); });
+}
+
+function apiPatch(path, body){
+  return fetch(path, {
+    method:'PATCH',
+    headers: authHeaders({'Content-Type':'application/json'}),
+    body: JSON.stringify(body || {})
+  }).then(function(r){ return r.json().then(function(d){ return {ok:r.ok,d:d}; }); });
+}
+
+function showTab(name){
+  ['dashboard','bodegas','pagos','cobranzas','pedidos','vendedores','soporte'].forEach(function(t){
+    var el = document.getElementById('view-'+t);
+    if(el) el.style.display = (t===name ? 'block':'none');
+    var tb = document.getElementById('tab-'+t);
+    if(tb) tb.classList.toggle('active', t===name);
+  });
+  if(name==='pagos') loadPagos();
+  if(name==='cobranzas') loadCobranzas();
+  if(name==='pedidos') loadPedidos();
+  if(name==='dashboard') refreshAll();
+  if(name==='bodegas') loadBodegas();
+  if(name==='vendedores') loadVendedores();
+  if(name==='soporte') loadSoporteInbox();
+}
+
+function api(path){
+  if(path.indexOf('/api/backoffice/') !== -1 && path.indexOf('test=') === -1 && path.indexOf('/auth/') === -1){
+    var mode = window.MODE_FILTER || localStorage.getItem('circa_mode') || 'real';
+    var sep = path.indexOf('?') === -1 ? '?' : '&';
+    path = path + sep + 'test=' + mode;
+  }
+  return fetch(path, {headers: authHeaders()}).then(function(r){
+    if(r.status===401){ logout(); throw new Error('Sesión expirada'); }
+    if(!r.ok) throw new Error('Error '+r.status);
+    return r.json();
+  });
+}
+
+function nombreBodega(b){
+  b = b || {};
+  return b.nombre_comercial || b.razon_social || b.representante_nombre_corto || b.representante_legal || '?';
+}
+
+function refreshAll(){
+  return Promise.all([
+    api('/api/backoffice/resumen').then(function(d){
+      document.getElementById('kpiActivos').textContent = d.total_pedidos || 0;
+      document.getElementById('kpiPagar').textContent = 'S/'+(d.circa_cobra_bodegas||0).toFixed(2);
+    }).catch(console.error),
+    api('/api/backoffice/cobranzas').then(function(d){
+      allCobranzas = d.cobranzas || [];
+      statsDistribuidor = d.stats_distribuidor || [];
+      var vencidas = allCobranzas.filter(function(c){return c.status_cobranza==='vencido'});
+      document.getElementById('kpiVencidas').textContent = vencidas.length;
+      document.getElementById('kpiMontoVencido').textContent = 'S/'+vencidas.reduce(function(s,c){return s+c.total_pagar},0).toFixed(2);
+      renderRankings();
+      var sel = document.getElementById('cobFiltroDist');
+      var dists = new Set();
+      allCobranzas.forEach(function(c){if(c.distribuidor && c.distribuidor.nombre_comercial)dists.add(c.distribuidor.nombre_comercial)});
+      sel.innerHTML = '<option value="">Todos los distribuidores</option>' + Array.from(dists).map(function(d){return '<option value="'+d+'">'+d+'</option>'}).join('');
+    }).catch(console.error),
+    loadSobregiroAlert(),
+    loadModeCounts(),
+    api('/api/backoffice/analytics-resumen').then(function(a){
+      var f = a.funnel || {};
+      var m = a.messages || {};
+      document.getElementById('kpiCatalogOpened').textContent = f.catalog_opened || 0;
+      document.getElementById('kpiOrdersCreated7d').textContent = f.order_created || 0;
+      document.getElementById('kpiResponseRate').textContent = (m.response_rate_pct||0).toFixed(1)+'%';
+      document.getElementById('kpiActiveBodegas30d').textContent = a.active_bodegas_30d || 0;
+      renderAnalyticsPanels(a);
+    }).catch(function(){
+      document.getElementById('analyticsGrid').innerHTML = '<div class="ranking-card"><div class="empty">Sin datos analíticos</div></div>';
+    })
+  ]);
+}
+
+function renderAnalyticsPanels(a){
+  var f = a.funnel || {};
+  var top = a.top_events_7d || [];
+  var embudo = [
+    ['Catálogo abierto', f.catalog_opened||0],
+    ['Producto agregado', f.product_added||0],
+    ['Orden creada', f.order_created||0],
+    ['Orden confirmada', f.order_confirmed||0],
+    ['Pago registrado', f.payment_made||0]
+  ];
+  document.getElementById('analyticsGrid').innerHTML =
+    '<div class="ranking-card"><h3>🧭 Embudo (7 días)</h3>'+
+    embudo.map(function(x){return '<div class="ranking-item"><span>'+x[0]+'</span><strong>'+x[1]+'</strong></div>'}).join('')+
+    '</div>'+
+    '<div class="ranking-card"><h3>⚡ Top eventos (7 días)</h3>'+
+    (top.length ? top.map(function(e){return '<div class="ranking-item"><span>'+e.event_type+'</span><strong>'+e.count+'</strong></div>'}).join('') : '<div class="empty">Sin eventos</div>')+
+    '</div>';
+}
+
+function renderRankings(){
+  var byDist = {};
+  allCobranzas.filter(function(c){return c.status_cobranza==='pagado'}).forEach(function(c){
+    var b = (c.bodega && c.bodega.nombre_comercial) || '?';
+    var d = (c.distribuidor && c.distribuidor.nombre_comercial) || '?';
+    var key = b+'|'+d;
+    if(!byDist[key]) byDist[key] = {bodega:b, dist:d, pagados:0, total:0};
+    byDist[key].pagados++;
+  });
+  allCobranzas.forEach(function(c){
+    var b = (c.bodega && c.bodega.nombre_comercial) || '?';
+    var d = (c.distribuidor && c.distribuidor.nombre_comercial) || '?';
+    var key = b+'|'+d;
+    if(!byDist[key]) byDist[key] = {bodega:b, dist:d, pagados:0, total:0};
+    byDist[key].total++;
+  });
+  var top = Object.values(byDist).filter(function(x){return x.total>0}).sort(function(a,b){return (b.pagados/b.total)-(a.pagados/a.total) || b.pagados-a.pagados}).slice(0,5);
+  
+  var vencidos = {};
+  allCobranzas.filter(function(c){return c.status_cobranza==='vencido'}).forEach(function(c){
+    var b = (c.bodega && c.bodega.nombre_comercial) || '?';
+    var d = (c.distribuidor && c.distribuidor.nombre_comercial) || '?';
+    var key = b+'|'+d;
+    if(!vencidos[key]) vencidos[key] = {bodega:b, dist:d, count:0, monto:0};
+    vencidos[key].count++;
+    vencidos[key].monto += c.total_pagar;
+  });
+  var atrasos = Object.values(vencidos).sort(function(a,b){return b.monto-a.monto}).slice(0,5);
+  
+  document.getElementById('rankingGrid').innerHTML = 
+    '<div class="ranking-card"><h3>🏆 Top bodegas puntuales</h3>'+
+    (top.length ? top.map(function(x,i){return '<div class="ranking-item"><div><span class="ranking-num">'+(i+1)+'.</span>'+x.bodega+' <span style="color:var(--muted);font-size:11px">('+x.dist+')</span></div><div>'+Math.round(100*x.pagados/x.total)+'% - '+x.total+' ped</div></div>'}).join('') : '<div class="empty">Sin datos</div>')+
+    '</div>'+
+    '<div class="ranking-card"><h3>⚠️ Bodegas con atrasos</h3>'+
+    (atrasos.length ? atrasos.map(function(x,i){return '<div class="ranking-item"><div><span class="ranking-num">'+(i+1)+'.</span>'+x.bodega+' <span style="color:var(--muted);font-size:11px">('+x.dist+')</span></div><div style="color:var(--red)">'+x.count+' venc · S/'+x.monto.toFixed(2)+'</div></div>'}).join('') : '<div class="empty" style="color:var(--green)">Sin atrasos 🎉</div>')+
+    '</div>';
+}
+
+function loadPagos(){
+  var fd = document.getElementById('pagosFechaDesde').value;
+  var fh = document.getElementById('pagosFechaHasta').value;
+  var url = '/api/backoffice/export-pagos-distribuidor?';
+  if(fd) url += 'fecha_desde='+fd+'&';
+  if(fh) url += 'fecha_hasta='+fh;
+  return api(url).then(function(d){
+    allPagos = d.grupos || [];
+    var html = '';
+    allPagos.forEach(function(g){
+      if(!g.pedidos.length) return;
+      var dist = g.distribuidor || {};
+      html += '<div class="dist-group"><div class="dist-header"><div><div class="dist-name">'+(dist.nombre_comercial||'?')+'</div><div style="color:var(--muted);font-size:12px">RUC: '+(dist.ruc||'-')+' · '+g.pedidos.length+' pedidos</div></div><div class="dist-total">S/'+g.total_financiado.toFixed(2)+' <span style="font-size:11px;color:var(--muted)">a transferir</span></div></div><div class="dist-body">';
+      g.pedidos.forEach(function(p){
+        var b = p.bodega || {};
+        html += '<div class="pedido-row"><div class="pedido-num">'+(p.numero||'-')+'</div><div>'+(b.nombre_comercial||'?')+'</div><div style="color:var(--muted);font-size:12px">Total: S/'+(p.monto_productos||0)+'</div><div style="color:var(--blue-light);font-weight:600">S/'+(p.monto_financiado||0)+'</div><div><span class="badge badge-'+p.estado+'">'+p.estado+'</span></div></div>';
+      });
+      html += '</div></div>';
+    });
+    document.getElementById('pagosList').innerHTML = html || '<div class="empty">No hay pagos pendientes</div>';
+  });
+}
+
+// Formatea una fecha corta sin que se corra de dia.
+// Una fecha "YYYY-MM-DD" se parsea como fecha LOCAL (no UTC), asi no se
+// adelanta un dia en Lima (UTC-5). Los timestamps completos pasan directo.
+function fmtFechaCorta(s){
+  if(!s) return '-';
+  var d;
+  if(typeof s==='string' && s.length<=10){
+    var p=s.slice(0,10).split('-');
+    if(p.length===3) d=new Date(+p[0],+p[1]-1,+p[2]);
+  }
+  if(!d) d=new Date(s);
+  if(isNaN(d.getTime())) return '-';
+  return d.toLocaleDateString('es-PE',{day:'2-digit',month:'short'});
+}
+
+function loadCobranzas(){
+  var bodega = document.getElementById('cobFiltroBodega').value;
+  var dist = document.getElementById('cobFiltroDist').value;
+  var estado = document.getElementById('cobFiltroEstado').value;
+  var fd = document.getElementById('cobFechaDesde').value;
+  var fh = document.getElementById('cobFechaHasta').value;
+  var url = '/api/backoffice/cobranzas?';
+  if(bodega) url += 'bodega='+encodeURIComponent(bodega)+'&';
+  if(dist) url += 'distribuidor='+encodeURIComponent(dist)+'&';
+  if(estado) url += 'estado='+estado+'&';
+  if(fd) url += 'fecha_desde='+fd+'&';
+  if(fh) url += 'fecha_hasta='+fh;
+  return api(url).then(function(d){
+    allCobranzas = d.cobranzas || [];
+    statsDistribuidor = d.stats_distribuidor || [];
+    
+    // Stats cards per distribuidor
+    document.getElementById('statsDistribuidorGrid').innerHTML = statsDistribuidor.map(function(s){
+      return '<div class="ranking-card"><h3 style="color:var(--blue-light)">'+s.nombre+'</h3>'+
+        '<div class="ranking-item"><span>Total pedidos</span><strong>'+s.total+'</strong></div>'+
+        '<div class="ranking-item"><span>Al día ✅</span><strong style="color:var(--green)">'+(s.al_dia||0)+'</strong></div>'+
+        '<div class="ranking-item"><span>Por vencer 🟡</span><strong style="color:var(--yellow)">'+(s.por_vencer||0)+'</strong></div>'+
+        '<div class="ranking-item"><span>Vencidos 🔴</span><strong style="color:var(--red)">'+(s.vencido||0)+'</strong></div>'+
+        '<div class="ranking-item"><span>Pagados</span><strong style="color:var(--purple)">'+(s.pagado||0)+'</strong></div>'+
+        '<div class="ranking-item"><span>Tasa puntual</span><strong>'+(s.tasa_puntual||0)+'%</strong></div>'+
+        '<div class="ranking-item"><span>Monto vencido</span><strong style="color:var(--red)">S/'+(s.monto_vencido||0).toFixed(2)+'</strong></div>'+
+      '</div>';
+    }).join('');
+    
+    // Table
+    document.getElementById('cobranzasBody').innerHTML = allCobranzas.length ? allCobranzas.map(function(c){
+      var b = c.bodega || {};
+      var dt = c.distribuidor || {};
+      var dias = c.dias_restantes;
+      var diasText = dias===null ? '-' : (dias<0 ? '<span style="color:var(--red)">'+Math.abs(dias)+' días vencido</span>' : dias+' días');
+      var venc = fmtFechaCorta(c.fecha_vencimiento);
+      var entr = fmtFechaCorta(c.fecha_entregado);
+      var actions = c.status_cobranza==='pagado' 
+        ? '<span style="color:var(--purple);font-size:11px">✓ Pagado</span>'
+        : '<button type="button" class="btn btn-green btn-small" onclick="openVerificarPago(\''+c.pedido_id+'\')">💵 Verificar pago</button> <button type="button" class="btn btn-outline btn-small" onclick="enviarRecordatorio(\''+c.pedido_id+'\')">📨 Recordatorio</button>';
+      var ultRec = c.ultimo_recordatorio
+        ? '<div style="font-size:10px;color:var(--muted);margin-top:6px">📨 Último: '+fmtFechaCorta(c.ultimo_recordatorio.fecha)+' · '+String(c.ultimo_recordatorio.dia||'').replace('dia','día ')+'</div>'
+        : '';
+      return '<tr class="cob-row">'+
+        '<td data-label="Pedido" class="pedido-num mono">'+(c.numero||'-')+'</td>'+
+        '<td data-label="Bodega">'+(b.nombre_comercial||'?')+'</td>'+
+        '<td data-label="Distribuidor" style="color:var(--muted)">'+(dt.nombre_comercial||'?')+'</td>'+
+        '<td data-label="Entregado">'+entr+'</td>'+
+        '<td data-label="Vence">'+venc+'</td>'+
+        '<td data-label="Días">'+diasText+'</td>'+
+        '<td data-label="Monto" class="mono">S/'+c.total_pagar.toFixed(2)+'</td>'+
+        '<td data-label="Estado"><span class="badge badge-'+c.status_cobranza+'">'+c.status_cobranza.replace('_',' ')+'</span></td>'+
+        '<td data-label="Acciones" class="cob-col-actions">'+actions+ultRec+'</td></tr>';
+    }).join('') : '<tr><td colspan="9" class="empty">Sin cobranzas</td></tr>';
+  });
+}
+
+function loadPedidos(){
+  var bodega = document.getElementById('pedFiltroBodega').value;
+  var dist = document.getElementById('pedFiltroDist').value;
+  var tipo = document.getElementById('pedFiltroTipo').value;
+  var estado = document.getElementById('pedFiltroEstado').value;
+  var url = '/api/backoffice/pedidos?';
+  if(bodega) url += 'bodega='+encodeURIComponent(bodega)+'&';
+  if(dist) url += 'distribuidor='+encodeURIComponent(dist)+'&';
+  if(tipo) url += 'tipo='+encodeURIComponent(tipo)+'&';
+  if(estado) url += 'estado='+estado;
+  return api(url).then(function(d){
+    allPedidos = d.pedidos || [];
+    document.getElementById('pedidosBody').innerHTML = allPedidos.length ? allPedidos.map(function(p){
+      var b = p.bodega || {};
+      var dt = p.distribuidor || {};
+      var fecha = p.created_at ? new Date(p.created_at).toLocaleDateString('es-PE',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) : '-';
+      var tipo = p.tipo_operacion || 'venta';
+      var tipoBadge = tipo==='preventa' ? '<span class="badge" style="background:rgba(249,115,22,.2);color:#fb923c">pre-venta</span>' : '<span class="badge" style="background:rgba(96,165,250,.2);color:#93c5fd">venta</span>';
+      var acciones = '';
+      if(tipo==='preventa' && p.estado==='preventa_confirmada'){
+        acciones = '<button class="btn btn-small btn-green" onclick="aceptarPreventa(\''+p.id+'\')">Aceptar</button>';
+      } else {
+        acciones = '<span style="color:var(--muted);font-size:12px">-</span>';
+      }
+      return '<tr><td>'+fecha+'</td><td class="pedido-num mono">'+(p.numero||'-')+'</td><td>'+tipoBadge+'</td><td>'+nombreBodega(b)+'</td><td style="color:var(--muted)">'+(dt.nombre_comercial||'?')+'</td><td class="mono">S/'+Number(p.monto_productos||0).toFixed(2)+'</td><td class="mono" style="color:var(--blue-light)">S/'+Number(p.monto_financiado||0).toFixed(2)+'</td><td><span class="badge badge-'+(p.estado||'').replace(' ','_')+'">'+(p.estado||'-')+'</span></td><td>'+acciones+'</td></tr>';
+    }).join('') : '<tr><td colspan="9" class="empty">Sin pedidos</td></tr>';
+  });
+}
+
+function aceptarPreventa(pid){
+  if(!confirm('¿Aceptar esta pre-venta?')) return;
+  fetch('/api/backoffice/preventa/'+pid+'/aceptar', {
+    method:'POST', headers: authHeaders()
+  }).then(function(r){return r.json()}).then(function(d){
+    if(d && d.ok){
+      showToast('Pre-venta aceptada','success');
+      loadPedidos();
+    } else {
+      showToast('No se pudo aceptar','error');
+    }
+  }).catch(function(e){showToast('Error: '+e.message,'error')});
+}
+
+function openVerificarPago(pid){
+  var c = allCobranzas.find(function(x){return x.pedido_id===pid});
+  if(!c) return;
+  var b = c.bodega || {};
+  document.getElementById('modalContainer').innerHTML = 
+  '<div class="modal-overlay open" onclick="if(event.target===this)closeModal()"><div class="modal"><h3>💵 Verificar pago</h3>'+
+  '<div class="modal-info">'+
+  '<div class="modal-info-row"><span>Pedido:</span><strong>'+(c.numero||'-')+'</strong></div>'+
+  '<div class="modal-info-row"><span>Bodega:</span><strong>'+(b.nombre_comercial||'?')+'</strong></div>'+
+  '<div class="modal-info-row"><span>Teléfono:</span><span class="mono">'+(b.telefono_whatsapp||'-')+'</span></div>'+
+  '<div class="modal-info-row"><span>Monto a pagar:</span><strong style="color:var(--blue-light)">S/'+c.total_pagar.toFixed(2)+'</strong></div>'+
+  '</div>'+
+  '<div class="modal-field"><label>Método de pago</label><select id="vpMetodo"><option value="yape">Yape</option><option value="plin">Plin</option><option value="transferencia">Transferencia</option><option value="efectivo">Efectivo</option></select></div>'+
+  '<div class="modal-field"><label>N° de operación / Referencia</label><input type="text" id="vpNroOp" placeholder="Ej: 123456"></div>'+
+  '<div class="modal-actions"><button class="btn btn-outline" onclick="closeModal()">Cancelar</button><button class="btn btn-green" onclick="confirmarPago(\''+pid+'\')">✓ Confirmar pago</button></div>'+
+  '</div></div>';
+}
+
+function closeModal(){
+  document.getElementById('modalContainer').innerHTML='';
+}
+
+function confirmarPago(pid){
+  var metodo = document.getElementById('vpMetodo').value;
+  var nroOp = document.getElementById('vpNroOp').value;
+  fetch('/api/backoffice/cobranza/'+pid+'/verificar-pago', {
+    method:'POST', headers: authHeaders({'Content-Type':'application/json'}),
+    body: JSON.stringify({metodo:metodo, nro_operacion:nroOp})
+  }).then(function(r){return r.json()}).then(function(d){
+    closeModal();
+    showToast('Pago verificado. Línea restaurada.','success');
+    refreshAll();
+    loadCobranzas();
+  }).catch(function(e){showToast('Error: '+e.message,'error')});
+}
+
+function enviarRecordatorio(pid){
+  if(!confirm('¿Enviar recordatorio de pago por WhatsApp?')) return;
+  fetch('/api/backoffice/cobranza/'+pid+'/recordatorio', {
+    method:'POST', headers: authHeaders()
+  }).then(function(r){
+    return r.json().then(function(d){ return {ok:r.ok, body:d}; });
+  }).then(function(res){
+    if(res.ok && res.body && res.body.ok){
+      showToast('✓ Recordatorio enviado por WhatsApp','success');
+      loadCobranzas();
+    } else {
+      var msg = (res.body && res.body.detail) ? String(res.body.detail) : 'No se pudo enviar';
+      showToast('No se envió: '+msg.slice(0,180),'error');
+    }
+  }).catch(function(e){showToast('Error: '+e.message,'error')});
+}
+
+function exportPagosCSV(){
+  if(!allPagos.length){showToast('No hay datos','error');return}
+  var rows = [['Distribuidor','RUC Dist.','Pedido','Bodega','RUC Bodega','Total Pedido','Monto a Transferir','Estado','Fecha']];
+  allPagos.forEach(function(g){
+    var dist = g.distribuidor || {};
+    g.pedidos.forEach(function(p){
+      var b = p.bodega || {};
+      rows.push([dist.nombre_comercial||'',dist.ruc||'',p.numero||'',b.nombre_comercial||'',b.ruc||'',p.monto_productos||0,p.monto_financiado||0,p.estado||'',p.created_at?new Date(p.created_at).toLocaleDateString('es-PE'):'']);
+    });
+  });
+  downloadCSV(rows,'pagos_distribuidores');
+}
+
+function exportCobranzasCSV(){
+  if(!allCobranzas.length){showToast('No hay datos','error');return}
+  var rows = [['Pedido','Bodega','RUC','Teléfono','Distribuidor','Entregado','Vence','Días','Monto','Estado']];
+  allCobranzas.forEach(function(c){
+    var b = c.bodega || {};
+    var d = c.distribuidor || {};
+    rows.push([c.numero||'',b.nombre_comercial||'',b.ruc||'',b.telefono_whatsapp||'',d.nombre_comercial||'',c.fecha_entregado||'',c.fecha_vencimiento||'',c.dias_restantes||'',c.total_pagar||0,c.status_cobranza||'']);
+  });
+  downloadCSV(rows,'cobranzas');
+}
+
+function exportPedidosCSV(){
+  if(!allPedidos.length){showToast('No hay datos','error');return}
+  var rows = [['Fecha','Pedido','Bodega','RUC','Distribuidor','Total','Financiado','Contado','Estado']];
+  allPedidos.forEach(function(p){
+    var b = p.bodega || {};
+    var d = p.distribuidor || {};
+    var fecha = p.created_at ? new Date(p.created_at).toLocaleDateString('es-PE') : '';
+    rows.push([fecha,p.numero||'',b.nombre_comercial||'',b.ruc||'',d.nombre_comercial||'',p.monto_productos||0,p.monto_financiado||0,p.monto_contado||0,p.estado||'']);
+  });
+  downloadCSV(rows,'pedidos');
+}
+
+function downloadCSV(rows,name){
+  var csv = '\uFEFF'+rows.map(function(r){return r.map(function(c){return '"'+String(c).replace(/"/g,'""')+'"'}).join(',')}).join('\n');
+  var blob = new Blob([csv],{type:'text/csv;charset=utf-8'});
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name+'_'+new Date().toISOString().slice(0,10)+'.csv';
+  a.click();
+  showToast('CSV descargado','success');
+}
+
+function showToast(msg,type){
+  var el = document.createElement('div');
+  el.className = 'toast '+(type||'');
+  el.textContent = msg;
+  document.getElementById('toastContainer').appendChild(el);
+  setTimeout(function(){el.remove()}, type === 'error' ? 5000 : 3500);
+}
+
+function notifyPinResult(msg, type){
+  closeBodegaModal();
+  setTimeout(function(){ showToast(msg, type); }, 80);
+}
+
+// Auto login desde sesión
+(function autoLogin(){
+  var saved = sessionStorage.getItem('circa_bo_token');
+  var savedEmail = sessionStorage.getItem('circa_bo_email');
+  if(saved && savedEmail){
+    AUTH_TOKEN = saved;
+    USER_EMAIL = savedEmail;
+    document.getElementById('emailInput').value = savedEmail;
+    fetch('/api/backoffice/auth/me', {headers: authHeaders()}).then(function(r){
+      if(!r.ok) throw new Error('expired');
+      document.getElementById('loginScreen').style.display='none';
+      document.getElementById('app').style.display='block';
+      document.getElementById('fechaHeader').textContent = new Date().toLocaleDateString('es-PE',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+      document.getElementById('userHeader').textContent = USER_EMAIL;
+      refreshAll();
+    }).catch(function(){ sessionStorage.clear(); });
+  }
+})();
+
+
+// ============================================================
+// FASE 3: Toggle Real/Test, alerta sobregiro, tab Bodegas
+// ============================================================
+
+function clearAdminFilters(){
+  ['bodegasSearch','cobFiltroBodega','pedFiltroBodega','pedFiltroDist'].forEach(function(id){
+    var el = document.getElementById(id);
+    if(el) el.value = '';
+  });
+  ['bodegasFiltroEstado','cobFiltroEstado','cobFiltroDist','pedFiltroTipo','pedFiltroEstado'].forEach(function(id){
+    var el = document.getElementById(id);
+    if(el) el.value = '';
+  });
+  bodegasSearchSnapshot = '';
+}
+
+function setMode(mode){
+  var current = window.MODE_FILTER || localStorage.getItem('circa_mode') || 'real';
+  if(mode === current) return;
+
+  window.MODE_FILTER = mode;
+  localStorage.setItem('circa_mode', mode);
+  clearAdminFilters();
+  if(bodegaModalId) closeBodegaModal();
+
+  document.querySelectorAll('#modeToggle button').forEach(function(b){
+    b.classList.toggle('active', b.dataset.mode === mode);
+    b.disabled = true;
+  });
+  document.getElementById('modeToggle').classList.add('loading');
+
+  var loaderText = mode === 'test'
+    ? 'Cargando bodegas de prueba…'
+    : 'Cargando bodegas reales…';
+  showPanelLoader(loaderText);
+
+  refreshAll()
+    .then(function(){ return reloadActiveTab(); })
+    .finally(function(){
+      hidePanelLoader();
+      document.getElementById('modeToggle').classList.remove('loading');
+      document.querySelectorAll('#modeToggle button').forEach(function(b){
+        b.disabled = false;
+      });
+    });
+}
+
+function showPanelLoader(text, onTop){
+  var el = document.getElementById('panelLoader');
+  if(text) document.getElementById('panelLoaderText').textContent = text;
+  el.classList.toggle('top', !!onTop);
+  el.classList.add('open');
+  el.setAttribute('aria-busy', 'true');
+}
+
+function hidePanelLoader(){
+  var el = document.getElementById('panelLoader');
+  el.classList.remove('open', 'top');
+  el.setAttribute('aria-busy', 'false');
+}
+
+function reloadActiveTab(){
+  var activeTab = document.querySelector('.tab.active');
+  if(!activeTab) return Promise.resolve();
+  var id = activeTab.id.replace('tab-','');
+  if(id === 'pagos') return loadPagos();
+  if(id === 'cobranzas') return loadCobranzas();
+  if(id === 'pedidos') return loadPedidos();
+  if(id === 'bodegas') return loadBodegas();
+  if(id === 'vendedores') return loadVendedores();
+  return Promise.resolve();
+}
+
+function loadModeCounts(){
+  var prev = window.MODE_FILTER;
+  window.MODE_FILTER = 'real';
+  return Promise.all([
+    fetch('/api/backoffice/bodegas?test=real&estado=', {headers: authHeaders()})
+      .then(function(r){ return r.json(); })
+      .then(function(d){ document.getElementById('cntReales').textContent = d.total || 0; })
+      .catch(function(){}),
+    fetch('/api/backoffice/bodegas?test=test&estado=', {headers: authHeaders()})
+      .then(function(r){ return r.json(); })
+      .then(function(d){ document.getElementById('cntTests').textContent = d.total || 0; })
+      .catch(function(){})
+  ]).finally(function(){
+    window.MODE_FILTER = prev;
+  });
+}
+
+function loadSobregiroAlert(){
+  return api('/api/backoffice/alerts/sobregiro').then(function(d){
+    var box = document.getElementById('sobregiroAlert');
+    var cnt = document.getElementById('sobregiroCnt');
+    var body = document.getElementById('sobregiroBody');
+    var alertas = d.alertas || [];
+    if(!alertas.length){
+      box.classList.add('empty');
+      return;
+    }
+    box.classList.remove('empty');
+    cnt.textContent = alertas.length + ' · S/ ' + (d.monto_total_sobregiro||0).toFixed(2);
+    body.innerHTML = alertas.map(function(b){
+      var name = b.nombre_comercial || b.razon_social || '?';
+      var test = b.es_test ? '<span class="badge-test">TEST</span>' : '';
+      return '<div class="alert-sobregiro-row">'+
+        '<div><strong>'+name+'</strong>'+test+'<div style="font-size:11px;color:var(--muted);margin-top:2px">'+(b.telefono_whatsapp||'')+'</div></div>'+
+        '<div style="text-align:right">aprob<br><strong>S/ '+(b.linea_aprobada||0).toFixed(2)+'</strong></div>'+
+        '<div style="text-align:right;color:var(--red)">disp<br><strong>S/ '+(b.linea_disponible||0).toFixed(2)+'</strong></div>'+
+        '<div style="text-align:right;color:var(--red)"><strong>+ S/ '+(b.sobregiro||0).toFixed(2)+'</strong><div style="font-size:11px">+'+(b.pct_sobre||0)+'%</div></div>'+
+      '</div>';
+    }).join('');
+  }).catch(function(e){ console.error('Sobregiro error', e); });
+}
+
+function loadBodegas(){
+  if(bodegaModalId) return Promise.resolve();
+  var search = document.getElementById('bodegasSearch').value;
+  var estado = document.getElementById('bodegasFiltroEstado').value;
+  var url = '/api/backoffice/bodegas?';
+  if(search) url += 'search='+encodeURIComponent(search)+'&';
+  if(estado) url += 'estado='+estado;
+  return api(url).then(function(d){
+    var bodegas = d.bodegas || [];
+    document.getElementById('bodegasInfoLine').textContent =
+      '· '+bodegas.length+' bodegas · filtro: '+(window.MODE_FILTER||'real');
+    if(!bodegas.length){
+      document.getElementById('bodegasBody').innerHTML =
+        '<tr><td colspan="8" class="empty">Sin bodegas para los filtros aplicados</td></tr>';
+      return;
+    }
+    document.getElementById('bodegasBody').innerHTML = bodegas.map(function(b){
+      var name = b.nombre_comercial || b.razon_social || '?';
+      var dueno = b.representante_legal || '';
+      var tel = b.telefono_whatsapp || '';
+      var ses = b.sesion || {};
+      var fase = ses.fase || '—';
+      var la = ses.last_activity;
+      var hace = la ? hacecuanto(la) : '<span class="status-no-session">nunca</span>';
+      var clase = 'status-stale';
+      if(la){
+        var horas = (new Date() - new Date(la)) / 1000 / 3600;
+        if(horas < 24) clase = 'status-active';
+        else if(horas < 168) clase = 'status-warning';
+      } else { clase = 'status-no-session'; }
+      var statusLabel = la ? (clase==='status-active'?'activa':(clase==='status-warning'?'demora':'inactiva')) : 'sin sesión';
+      var disp = (b.linea_disponible||0).toFixed(0);
+      var aprob = (b.linea_aprobada||0).toFixed(0);
+      var pedCount = b.pedidos_count || 0;
+      var pedPagados = b.pedidos_pagados || 0;
+      return '<tr onclick="openBodegaDetail(\''+b.id+'\', event)">'+
+        '<td><span class="status-dot '+clase+'">'+statusLabel+'</span></td>'+
+        '<td><div style="font-weight:600">'+name+'</div><div style="font-size:11px;color:var(--muted)">'+dueno+'</div></td>'+
+        '<td style="color:var(--muted);font-size:12px">'+tel+'</td>'+
+        '<td><span style="color:var(--blue-light);font-size:12px">'+fase+'</span></td>'+
+        '<td style="font-size:12px">'+hace+'</td>'+
+        '<td style="font-size:12px">S/'+disp+' / '+aprob+'</td>'+
+        '<td style="font-size:12px">'+pedCount+(pedPagados>0?' <span style="color:var(--green)">('+pedPagados+' ✓)</span>':'')+'</td>'+
+        '<td style="color:var(--muted)">›</td>'+
+      '</tr>';
+    }).join('');
+  }).catch(function(e){
+    document.getElementById('bodegasBody').innerHTML =
+      '<tr><td colspan="8" class="empty">Error: '+e.message+'</td></tr>';
+  });
+}
+
+function hacecuanto(iso){
+  if(!iso) return '—';
+  var d = new Date(iso);
+  var diff = (new Date() - d) / 1000;
+  if(diff < 60) return 'hace '+Math.round(diff)+'s';
+  if(diff < 3600) return 'hace '+Math.round(diff/60)+' min';
+  if(diff < 86400) return 'hace '+Math.round(diff/3600)+' h';
+  if(diff < 86400*7) return 'hace '+Math.round(diff/86400)+' días';
+  return d.toLocaleDateString('es-PE',{day:'2-digit',month:'short',year:'2-digit'});
+}
+
+function openBodegaDetail(id, ev){
+  if(ev){
+    ev.preventDefault();
+    ev.stopPropagation();
+  }
+  bodegasSearchSnapshot = document.getElementById('bodegasSearch').value;
+  bodegaModalId = id;
+  document.getElementById('bodegasSearch').readOnly = true;
+  document.getElementById('bodegaModal').classList.add('open');
+  document.getElementById('bodegaModalBody').innerHTML = '<div class="empty">Cargando…</div>';
+  api('/api/backoffice/bodega/'+id).then(function(d){
+    var b = d.bodega || {};
+    var ses = b.sesion || {};
+    var pedidos = d.pedidos || [];
+    var eventos = d.eventos || [];
+    var stats = d.stats || {};
+    var name = b.nombre_comercial || b.razon_social || '?';
+    document.getElementById('bodegaModalTitle').textContent = name;
+    document.getElementById('bodegaModalSubtitle').textContent =
+      (b.representante_legal||'') + ' · ' + (b.telefono_whatsapp||'') +
+      (b.es_test ? ' · 🧪 BODEGA TEST' : '');
+
+    var infoGrid =
+      '<div class="info-grid">'+
+        '<div class="info-card"><div class="info-label">Estado</div><div class="info-value" style="color:var(--green)">'+(b.estado||'-')+'</div></div>'+
+        '<div class="info-card"><div class="info-label">Fase bot</div><div class="info-value" style="color:var(--blue-light)">'+(ses.fase||'sin sesión')+'</div></div>'+
+        '<div class="info-card"><div class="info-label">Línea disponible</div><div class="info-value">S/ '+(b.linea_disponible||0).toFixed(2)+'</div></div>'+
+        '<div class="info-card"><div class="info-label">Línea aprobada</div><div class="info-value">S/ '+(b.linea_aprobada||0).toFixed(2)+'</div></div>'+
+      '</div>'+
+      '<div class="info-grid">'+
+        '<div class="info-card"><div class="info-label">RUC</div><div class="info-value" style="font-size:13px">'+(b.ruc||'-')+'</div></div>'+
+        '<div class="info-card"><div class="info-label">DNI dueño</div><div class="info-value" style="font-size:13px">'+(b.dni_representante||'-')+'</div></div>'+
+        '<div class="info-card"><div class="info-label">Pedidos totales</div><div class="info-value">'+stats.total_pedidos+' <span style="font-size:11px;color:var(--green)">('+(stats.pedidos_pagados||0)+' pagados)</span></div></div>'+
+        '<div class="info-card"><div class="info-label">Financiado pendiente</div><div class="info-value" style="color:var(--orange)">S/ '+(stats.monto_financiado_pendiente||0).toFixed(2)+'</div></div>'+
+      '</div>';
+
+    var tienePin = !!b.pin_hash;
+    var bloqueada = b.pin_bloqueado_hasta && new Date(b.pin_bloqueado_hasta) > new Date();
+    var pinStatus = tienePin
+      ? (bloqueada ? '🔒 Bloqueada hasta '+new Date(b.pin_bloqueado_hasta).toLocaleString('es-PE') : '✅ Clave activa')
+      : '⚠️ Sin clave';
+    if(b.pin_intentos > 0 && !bloqueada){
+      pinStatus += ' · '+b.pin_intentos+' intento(s) fallidos';
+    }
+
+    var pinAdminHtml =
+      '<div class="pin-admin-collapsed">'+
+        '<div class="pin-admin-summary">'+
+          '<span class="pin-admin-summary-label">Clave Circa</span>'+
+          '<span class="pin-admin-summary-status">'+pinStatus+'</span>'+
+        '</div>'+
+        '<button type="button" class="btn btn-outline btn-small pin-admin-toggle" onclick="togglePinAdminPanel()">Gestión de clave (soporte)</button>'+
+      '</div>'+
+      '<div class="pin-admin pin-admin-hidden" id="pinAdminPanel">'+
+        '<h3>Acciones de soporte</h3>'+
+        '<p class="hint">Indica el motivo y reingresa tu contraseña de backoffice.</p>'+
+        '<div class="pin-admin-grid">'+
+          '<div style="grid-column:1/-1"><label>Motivo / comentario (mín. 8 caracteres)</label>'+
+          '<textarea id="pinAdminComentario" placeholder="Ej.: Bodeguero olvidó clave, validé DNI por teléfono"></textarea></div>'+
+          '<div style="grid-column:1/-1"><label>Contraseña (confirmación)</label>'+
+          '<input type="password" id="pinAdminAuth" placeholder="Tu contraseña de soporte" autocomplete="current-password"></div>'+
+          '<div><label>Nueva clave (4 dígitos)</label>'+
+          '<input type="text" id="pinAdminNew" maxlength="4" inputmode="numeric" pattern="[0-9]*" placeholder="••••" autocomplete="off" autocapitalize="off" spellcheck="false" data-lpignore="true" style="-webkit-text-security:disc"></div>'+
+          '<div><label>Confirmar clave</label>'+
+          '<input type="text" id="pinAdminConfirm" maxlength="4" inputmode="numeric" pattern="[0-9]*" placeholder="••••" autocomplete="off" autocapitalize="off" spellcheck="false" data-lpignore="true" style="-webkit-text-security:disc"></div>'+
+        '</div>'+
+        '<div class="pin-admin-actions">'+
+          '<button type="button" class="btn btn-green btn-small" onclick="adminSetPin()">Asignar clave</button>'+
+          '<button type="button" class="btn btn-secondary btn-small" onclick="adminResetPin()">Resetear (bodeguero crea nueva)</button>'+
+        '</div>'+
+      '</div>';
+
+    var timelineHtml = '<div class="section-label">Timeline de eventos (últimos 50)</div>';
+    if(!eventos.length){
+      timelineHtml += '<div class="empty" style="padding:20px">Sin eventos registrados</div>';
+    } else {
+      timelineHtml += '<div class="timeline">' + eventos.map(function(ev){
+        var t = ev.created_at ? new Date(ev.created_at).toLocaleString('es-PE') : '';
+        return '<div class="timeline-item">'+
+          '<div class="timeline-time">'+t+'</div>'+
+          '<div class="timeline-event">'+(ev.event_type||'evento')+'</div>'+
+          (ev.payload ? '<div class="timeline-detail">'+JSON.stringify(ev.payload).slice(0,200)+'</div>' : '')+
+        '</div>';
+      }).join('') + '</div>';
+    }
+
+    var pedidosHtml = '<div class="section-label">Pedidos ('+pedidos.length+')</div>';
+    if(!pedidos.length){
+      pedidosHtml += '<div class="empty" style="padding:20px">Sin pedidos</div>';
+    } else {
+      pedidosHtml += '<table style="width:100%;font-size:12px"><thead><tr><th>Número</th><th>Estado</th><th>Origen</th><th>Total</th><th>Financiado</th><th>Creado</th></tr></thead><tbody>';
+      pedidosHtml += pedidos.map(function(p){
+        return '<tr><td class="mono">'+(p.numero||'—')+'</td>'+
+          '<td>'+(p.estado||'-')+'</td>'+
+          '<td style="color:var(--muted);font-size:11px">'+(p.origen||'-')+'</td>'+
+          '<td class="mono">S/ '+(p.monto_productos||0).toFixed(2)+'</td>'+
+          '<td class="mono">S/ '+(p.monto_financiado||0).toFixed(2)+'</td>'+
+          '<td style="font-size:11px">'+(p.created_at?new Date(p.created_at).toLocaleDateString('es-PE'):'-')+'</td>'+
+        '</tr>';
+      }).join('');
+      pedidosHtml += '</tbody></table>';
+    }
+
+    document.getElementById('bodegaModalBody').innerHTML = infoGrid +
+      '<div class="section-label" style="margin-top:16px">Acciones rápidas</div>'+
+      '<div class="pin-admin-actions" style="margin-bottom:16px">'+
+        '<button type="button" class="btn btn-outline btn-small" onclick="openEditBodega()">✏️ Editar bodega</button>'+
+        '<button type="button" class="btn btn-secondary btn-small" onclick="openResetSesion()">🔄 Reset sesión WA</button>'+
+        '<a class="btn btn-outline btn-small" href="/support" target="_blank" rel="noopener">💬 Inbox WA</a>'+
+      '</div>'+
+      timelineHtml + pedidosHtml + pinAdminHtml;
+  }).catch(function(e){
+    document.getElementById('bodegaModalBody').innerHTML = '<div class="empty">Error: '+e.message+'</div>';
+  });
+}
+
+function closeBodegaModal(){
+  document.getElementById('bodegaModal').classList.remove('open');
+  bodegaModalId = null;
+  var searchEl = document.getElementById('bodegasSearch');
+  searchEl.readOnly = false;
+  if(searchEl && searchEl.value !== bodegasSearchSnapshot){
+    searchEl.value = bodegasSearchSnapshot;
+  }
+  loadBodegas();
+}
+
+function togglePinAdminPanel(){
+  var panel = document.getElementById('pinAdminPanel');
+  if(!panel) return;
+  panel.classList.toggle('open');
+  var btn = document.querySelector('.pin-admin-toggle');
+  if(btn){
+    btn.textContent = panel.classList.contains('open')
+      ? 'Ocultar gestión de clave'
+      : 'Gestión de clave (soporte)';
+  }
+}
+
+function showConfirmDialog(title, message, confirmLabel, onConfirm, opts){
+  opts = opts || {};
+  var btnClass = opts.danger ? 'btn-red' : 'btn-green';
+  document.getElementById('modalContainer').innerHTML =
+    '<div class="modal-overlay confirm-overlay open" onclick="if(event.target===this)closeConfirmDialog()">'+
+      '<div class="modal confirm-modal" role="dialog" aria-modal="true">'+
+        '<h3>'+title+'</h3>'+
+        '<div class="confirm-body">'+message+'</div>'+
+        '<div class="modal-actions">'+
+          '<button type="button" class="btn btn-outline" onclick="closeConfirmDialog()">Cancelar</button>'+
+          '<button type="button" class="btn '+btnClass+'" id="confirmDialogOk">'+confirmLabel+'</button>'+
+        '</div>'+
+      '</div>'+
+    '</div>';
+  document.getElementById('confirmDialogOk').onclick = function(){
+    closeConfirmDialog();
+    if(onConfirm) onConfirm();
+  };
+}
+
+function closeConfirmDialog(){
+  document.getElementById('modalContainer').innerHTML = '';
+}
+
+function _pinAdminPayload(){
+  return {
+    comentario: (document.getElementById('pinAdminComentario').value || '').trim(),
+    password: (document.getElementById('pinAdminAuth').value || '').trim() || USER_PASSWORD
+  };
+}
+
+function adminSetPin(){
+  if(!bodegaModalId){ showToast('Abre una bodega primero','error'); return; }
+  var p = _pinAdminPayload();
+  var pin = (document.getElementById('pinAdminNew').value || '').trim();
+  var pinConfirm = (document.getElementById('pinAdminConfirm').value || '').trim();
+  if(p.comentario.length < 8){
+    showToast('El comentario debe tener al menos 8 caracteres','error');
+    return;
+  }
+  if(!p.password){
+    showToast('Reingresa tu contraseña','error');
+    return;
+  }
+  if(pin.length !== 4 || pinConfirm.length !== 4){
+    showToast('La clave debe ser de 4 dígitos','error');
+    return;
+  }
+  if(pin !== pinConfirm){
+    showToast('Las claves no coinciden','error');
+    return;
+  }
+  showConfirmDialog(
+    'Asignar nueva clave',
+    'Se guardará una clave nueva para esta bodega y quedará registrado en auditoría. Comunícala al bodeguero por teléfono.',
+    'Sí, asignar clave',
+    function(){ _executeAdminSetPin(p, pin, pinConfirm); }
+  );
+}
+
+function _executeAdminSetPin(p, pin, pinConfirm){
+  setPinAdminBusy(true);
+  showPanelLoader('Guardando clave…', true);
+  apiPost('/api/backoffice/bodega/'+bodegaModalId+'/pin/set', {
+    comentario: p.comentario, password: p.password, pin: pin, pin_confirm: pinConfirm
+  }).then(function(x){
+    if(!x.ok){
+      var msg = x.d.detail;
+      if(Array.isArray(msg)) msg = msg.map(function(e){ return e.msg || e; }).join(', ');
+      throw new Error(msg || x.d.error || 'No se pudo asignar');
+    }
+    notifyPinResult(x.d.mensaje || 'Clave asignada', 'success');
+  }).catch(function(e){ notifyPinResult(e.message, 'error'); })
+  .finally(function(){
+    hidePanelLoader();
+    setPinAdminBusy(false);
+  });
+}
+
+function adminResetPin(){
+  if(!bodegaModalId){ showToast('Abre una bodega primero','error'); return; }
+  var p = _pinAdminPayload();
+  if(p.comentario.length < 8){
+    showToast('El comentario debe tener al menos 8 caracteres','error');
+    return;
+  }
+  if(!p.password){
+    showToast('Reingresa tu contraseña','error');
+    return;
+  }
+  showConfirmDialog(
+    'Resetear clave',
+    'Se borrará la clave actual y el bodeguero recibirá un link por WhatsApp para crear una nueva.',
+    'Sí, resetear',
+    function(){ _executeAdminResetPin(p); },
+    {danger: true}
+  );
+}
+
+function _executeAdminResetPin(p){
+  setPinAdminBusy(true);
+  showPanelLoader('Reseteando clave…', true);
+  apiPost('/api/backoffice/bodega/'+bodegaModalId+'/pin/reset', p).then(function(x){
+    if(!x.ok){
+      var msg = x.d.detail;
+      if(Array.isArray(msg)) msg = msg.map(function(e){ return e.msg || e; }).join(', ');
+      throw new Error(msg || x.d.error || 'No se pudo resetear');
+    }
+    notifyPinResult(x.d.mensaje || 'Clave reseteada', 'success');
+  }).catch(function(e){ notifyPinResult(e.message, 'error'); })
+  .finally(function(){
+    hidePanelLoader();
+    setPinAdminBusy(false);
+  });
+}
+
+function setPinAdminBusy(on){
+  document.querySelectorAll('.pin-admin-actions button').forEach(function(btn){
+    btn.disabled = on;
+  });
+}
+
+// ── Backoffice: vendedores, bodegas, soporte ──
+
+function loadVendedores(){
+  return api('/api/backoffice/vendedores').then(function(d){
+    var list = d.vendedores || [];
+    document.getElementById('vendedoresBody').innerHTML = list.length ? list.map(function(v){
+      var acc = v.ultimo_acceso ? new Date(v.ultimo_acceso).toLocaleDateString('es-PE') : '—';
+      var st = v.activo ? '<span class="badge badge-al_dia">activo</span>' : '<span class="badge badge-vencido">inactivo</span>';
+      var link = v.url_app ? '<a href="'+v.url_app+'" target="_blank" rel="noopener">Abrir app</a>' : '—';
+      return '<tr><td class="mono">'+v.codigo+'</td><td>'+v.nombre+'</td><td>'+st+'</td><td>'+acc+'</td><td>'+link+'</td>'+
+        '<td><button class="btn btn-outline btn-small" onclick="viewVendedorPreventas(\''+v.id+'\')">Preventas</button></td></tr>';
+    }).join('') : '<tr><td colspan="6" class="empty">Sin vendedores</td></tr>';
+  }).catch(function(e){
+    document.getElementById('vendedoresBody').innerHTML = '<tr><td colspan="6" class="empty">'+e.message+'</td></tr>';
+  });
+}
+
+function openCreateVendedor(){
+  document.getElementById('modalContainer').innerHTML =
+    '<div class="modal-overlay open" onclick="if(event.target===this)closeModal()"><div class="modal"><h3>Nuevo vendedor</h3>'+
+    '<div class="modal-field"><label>Código</label><input id="nvCodigo" class="input"></div>'+
+    '<div class="modal-field"><label>Nombre</label><input id="nvNombre" class="input"></div>'+
+    '<div class="modal-field"><label>Comentario</label><input id="nvComentario" class="input" placeholder="Motivo del alta"></div>'+
+    '<div class="modal-field"><label>Contraseña</label><input type="password" id="nvPass" class="input"></div>'+
+    '<div class="modal-actions"><button class="btn btn-outline" onclick="closeModal()">Cancelar</button>'+
+    '<button class="btn btn-green" onclick="submitCreateVendedor()">Crear</button></div></div></div>';
+}
+
+function submitCreateVendedor(){
+  var pass = document.getElementById('nvPass').value || USER_PASSWORD;
+  apiPost('/api/backoffice/vendedores', {
+    codigo: document.getElementById('nvCodigo').value,
+    nombre: document.getElementById('nvNombre').value,
+    comentario: document.getElementById('nvComentario').value,
+    password: pass
+  }).then(function(x){
+    if(!x.ok) throw new Error(x.d.detail || 'Error');
+    closeModal();
+    showToast('Vendedor creado. URL: '+x.d.url_app,'success');
+    loadVendedores();
+  }).catch(function(e){ showToast(e.message,'error'); });
+}
+
+function viewVendedorPreventas(vid){
+  api('/api/backoffice/vendedor/'+vid+'/preventas').then(function(d){
+    var rows = (d.preventas||[]).map(function(p){
+      return '<tr><td class="mono">'+(p.numero||'—')+'</td><td>'+(p.bodega&&p.bodega.nombre_comercial||'?')+'</td><td>'+p.estado+'</td><td>'+(p.link_token||'')+'</td></tr>';
+    }).join('') || '<tr><td colspan="4" class="empty">Sin preventas</td></tr>';
+    document.getElementById('modalContainer').innerHTML =
+      '<div class="modal-overlay open" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:720px"><h3>Preventas del vendedor</h3>'+
+      '<table style="width:100%;font-size:12px"><thead><tr><th>Pedido</th><th>Bodega</th><th>Estado</th><th>Link</th></tr></thead><tbody>'+rows+'</tbody></table>'+
+      '<div class="modal-actions"><button class="btn btn-outline" onclick="closeModal()">Cerrar</button></div></div></div>';
+  });
+}
+
+function openCreateBodega(){
+  var esTest = (window.MODE_FILTER||'real')==='test';
+  document.getElementById('modalContainer').innerHTML =
+    '<div class="modal-overlay open" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:520px"><h3>Nueva bodega preaprobada</h3>'+
+    '<div class="modal-field"><label>RUC</label><input id="nbRuc" class="input"></div>'+
+    '<div class="modal-field"><label>Razón social</label><input id="nbRazon" class="input"></div>'+
+    '<div class="modal-field"><label>Nombre comercial</label><input id="nbComercial" class="input"></div>'+
+    '<div class="modal-field"><label>Teléfono WhatsApp</label><input id="nbTel" class="input" placeholder="999888777"></div>'+
+    '<div class="modal-field"><label>Línea aprobada (S/)</label><input id="nbLinea" type="number" class="input" value="500"></div>'+
+    '<div class="modal-field"><label>Comentario</label><input id="nbComentario" class="input"></div>'+
+    '<div class="modal-field"><label>Contraseña</label><input type="password" id="nbPass" class="input"></div>'+
+    '<label style="display:block;margin:8px 0;color:var(--muted);font-size:12px"><input type="checkbox" id="nbTest" '+(esTest?'checked':'')+'> Bodega de prueba</label>'+
+    '<div class="modal-actions"><button class="btn btn-outline" onclick="closeModal()">Cancelar</button>'+
+    '<button class="btn btn-green" onclick="submitCreateBodega()">Crear</button></div></div></div>';
+}
+
+function submitCreateBodega(){
+  apiPost('/api/backoffice/bodegas', {
+    ruc: document.getElementById('nbRuc').value.trim(),
+    razon_social: document.getElementById('nbRazon').value.trim(),
+    nombre_comercial: document.getElementById('nbComercial').value.trim(),
+    telefono_whatsapp: document.getElementById('nbTel').value.trim(),
+    linea_aprobada: parseFloat(document.getElementById('nbLinea').value)||0,
+    comentario: document.getElementById('nbComentario').value.trim(),
+    password: document.getElementById('nbPass').value || USER_PASSWORD,
+    es_test: document.getElementById('nbTest').checked,
+    estado: 'preaprobada'
+  }).then(function(x){
+    if(!x.ok) throw new Error(x.d.detail || 'Error');
+    closeModal();
+    showToast('Bodega creada','success');
+    loadBodegas();
+  }).catch(function(e){ showToast(e.message,'error'); });
+}
+
+function openEditBodega(){
+  if(!bodegaModalId) return;
+  api('/api/backoffice/bodega/'+bodegaModalId).then(function(d){
+    var b = d.bodega||{};
+    document.getElementById('modalContainer').innerHTML =
+      '<div class="modal-overlay open" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:520px"><h3>Editar bodega</h3>'+
+      '<div class="modal-field"><label>Estado</label><select id="ebEstado" class="input"><option value="preaprobada">preaprobada</option><option value="activo">activo</option><option value="inactivo">inactivo</option><option value="suspendido">suspendido</option></select></div>'+
+      '<div class="modal-field"><label>Teléfono</label><input id="ebTel" class="input" value="'+(b.telefono_whatsapp||'')+'"></div>'+
+      '<div class="modal-field"><label>Línea aprobada</label><input id="ebLineaA" type="number" class="input" value="'+(b.linea_aprobada||0)+'"></div>'+
+      '<div class="modal-field"><label>Línea disponible</label><input id="ebLineaD" type="number" class="input" value="'+(b.linea_disponible||0)+'"></div>'+
+      '<div class="modal-field"><label>Comentario</label><input id="ebComentario" class="input"></div>'+
+      '<div class="modal-field"><label>Contraseña</label><input type="password" id="ebPass" class="input"></div>'+
+      '<div class="modal-actions"><button class="btn btn-outline" onclick="closeModal()">Cancelar</button>'+
+      '<button class="btn btn-green" onclick="submitEditBodega()">Guardar</button></div></div></div>';
+    document.getElementById('ebEstado').value = b.estado || 'preaprobada';
+  });
+}
+
+function submitEditBodega(){
+  apiPatch('/api/backoffice/bodega/'+bodegaModalId, {
+    estado: document.getElementById('ebEstado').value,
+    telefono_whatsapp: document.getElementById('ebTel').value.trim(),
+    linea_aprobada: parseFloat(document.getElementById('ebLineaA').value),
+    linea_disponible: parseFloat(document.getElementById('ebLineaD').value),
+    comentario: document.getElementById('ebComentario').value.trim(),
+    password: document.getElementById('ebPass').value || USER_PASSWORD
+  }).then(function(x){
+    if(!x.ok) throw new Error(x.d.detail || 'Error');
+    closeModal();
+    showToast('Bodega actualizada','success');
+    openBodegaDetail(bodegaModalId);
+  }).catch(function(e){ showToast(e.message,'error'); });
+}
+
+function openResetSesion(){
+  if(!bodegaModalId) return;
+  document.getElementById('modalContainer').innerHTML =
+    '<div class="modal-overlay open" onclick="if(event.target===this)closeModal()"><div class="modal"><h3>Reset sesión WhatsApp</h3>'+
+    '<div class="modal-field"><label>Nueva fase</label><select id="rsFase" class="input"><option value="menu">menu</option><option value="welcome">welcome</option><option value="reg_pin">reg_pin</option><option value="catalogo">catalogo</option></select></div>'+
+    '<div class="modal-field"><label>Comentario</label><input id="rsComentario" class="input"></div>'+
+    '<div class="modal-field"><label>Contraseña</label><input type="password" id="rsPass" class="input"></div>'+
+    '<label style="display:block;margin:8px 0;font-size:12px;color:var(--muted)"><input type="checkbox" id="rsClear" checked> Limpiar datos de sesión</label>'+
+    '<div class="modal-actions"><button class="btn btn-outline" onclick="closeModal()">Cancelar</button>'+
+    '<button class="btn btn-red" onclick="submitResetSesion()">Resetear</button></div></div></div>';
+}
+
+function submitResetSesion(){
+  apiPost('/api/backoffice/bodega/'+bodegaModalId+'/sesion/reset', {
+    fase: document.getElementById('rsFase').value,
+    comentario: document.getElementById('rsComentario').value.trim(),
+    password: document.getElementById('rsPass').value || USER_PASSWORD,
+    clear_datos: document.getElementById('rsClear').checked
+  }).then(function(x){
+    if(!x.ok) throw new Error(x.d.detail || 'Error');
+    closeModal();
+    showToast('Sesión reseteada a '+x.d.fase,'success');
+    openBodegaDetail(bodegaModalId);
+  }).catch(function(e){ showToast(e.message,'error'); });
+}
+
+var soporteLoaded = false;
+function loadSoporteInbox(){
+  if(soporteLoaded) return;
+  api('/api/backoffice/support-bridge').then(function(d){
+    soporteLoaded = true;
+    localStorage.setItem('circa_support_token', d.token);
+    document.getElementById('soportePlaceholder').style.display='none';
+    var fr = document.getElementById('soporteFrame');
+    fr.style.display='block';
+    fr.src = d.inbox_url || '/support';
+  }).catch(function(e){
+    document.getElementById('soportePlaceholder').textContent = 'Inbox no disponible: '+e.message+' — abre /support manualmente';
+  });
+}
+
+// Inicialización del toggle al cargar
+(function initMode(){
+  var saved = localStorage.getItem('circa_mode') || 'real';
+  window.MODE_FILTER = saved;
+  // Actualizar UI del toggle cuando esté disponible
+  document.addEventListener('DOMContentLoaded', function(){
+    document.querySelectorAll('#modeToggle button').forEach(function(b){
+      b.classList.toggle('active', b.dataset.mode === saved);
+    });
+  });
+})();
+
+</script>
+</body>
+</html>
