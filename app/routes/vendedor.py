@@ -12,6 +12,7 @@ URLs:
 """
 from fastapi import APIRouter, HTTPException, Path, Query
 from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi import UploadFile, File, Request
 from datetime import datetime, timezone
 import os, httpx, logging
 
@@ -579,3 +580,343 @@ def vendedor_share_link(
 </html>"""
 
     return HTMLResponse(content=html)
+
+
+def _norm_nombre(s):
+    import re, unicodedata
+    s = unicodedata.normalize("NFKD", str(s or "")).encode("ascii", "ignore").decode()
+    return re.sub(r"\s+", " ", s.upper().strip())
+
+
+def _match_bodega_por_nombre(nombre_archivo, distribuidor_id):
+    """Busca la bodega del distribuidor cuyo nombre se parezca al del archivo.
+    Devuelve (sugerida|None, candidatos[]). Sin tocar bodega_vendedores (scope = distribuidor)."""
+    from app.services import db as circa_db
+    target = _norm_nombre(nombre_archivo)
+    if not target:
+        return None, []
+    filas = circa_db.sb.table("bodegas").select(
+        "id, razon_social, nombre_comercial, distrito, linea_disponible, estado, distribuidor_id"
+    ).eq("distribuidor_id", distribuidor_id).execute().data or []
+    tset = set(target.split())
+    scored = []
+    for b in filas:
+        score = 0
+        for campo in (b.get("razon_social"), b.get("nombre_comercial")):
+            c = _norm_nombre(campo)
+            if not c:
+                continue
+            if c == target:
+                score = 100
+                break
+            cset = set(c.split())
+            if tset and cset:
+                ov = len(tset & cset) / len(tset | cset)
+                score = max(score, int(round(ov * 100)))
+        if score >= 55:
+            scored.append((score, b))
+    scored.sort(key=lambda x: x[0], reverse=True)
+    candidatos = [{
+        "id": b["id"],
+        "razon_social": b.get("razon_social") or b.get("nombre_comercial") or "(sin nombre)",
+        "distrito": b.get("distrito") or "",
+        "linea_disponible": b.get("linea_disponible") or 0,
+        "estado": b.get("estado") or "",
+        "score": s,
+    } for s, b in scored[:5]]
+    sugerida = candidatos[0] if (candidatos and candidatos[0]["score"] >= 80) else None
+    return sugerida, candidatos
+
+
+@router.post("/{token}/preventa/upload")
+async def preventa_upload(
+    token: str = Path(..., min_length=16, max_length=64),
+    file: UploadFile = File(...),
+):
+    """Lee el Excel DIMAX y devuelve un PREVIEW (no crea nada todavia)."""
+    vendedor = _get_vendedor_by_token(token)
+    if not vendedor or not vendedor.get("activo"):
+        raise HTTPException(status_code=403, detail="Vendedor no valido")
+    contents = await file.read()
+    if not contents:
+        raise HTTPException(status_code=400, detail="El archivo llego vacio.")
+    try:
+        from app.services.preventa_excel import parse_preventa_excel
+        parsed = parse_preventa_excel(contents, filename=file.filename)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"No pude leer el Excel: {e}")
+    sugerida, candidatos = _match_bodega_por_nombre(
+        parsed.get("bodega_nombre"), vendedor["distribuidor_id"]
+    )
+    return {
+        "ok": True,
+        "bodega_nombre": parsed.get("bodega_nombre"),
+        "fecha": parsed.get("fecha"),
+        "total_pedido": parsed.get("total_pedido"),
+        "descuento_prorrateado": parsed.get("descuento_prorrateado"),
+        "n_items": parsed.get("n_items"),
+        "n_regalos": parsed.get("n_regalos"),
+        "warnings": parsed.get("warnings") or [],
+        "items": parsed.get("items") or [],
+        "bodega_sugerida": sugerida,
+        "candidatos": candidatos,
+    }
+
+
+@router.post("/{token}/preventa/crear")
+async def preventa_crear(
+    token: str = Path(..., min_length=16, max_length=64),
+    request: Request = None,
+):
+    """Crea la preventa (estado preventa_confirmada) y devuelve el link/QR para compartir."""
+    vendedor = _get_vendedor_by_token(token)
+    if not vendedor or not vendedor.get("activo"):
+        raise HTTPException(status_code=403, detail="Vendedor no valido")
+    payload = await request.json()
+    bodega_id = (payload or {}).get("bodega_id")
+    items = (payload or {}).get("items") or []
+    fecha = (payload or {}).get("fecha")
+    descuento = float((payload or {}).get("descuento_prorrateado") or 0)
+    if not bodega_id or not items:
+        raise HTTPException(status_code=400, detail="Faltan datos: bodega o items.")
+
+    from app.services import db as circa_db
+    # Guard de credito: la bodega debe ser del mismo distribuidor del vendedor.
+    bod = circa_db.sb.table("bodegas").select(
+        "id, distribuidor_id, estado"
+    ).eq("id", bodega_id).limit(1).execute().data
+    if not bod or bod[0].get("distribuidor_id") != vendedor["distribuidor_id"]:
+        raise HTTPException(status_code=403, detail="Esa bodega no es de tu distribuidor.")
+
+    # Total cobrado = suma de subtotales (los regalos vienen en 0). No confiamos en el total del cliente.
+    total_pedido = round(sum(float(i.get("subtotal") or 0) for i in items), 2)
+    if total_pedido <= 0:
+        raise HTTPException(status_code=400, detail="El total cobrado salio en 0; revisa el Excel.")
+
+    res = circa_db.crear_pedido_preventa(
+        bodega_id=bodega_id,
+        distribuidor_id=vendedor["distribuidor_id"],
+        items_dimax=items,
+        total_pedido=total_pedido,
+        descuento_prorrateado=descuento,
+        vendedor_id=vendedor.get("id"),
+        fecha_visita=fecha,
+    )
+    link_token = res.get("link_token")
+    return {
+        "ok": True,
+        "pedido_id": res.get("pedido_id"),
+        "items_creados": res.get("items_creados"),
+        "items_no_match": res.get("items_no_match") or [],
+        "total_pedido": total_pedido,
+        "link_token": link_token,
+        "share_url": f"/v/{token}/preventa/{link_token}/share",
+    }
+
+
+@router.get("/{token}/preventa/subir", response_class=HTMLResponse)
+def vendedor_preventa_subir(token: str = Path(..., min_length=16, max_length=64)):
+    vendedor = _get_vendedor_by_token(token)
+    if not vendedor or not vendedor.get("activo"):
+        raise HTTPException(status_code=403, detail="Vendedor no valido")
+    return HTMLResponse(content=_HTML_SUBIR_PREVENTA.replace("__TOKEN__", token))
+
+
+_HTML_SUBIR_PREVENTA = r"""<!doctype html>
+<html lang="es"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Subir preventa &middot; Circa</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0D0D10;color:#fff;min-height:100vh;padding:20px 16px 60px}
+.wrap{max-width:480px;margin:0 auto}
+.top{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+.top a{color:rgba(255,255,255,.55);text-decoration:none;font-size:22px;line-height:1}
+.titulo{font-size:22px;font-weight:700}
+.sub{color:rgba(255,255,255,.5);font-size:13px;margin:2px 0 22px}
+.card{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:18px;margin-bottom:16px}
+.card h3{font-size:12px;letter-spacing:.6px;text-transform:uppercase;color:#22D3EE;margin-bottom:12px;font-weight:700}
+.drop{border:1.5px dashed rgba(34,211,238,.4);border-radius:14px;padding:26px 14px;text-align:center;cursor:pointer;transition:.15s}
+.drop:hover{background:rgba(34,211,238,.06)}
+.drop .big{font-size:15px;font-weight:600}
+.drop .small{font-size:12px;color:rgba(255,255,255,.45);margin-top:5px}
+.drop.filed{border-style:solid;border-color:rgba(34,211,238,.6);background:rgba(34,211,238,.07)}
+input[type=file]{display:none}
+.btn{display:block;width:100%;border:none;border-radius:13px;padding:15px;font-size:15px;font-weight:700;cursor:pointer;margin-top:14px;font-family:inherit}
+.btn.primary{background:#22D3EE;color:#04222a}
+.btn.primary:disabled{background:rgba(34,211,238,.25);color:rgba(255,255,255,.4);cursor:not-allowed}
+.btn.ghost{background:transparent;border:1px solid rgba(255,255,255,.18);color:#fff;margin-top:10px}
+.row{display:flex;justify-content:space-between;padding:7px 0;font-size:14px;border-bottom:1px solid rgba(255,255,255,.06)}
+.row:last-child{border-bottom:none}
+.row .k{color:rgba(255,255,255,.55)}
+.row .v{font-weight:600}
+.tot{font-size:24px;font-weight:800;color:#22D3EE}
+.warn{background:rgba(245,176,66,.1);border:1px solid rgba(245,176,66,.3);color:#f5b042;border-radius:11px;padding:10px 12px;font-size:12.5px;margin-top:12px}
+.bod{border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:13px;margin-top:9px;cursor:pointer;transition:.12s}
+.bod:hover{border-color:rgba(34,211,238,.5)}
+.bod.sel{border-color:#22D3EE;background:rgba(34,211,238,.08)}
+.bod .nm{font-weight:600;font-size:14px}
+.bod .mt{font-size:12px;color:rgba(255,255,255,.5);margin-top:3px}
+.bod .ln{font-size:12px;color:#22D3EE;margin-top:3px}
+.detect{background:rgba(34,211,238,.08);border:1px solid rgba(34,211,238,.25);border-radius:11px;padding:11px 13px;font-size:13px;margin-bottom:12px}
+.detect b{color:#22D3EE}
+.find{display:flex;gap:8px;margin-top:12px}
+.find input{flex:1;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.14);border-radius:11px;padding:12px;color:#fff;font-size:15px;font-family:inherit}
+.find button{background:rgba(255,255,255,.1);border:none;border-radius:11px;color:#fff;padding:0 16px;font-weight:600;cursor:pointer}
+.hidden{display:none}
+.err{color:#ff6b6b;font-size:13px;margin-top:10px}
+.spin{text-align:center;color:rgba(255,255,255,.5);font-size:13px;padding:10px}
+</style></head>
+<body><div class="wrap">
+  <div class="top"><a href="/v/__TOKEN__">&larr;</a><div class="titulo">Subir preventa</div></div>
+  <div class="sub">Sube el Excel que sale de DIMAX. Confirmas la bodega y listo.</div>
+
+  <div class="card">
+    <h3>1 &middot; Archivo de DIMAX</h3>
+    <label class="drop" id="drop">
+      <div class="big" id="dropTxt">Toca para elegir el Excel</div>
+      <div class="small">archivo .xlsx tal cual sale del sistema</div>
+      <input type="file" id="file" accept=".xlsx,.xls">
+    </label>
+    <button class="btn primary" id="btnRevisar" disabled>Revisar archivo</button>
+    <div class="err hidden" id="errUp"></div>
+  </div>
+
+  <div class="card hidden" id="cardPrev">
+    <h3>2 &middot; Revisa la preventa</h3>
+    <div class="row"><span class="k">Fecha</span><span class="v" id="pvFecha">-</span></div>
+    <div class="row"><span class="k">Productos</span><span class="v" id="pvItems">-</span></div>
+    <div class="row"><span class="k">Regalos</span><span class="v" id="pvReg">-</span></div>
+    <div class="row"><span class="k">Descuento DIMAX</span><span class="v" id="pvDesc">-</span></div>
+    <div class="row"><span class="k">Total a cobrar</span><span class="tot" id="pvTot">-</span></div>
+    <div id="pvWarn"></div>
+  </div>
+
+  <div class="card hidden" id="cardBod">
+    <h3>3 &middot; &iquest;Para qu&eacute; bodega?</h3>
+    <div class="detect" id="detect"></div>
+    <div id="sugBox"></div>
+    <div id="candBox"></div>
+    <div class="find">
+      <input id="docInput" inputmode="numeric" placeholder="Buscar por DNI o RUC">
+      <button id="btnFind">Buscar</button>
+    </div>
+    <div class="err hidden" id="errFind"></div>
+    <div id="manualBox"></div>
+  </div>
+
+  <button class="btn primary hidden" id="btnCrear" disabled>Crear preventa</button>
+  <div class="err hidden" id="errCrear"></div>
+</div>
+<script>
+var TOKEN="__TOKEN__";
+var preview=null, chosenId=null, chosenName=null;
+var $=function(id){return document.getElementById(id)};
+
+function money(n){return "S/"+(Number(n)||0).toFixed(2)}
+
+$("file").addEventListener("change",function(){
+  var f=this.files[0];
+  if(f){$("dropTxt").textContent=f.name;$("drop").classList.add("filed");$("btnRevisar").disabled=false}
+});
+
+$("btnRevisar").addEventListener("click",function(){
+  var f=$("file").files[0]; if(!f) return;
+  $("errUp").classList.add("hidden");
+  this.disabled=true; this.textContent="Leyendo...";
+  var fd=new FormData(); fd.append("file",f);
+  fetch("/v/"+TOKEN+"/preventa/upload",{method:"POST",body:fd})
+   .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j}})})
+   .then(function(res){
+     $("btnRevisar").disabled=false; $("btnRevisar").textContent="Revisar archivo";
+     if(!res.ok){throw new Error((res.j&&res.j.detail)||"No se pudo leer")}
+     preview=res.j; renderPreview(); 
+   })
+   .catch(function(e){$("errUp").textContent=e.message;$("errUp").classList.remove("hidden")});
+});
+
+function renderPreview(){
+  $("cardPrev").classList.remove("hidden");
+  $("pvFecha").textContent=preview.fecha||"(no detectada)";
+  $("pvItems").textContent=preview.n_items;
+  $("pvReg").textContent=preview.n_regalos;
+  $("pvDesc").textContent=money(preview.descuento_prorrateado);
+  $("pvTot").textContent=money(preview.total_pedido);
+  var w=$("pvWarn"); w.innerHTML="";
+  (preview.warnings||[]).forEach(function(t){var d=document.createElement("div");d.className="warn";d.textContent=t;w.appendChild(d)});
+  $("cardBod").classList.remove("hidden");
+  $("btnCrear").classList.remove("hidden");
+  $("detect").innerHTML="El archivo dice: <b>"+(preview.bodega_nombre||"(sin nombre)")+"</b>";
+  renderBodegas();
+}
+
+function pickBodega(id,name,el){
+  chosenId=id; chosenName=name;
+  document.querySelectorAll(".bod").forEach(function(x){x.classList.remove("sel")});
+  if(el) el.classList.add("sel");
+  $("btnCrear").disabled=false;
+}
+
+function bodCard(b){
+  var d=document.createElement("div"); d.className="bod";
+  var ln = (b.linea_disponible!=null)? '<div class="ln">L&iacute;nea disp. '+money(b.linea_disponible)+'</div>':'';
+  d.innerHTML='<div class="nm">'+(b.razon_social||"(sin nombre)")+'</div><div class="mt">'+(b.distrito||"")+'</div>'+ln;
+  d.addEventListener("click",function(){pickBodega(b.id,b.razon_social,d)});
+  return d;
+}
+
+function renderBodegas(){
+  var sug=$("sugBox"); sug.innerHTML="";
+  var cand=$("candBox"); cand.innerHTML="";
+  if(preview.bodega_sugerida){
+    var c=bodCard(preview.bodega_sugerida); sug.appendChild(c);
+    pickBodega(preview.bodega_sugerida.id, preview.bodega_sugerida.razon_social, c);
+  }
+  var otras=(preview.candidatos||[]).filter(function(b){
+    return !preview.bodega_sugerida || b.id!==preview.bodega_sugerida.id;
+  });
+  otras.forEach(function(b){cand.appendChild(bodCard(b))});
+}
+
+$("btnFind").addEventListener("click",function(){
+  var q=($("docInput").value||"").trim();
+  if(!q) return;
+  $("errFind").classList.add("hidden");
+  this.textContent="...";
+  var self=this;
+  fetch("/v/"+TOKEN+"/api/buscar-bodega?q="+encodeURIComponent(q))
+   .then(function(r){return r.json()})
+   .then(function(j){
+     self.textContent="Buscar";
+     if(j.found===false||j.error){throw new Error(j.error||"No encontrada")}
+     var b = j.bodega || j;
+     b.razon_social = b.razon_social || b.nombre_comercial || "(sin nombre)";
+     var box=$("manualBox"); box.innerHTML="";
+     var c=bodCard(b); box.appendChild(c);
+     pickBodega(b.id,b.razon_social,c);
+   })
+   .catch(function(e){self.textContent="Buscar";$("errFind").textContent=e.message;$("errFind").classList.remove("hidden")});
+});
+
+$("btnCrear").addEventListener("click",function(){
+  if(!chosenId||!preview) return;
+  $("errCrear").classList.add("hidden");
+  this.disabled=true; this.textContent="Creando...";
+  var self=this;
+  fetch("/v/"+TOKEN+"/preventa/crear",{
+    method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({
+      bodega_id:chosenId, items:preview.items,
+      total_pedido:preview.total_pedido,
+      descuento_prorrateado:preview.descuento_prorrateado,
+      fecha:preview.fecha
+    })
+  })
+   .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j}})})
+   .then(function(res){
+     if(!res.ok){throw new Error((res.j&&res.j.detail)||"No se pudo crear")}
+     window.location.href=res.j.share_url;
+   })
+   .catch(function(e){self.disabled=false;self.textContent="Crear preventa";$("errCrear").textContent=e.message;$("errCrear").classList.remove("hidden")});
+});
+</script></body></html>"""
