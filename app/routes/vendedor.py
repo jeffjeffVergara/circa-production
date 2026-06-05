@@ -171,6 +171,10 @@ def vendedor_home(token: str = Path(..., min_length=16, max_length=64)):
   {badge_admin}
 
   <div class="menu">
+    <a href="/v/{token}/preventa/subir" class="menu-btn">
+      Subir preventa
+      <span class="desc">Sube el Excel de DIMAX y confirma la bodega</span>
+    </a>
     <a href="/v/{token}/preventa" class="menu-btn">
       Hacer preventa
       <span class="desc">Arma un pedido para tu cliente</span>
