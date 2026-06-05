@@ -207,12 +207,12 @@ def _verify_pin_for_payment(pin: str, bodega_id: str) -> dict:
 
         # Generate order number
         try:
-            num = db.sb.rpc("gen_numero_pedido", {"p_prefijo": ("PRV" if tipo_operacion == "preventa" else "CRC")}).execute().data
+            num = db.sb.rpc("gen_numero_pedido", {"p_bodega_id": bodega_id}).execute().data
         except Exception as e:
             logger.error(f"gen_numero_pedido error: {e}")
             import random
             pref = "PRV" if tipo_operacion == "preventa" else "CRC"
-            num = f"{pref}-{random.randint(100,999)}"
+            num = f"{pref}-X{random.randint(100000,999999)}"
 
         if dias > 0:
             bod_line = db.sb.table("bodegas").select("linea_disponible, linea_aprobada").eq("id", bodega_id).limit(1).execute()

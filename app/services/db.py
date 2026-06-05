@@ -327,7 +327,7 @@ def create_pedido(bodega_id: str, distribuidor_id: str, items: list,
                   fee_tasa: float, fee_monto: float, plazo_dias: int,
                   fee_regimen: str | None = None):
     # Generate order number
-    numero = sb.rpc("gen_numero_pedido").execute().data
+    numero = sb.rpc("gen_numero_pedido", {"p_bodega_id": bodega_id}).execute().data
     fecha_venc = None  # Se calcula al marcar entregado
     
     from app.services.fees import fee_regimen_para_pedido_nuevo
