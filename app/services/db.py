@@ -634,6 +634,9 @@ def crear_pedido_preventa(
     }
     """
     monto_productos = float(total_pedido) + float(descuento_prorrateado)  # Subtotal antes de descuento
+    import secrets
+    link_token = secrets.token_hex(6)
+    items_json_list = []
     
     # Insertar pedido (sin número, sin financiamiento)
     pedido = sb.table("pedidos").insert({
@@ -647,6 +650,8 @@ def crear_pedido_preventa(
         "total_pedido": total_pedido,
         "monto_financiado": 0,
         "monto_contado": 0,
+        "link_token": link_token,
+        "items_json": [],
         "dimax_pedido_id": dimax_pedido_id,
         "fecha_visita": fecha_visita,
         "fecha_entrega": fecha_entrega,
@@ -677,7 +682,7 @@ def crear_pedido_preventa(
         # pack_size = número entero de unidades por pack ("UND x 1" → 1, "CJA x 6" → 6)
         unidad_str = it.get("unidad") or "UND x 1"
         try:
-            pack_size_int = int(unidad_str.split("x")[-1].strip())
+            pack_size_int = int(unidad_str.lower().split("x")[-1].strip())
         except (ValueError, AttributeError):
             pack_size_int = 1  # fallback seguro
         
@@ -691,13 +696,24 @@ def crear_pedido_preventa(
             "subtotal": it.get("subtotal", it["cantidad"] * it["precio_unitario"]),
         }).execute()
         items_creados += 1
+        items_json_list.append({
+            "catalogo_id": catalogo_id,
+            "nombre": it.get("descripcion") or "Producto",
+            "pack_size": pack_size_int,
+            "cantidad": it["cantidad"],
+            "precio": it["precio_unitario"],
+            "subtotal": it.get("subtotal", it["cantidad"] * it["precio_unitario"]),
+        })
     
+    if items_json_list:
+        sb.table("pedidos").update({"items_json": items_json_list}).eq("id", pedido_id).execute()
     log_evento(pedido_id, bodega_id, "preventa_creada", None, "borrador", "dimax")
     
     return {
         "pedido_id": pedido_id,
         "items_creados": items_creados,
         "items_no_match": items_no_match,
+        "link_token": link_token,
     }
 
 
