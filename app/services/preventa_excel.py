@@ -4,15 +4,16 @@ Parser del Excel de preventa que sale del sistema DIMAX.
 Convierte el archivo en la estructura que espera db.crear_pedido_preventa:
     items_dimax = [{sku_distribuidor, descripcion, cantidad, unidad,
                     precio_unitario, subtotal}, ...]
-más total_pedido, descuento_prorrateado, y la bodega/fecha leídas del
+mas total_pedido, descuento_prorrateado, y la bodega/fecha leidas del
 nombre del archivo (que es como DIMAX identifica al cliente).
 
 Reglas del formato DIMAX (validadas contra archivos reales):
 - 'Total' = monto cobrado real (ya con descuento). 'SubTotal' = antes de descuento.
-- Filas BONIFICACIÓN tienen Total = 0 -> son regalos (no se cobran).
-- 'Codigo' viene con ceros a la izquierda; el catálogo guarda sin ceros (lstrip).
+- Filas BONIFICACION tienen Total = 0 -> son regalos (no se cobran).
+- 'Codigo' viene con ceros a la izquierda; el catalogo guarda sin ceros (lstrip).
 - 'Unidad' "UND x 1" / "CJA X 24" (X mayus o minus) -> pack_size case-insensitive.
-- El nombre del archivo trae bodega y fecha: NOMBRE_BODEGA_DD_MM_YY.xlsx
+- El nombre del archivo trae bodega y fecha. Separadores reales vistos:
+  "NOMBRE BODEGA 04.06.26.xlsx" (espacios + puntos) y tambien guiones bajos.
 """
 import os
 import re
@@ -27,18 +28,26 @@ COL_PRECIO = "P. Unitario"
 COL_SUBTOTAL = "SubTotal"
 COL_TOTAL = "Total"
 
+# Fecha al final del nombre: DD<sep>MM<sep>YY(YY), sep = espacio/punto/guion/guion_bajo
+_FECHA_RE = re.compile(r"[ ._\-]+(\d{1,2})[ ._\-](\d{1,2})[ ._\-](\d{2,4})\s*$")
+
 
 def parse_filename(filename: str):
-    """'URBANO_CHIHUANTITO_DAVID_GENARO_04_06_26.xlsx'
-       -> ('URBANO CHIHUANTITO DAVID GENARO', '2026-06-04')."""
+    """'URBANO CHIHUANTITO DAVID GENARO 04.06.26.xlsx' o la version con _
+       -> ('URBANO CHIHUANTITO DAVID GENARO', '2026-06-04').
+       Si no hay fecha al final, devuelve (nombre_limpio, None)."""
     base = os.path.splitext(os.path.basename(filename or ""))[0]
-    m = re.search(r'_(\d{2})_(\d{2})_(\d{2})$', base)
     fecha_iso, nombre_part = None, base
+    m = _FECHA_RE.search(base)
     if m:
         dd, mm, yy = m.group(1), m.group(2), m.group(3)
-        fecha_iso = f"20{yy}-{mm}-{dd}"
+        anio = yy if len(yy) == 4 else ("20" + yy)
+        try:
+            fecha_iso = "%04d-%02d-%02d" % (int(anio), int(mm), int(dd))
+        except ValueError:
+            fecha_iso = None
         nombre_part = base[:m.start()]
-    nombre = re.sub(r'\s+', ' ', nombre_part.replace("_", " ")).strip()
+    nombre = re.sub(r"\s+", " ", re.sub(r"[._\-]+", " ", nombre_part)).strip()
     return nombre, fecha_iso
 
 
@@ -64,13 +73,13 @@ def parse_preventa_excel(source, filename: str = None) -> dict:
     ws = wb.worksheets[0]
     rows = list(ws.iter_rows(values_only=True))
     if not rows:
-        raise ValueError("El Excel está vacío.")
+        raise ValueError("El Excel esta vacio.")
 
     headers = [str(h).strip() if h is not None else "" for h in rows[0]]
     idx = {h: i for i, h in enumerate(headers)}
     faltantes = [c for c in (COL_CODIGO, COL_CANTIDAD, COL_PRECIO, COL_TOTAL) if c not in idx]
     if faltantes:
-        raise ValueError(f"Faltan columnas {faltantes}. Encontré: {headers}")
+        raise ValueError(f"Faltan columnas {faltantes}. Encontre: {headers}")
 
     def col(row, name, default=None):
         i = idx.get(name)
@@ -88,7 +97,7 @@ def parse_preventa_excel(source, filename: str = None) -> dict:
             cant = int(col(r, COL_CANTIDAD) or 0)
         except (ValueError, TypeError):
             cant = 0
-            warnings.append(f"Cantidad inválida en SKU {cod}, usé 0.")
+            warnings.append(f"Cantidad invalida en SKU {cod}, use 0.")
         unidad = str(col(r, COL_UNIDAD) or "UND x 1").strip()
         precio = round(float(col(r, COL_PRECIO) or 0), 4)
         subt = round(float(col(r, COL_SUBTOTAL) or 0), 2)
