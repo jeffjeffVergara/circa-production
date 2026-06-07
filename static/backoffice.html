@@ -367,7 +367,8 @@ tr:hover td{background:var(--card-hover)}
 <h2>🏪 Bodegas <span style="font-size:12px;color:var(--muted);font-weight:400" id="bodegasInfoLine">cargando...</span>
 <span style="float:right;display:flex;gap:8px;margin-top:-4px">
 <button class="btn btn-outline btn-small" onclick="downloadPlantillaBodegas()">📥 Plantilla</button>
-<button class="btn btn-outline btn-small" onclick="openImportBodegas()">📤 Importar Excel</button>
+<button class="btn btn-outline btn-small" onclick="openImportDimaxBodega()">📤 Importar DIMAX</button>
+<button class="btn btn-outline btn-small" onclick="openImportBodegas()">📤 Plantilla Circa</button>
 <button class="btn btn-green btn-small" onclick="openCreateBodega()">+ Nueva bodega</button>
 </span>
 </h2>
@@ -452,6 +453,8 @@ var statsDistribuidor = [];
 var bodegaModalId = null;
 var bodegasSearchTimer = null;
 var bodegasSearchSnapshot = '';
+var tabLoadSeq = 0;
+var dimaxBodegaPreview = null;
 
 function onBodegasSearchInput(){
   if(bodegaModalId) return;
@@ -519,19 +522,46 @@ function apiPatch(path, body){
 }
 
 function showTab(name){
+  var active = document.querySelector('.tab.active');
+  var activeId = active ? active.id.replace('tab-','') : null;
+  if(activeId === name) return;
+
   ['dashboard','bodegas','pagos','cobranzas','pedidos','vendedores','soporte'].forEach(function(t){
     var el = document.getElementById('view-'+t);
     if(el) el.style.display = (t===name ? 'block':'none');
     var tb = document.getElementById('tab-'+t);
     if(tb) tb.classList.toggle('active', t===name);
   });
-  if(name==='pagos') loadPagos();
-  if(name==='cobranzas') loadCobranzas();
-  if(name==='pedidos') loadPedidos();
-  if(name==='dashboard') refreshAll();
-  if(name==='bodegas') loadBodegas();
-  if(name==='vendedores') loadVendedores();
-  if(name==='soporte') loadSoporteInbox();
+
+  var labels = {
+    dashboard: 'Cargando dashboard…',
+    bodegas: 'Cargando bodegas…',
+    pagos: 'Cargando pagos a distribuidores…',
+    cobranzas: 'Cargando cobranzas…',
+    pedidos: 'Cargando pedidos…',
+    vendedores: 'Cargando vendedores…',
+    soporte: 'Cargando inbox WhatsApp…'
+  };
+  var loaders = {
+    dashboard: refreshAll,
+    bodegas: loadBodegas,
+    pagos: loadPagos,
+    cobranzas: loadCobranzas,
+    pedidos: loadPedidos,
+    vendedores: loadVendedores,
+    soporte: loadSoporteInbox
+  };
+  var loadFn = loaders[name];
+  if(!loadFn){
+    hidePanelLoader();
+    return;
+  }
+
+  var seq = ++tabLoadSeq;
+  showPanelLoader(labels[name] || 'Cargando…');
+  Promise.resolve(loadFn()).catch(function(e){ console.error('Tab load:', name, e); }).finally(function(){
+    if(seq === tabLoadSeq) hidePanelLoader();
+  });
 }
 
 function api(path){
@@ -980,11 +1010,13 @@ function reloadActiveTab(){
   var activeTab = document.querySelector('.tab.active');
   if(!activeTab) return Promise.resolve();
   var id = activeTab.id.replace('tab-','');
+  if(id === 'dashboard') return refreshAll();
   if(id === 'pagos') return loadPagos();
   if(id === 'cobranzas') return loadCobranzas();
   if(id === 'pedidos') return loadPedidos();
   if(id === 'bodegas') return loadBodegas();
   if(id === 'vendedores') return loadVendedores();
+  if(id === 'soporte') return loadSoporteInbox();
   return Promise.resolve();
 }
 
@@ -1417,7 +1449,7 @@ function openCreateBodega(){
     '<div class="modal-field"><label>Razón social</label><input id="nbRazon" class="input"></div>'+
     '<div class="modal-field"><label>Nombre comercial</label><input id="nbComercial" class="input"></div>'+
     '<div class="modal-field"><label>Teléfono WhatsApp</label><input id="nbTel" class="input" placeholder="999888777"></div>'+
-    '<div class="modal-field"><label>Línea aprobada (S/)</label><input id="nbLinea" type="number" class="input" value="500"></div>'+
+    '<div class="modal-field"><label>Línea aprobada (S/)</label><input class="input" value="500" readonly disabled style="opacity:.7;cursor:not-allowed"></div>'+
     '<div class="modal-field"><label>Comentario</label><input id="nbComentario" class="input"></div>'+
     '<div class="modal-field"><label>Contraseña</label><input type="password" id="nbPass" class="input"></div>'+
     '<label style="display:block;margin:8px 0;color:var(--muted);font-size:12px"><input type="checkbox" id="nbTest" '+(esTest?'checked':'')+'> Bodega de prueba</label>'+
@@ -1431,7 +1463,6 @@ function submitCreateBodega(){
     razon_social: document.getElementById('nbRazon').value.trim(),
     nombre_comercial: document.getElementById('nbComercial').value.trim(),
     telefono_whatsapp: document.getElementById('nbTel').value.trim(),
-    linea_aprobada: parseFloat(document.getElementById('nbLinea').value)||0,
     comentario: document.getElementById('nbComentario').value.trim(),
     password: document.getElementById('nbPass').value || USER_PASSWORD,
     es_test: document.getElementById('nbTest').checked,
@@ -1525,6 +1556,104 @@ function downloadPlantillaPedidos(){
   downloadBlob('/api/backoffice/import/plantilla/pedidos', 'circa_plantilla_pedidos.xlsx');
 }
 
+function openImportDimaxBodega(){
+  dimaxBodegaPreview = null;
+  document.getElementById('modalContainer').innerHTML =
+    '<div class="modal-overlay open" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:520px"><h3>Importar bodega DIMAX</h3>'+
+    '<p style="color:var(--muted);font-size:13px;margin-bottom:12px">Excel con hoja <strong>clientes</strong> (export DIMAX). Verás una vista previa antes de crear la bodega.</p>'+
+    '<div class="modal-field"><label>Archivo .xlsx</label><input type="file" id="dimaxBodFile" accept=".xlsx,.xls"></div>'+
+    '<div class="modal-actions"><button class="btn btn-outline" onclick="closeModal()">Cancelar</button>'+
+    '<button class="btn btn-green" onclick="analyzeDimaxBodega()">Analizar Excel</button></div></div></div>';
+}
+
+function escAttr(s){
+  return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+}
+
+function renderDimaxBodegaPreview(p){
+  dimaxBodegaPreview = p;
+  var esTest = (window.MODE_FILTER||'real')==='test';
+  var warnHtml = (p.warnings||[]).length
+    ? '<div style="background:rgba(239,68,68,.1);border:1px solid var(--red);border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:12px;color:var(--red)">'+
+      (p.warnings||[]).map(function(w){return '⚠️ '+escAttr(w);}).join('<br>')+
+      '</div>'
+    : '<div style="background:rgba(34,197,94,.08);border:1px solid var(--green);border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:12px;color:var(--green)">✓ Listo para revisar y confirmar</div>';
+
+  document.getElementById('modalContainer').innerHTML =
+    '<div class="modal-overlay open" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:640px;max-height:90vh;overflow:auto"><h3>Vista previa — bodega DIMAX</h3>'+
+    '<p style="color:var(--muted);font-size:12px;margin-bottom:12px">Archivo: '+escAttr(p.filename||'—')+' · fila '+escAttr(p.fila)+'</p>'+
+    warnHtml+
+    '<div class="modal-field"><label>Código DIMAX</label><input id="dmxCodigo" class="input" readonly value="'+escAttr(p.codigo_dimax)+'"></div>'+
+    '<div class="modal-field"><label>DNI / RUC</label><input id="dmxRuc" class="input" value="'+escAttr(p.ruc)+'"></div>'+
+    '<label style="display:block;margin:-6px 0 12px;font-size:12px;color:var(--muted)"><input type="checkbox" id="dmxSoloDni" '+(p.solo_dni_sin_ruc?'checked':'')+'> Solo DNI (sin RUC de empresa)</label>'+
+    '<div class="modal-field"><label>Razón social</label><input id="dmxRazon" class="input" value="'+escAttr(p.razon_social)+'"></div>'+
+    '<div class="modal-field"><label>Nombre comercial</label><input id="dmxComercial" class="input" value="'+escAttr(p.nombre_comercial)+'"></div>'+
+    '<div class="modal-field"><label>Representante legal</label><input id="dmxRep" class="input" value="'+escAttr(p.representante_legal)+'"></div>'+
+    '<div class="modal-field"><label>DNI representante</label><input id="dmxDniRep" class="input" value="'+escAttr(p.dni_representante)+'"></div>'+
+    '<div class="modal-field"><label>Teléfono WhatsApp</label><input id="dmxTel" class="input" value="'+escAttr(p.telefono_whatsapp)+'"></div>'+
+    '<div class="modal-field"><label>Dirección</label><input id="dmxDir" class="input" value="'+escAttr(p.direccion_fiscal)+'"></div>'+
+    '<div class="modal-field"><label>Distrito</label><input id="dmxDist" class="input" value="'+escAttr(p.distrito)+'"></div>'+
+    '<div class="modal-field"><label>Provincia</label><input id="dmxProv" class="input" value="'+escAttr(p.provincia||'Lima')+'"></div>'+
+    '<div class="modal-field"><label>Vendedor DIMAX</label><input class="input" readonly value="'+escAttr((p.vendedor_codigo||'')+' — '+(p.vendedor_nombre||''))+'"></div>'+
+    '<div class="modal-field"><label>Línea aprobada (S/)</label><input class="input" value="500" readonly disabled style="opacity:.7;cursor:not-allowed"></div>'+
+    '<div class="modal-field"><label>Comentario (mín. 8 caracteres)</label><input id="dmxComentario" class="input" placeholder="Import DIMAX fila '+escAttr(p.fila)+'"></div>'+
+    '<div class="modal-field"><label>Contraseña</label><input type="password" id="dmxPass" class="input"></div>'+
+    '<label style="display:block;margin:8px 0;color:var(--muted);font-size:12px"><input type="checkbox" id="dmxTest" '+(esTest?'checked':'')+'> Bodega de prueba</label>'+
+    '<div class="modal-actions"><button class="btn btn-outline" onclick="openImportDimaxBodega()">← Otro archivo</button>'+
+    '<button class="btn btn-outline" onclick="closeModal()">Cancelar</button>'+
+    '<button class="btn btn-green" id="dmxConfirmBtn" onclick="confirmDimaxBodega()" '+(p.can_create===false?'disabled title="Corrige duplicados"':'')+'>Confirmar y crear</button></div></div></div>';
+}
+
+function analyzeDimaxBodega(){
+  var f = document.getElementById('dimaxBodFile').files[0];
+  if(!f){ showToast('Selecciona un archivo','error'); return; }
+  var fd = new FormData();
+  fd.append('file', f);
+  showPanelLoader('Analizando Excel DIMAX…', true);
+  fetch('/api/backoffice/import/dimax-bodega/preview', {method:'POST', headers: authHeaders(), body: fd})
+    .then(function(r){ return r.json().then(function(d){ return {ok:r.ok,d:d}; }); })
+    .then(function(x){
+      if(!x.ok) throw new Error(x.d.detail || 'No se pudo leer el Excel');
+      var p = x.d.preview || {};
+      p.filename = f.name;
+      renderDimaxBodegaPreview(p);
+    }).catch(function(e){ showToast(String(e.message).slice(0,200),'error'); })
+    .finally(function(){ hidePanelLoader(); });
+}
+
+function confirmDimaxBodega(){
+  if(!dimaxBodegaPreview){ showToast('Sin vista previa','error'); return; }
+  var body = {
+    ruc: document.getElementById('dmxRuc').value.trim(),
+    solo_dni_sin_ruc: document.getElementById('dmxSoloDni').checked,
+    razon_social: document.getElementById('dmxRazon').value.trim(),
+    nombre_comercial: document.getElementById('dmxComercial').value.trim(),
+    representante_legal: document.getElementById('dmxRep').value.trim() || null,
+    dni_representante: document.getElementById('dmxDniRep').value.trim() || null,
+    telefono_whatsapp: document.getElementById('dmxTel').value.trim(),
+    direccion_fiscal: document.getElementById('dmxDir').value.trim() || null,
+    distrito: document.getElementById('dmxDist').value.trim() || null,
+    provincia: document.getElementById('dmxProv').value.trim() || null,
+    estado: 'preaprobada',
+    es_test: document.getElementById('dmxTest').checked,
+    codigo_dimax: dimaxBodegaPreview.codigo_dimax,
+    vendedor_codigo: dimaxBodegaPreview.vendedor_codigo,
+    vendedor_nombre: dimaxBodegaPreview.vendedor_nombre,
+    fila_excel: dimaxBodegaPreview.fila,
+    comentario: document.getElementById('dmxComentario').value.trim(),
+    password: document.getElementById('dmxPass').value || USER_PASSWORD
+  };
+  showPanelLoader('Creando bodega…', true);
+  apiPost('/api/backoffice/import/dimax-bodega/confirm', body).then(function(x){
+    if(!x.ok) throw new Error(x.d.detail || 'Error al crear');
+    closeModal();
+    dimaxBodegaPreview = null;
+    showToast('Bodega DIMAX creada','success');
+    loadBodegas();
+  }).catch(function(e){ showToast(String(e.message).slice(0,200),'error'); })
+  .finally(function(){ hidePanelLoader(); });
+}
+
 function openImportBodegas(){
   document.getElementById('modalContainer').innerHTML =
     '<div class="modal-overlay open" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:520px"><h3>Importar bodegas desde Excel</h3>'+
@@ -1592,17 +1721,21 @@ function submitImportPedidos(){
 
 var soporteLoaded = false;
 function loadSoporteInbox(){
-  if(soporteLoaded) return;
+  if(soporteLoaded) return Promise.resolve();
   if(!AUTH_TOKEN){
     document.getElementById('soportePlaceholder').textContent = 'Inicia sesión para ver el inbox';
-    return;
+    return Promise.resolve();
   }
-  soporteLoaded = true;
-  localStorage.setItem('circa_bo_token', AUTH_TOKEN);
-  document.getElementById('soportePlaceholder').style.display='none';
-  var fr = document.getElementById('soporteFrame');
-  fr.style.display='block';
-  fr.src = '/support?embedded=1';
+  return new Promise(function(resolve){
+    soporteLoaded = true;
+    localStorage.setItem('circa_bo_token', AUTH_TOKEN);
+    document.getElementById('soportePlaceholder').style.display='none';
+    var fr = document.getElementById('soporteFrame');
+    fr.style.display='block';
+    function onLoad(){ fr.removeEventListener('load', onLoad); resolve(); }
+    fr.addEventListener('load', onLoad);
+    fr.src = '/support?embedded=1';
+  });
 }
 
 // Inicialización del toggle al cargar

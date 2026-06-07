@@ -27,6 +27,7 @@ from app.services.backoffice_auth import (
     verify_reauth_password,
 )
 from app.services.distribuidor_routing import DIMAX_DISTRIBUIDOR_ID, ZOOM_DISTRIBUIDOR_ID
+from app.services import dimax_bodega_excel as dimax_bod
 from app.services import excel_import as xls
 
 logger = logging.getLogger("circa.backoffice")
@@ -42,6 +43,7 @@ PREVENTA_CANCEL_STATES = frozenset({
 VENTA_CANCEL_STATES = frozenset({
     "borrador", "confirmado", "recibido", "en_preparacion", "despachado", "en_camino",
 })
+DEFAULT_LINEA_APROBADA = 500.0
 
 
 class LoginRequest(BaseModel):
@@ -192,10 +194,31 @@ class BodegaCreate(ReauthMixin):
     telefono_whatsapp: str
     representante_legal: Optional[str] = None
     dni_representante: Optional[str] = None
-    linea_aprobada: float = Field(default=0, ge=0)
+    direccion_fiscal: Optional[str] = None
+    distrito: Optional[str] = None
+    provincia: Optional[str] = None
     estado: str = "preaprobada"
     es_test: bool = False
     solo_dni_sin_ruc: bool = False
+
+
+class DimaxBodegaConfirm(ReauthMixin):
+    ruc: str = Field(..., min_length=8, max_length=11)
+    razon_social: str = Field(..., min_length=2, max_length=200)
+    nombre_comercial: Optional[str] = None
+    telefono_whatsapp: str
+    representante_legal: Optional[str] = None
+    dni_representante: Optional[str] = None
+    direccion_fiscal: Optional[str] = None
+    distrito: Optional[str] = None
+    provincia: Optional[str] = None
+    estado: str = "preaprobada"
+    es_test: bool = False
+    solo_dni_sin_ruc: bool = False
+    codigo_dimax: Optional[str] = None
+    vendedor_codigo: Optional[str] = None
+    vendedor_nombre: Optional[str] = None
+    fila_excel: Optional[int] = None
 
 
 class BodegaUpdate(ReauthMixin):
@@ -229,6 +252,46 @@ def _normalizar_telefono(tel: str) -> str:
     raise HTTPException(status_code=400, detail="Teléfono WhatsApp inválido (Perú)")
 
 
+def _insert_bodega_record(
+    *,
+    ruc: str,
+    razon_social: str,
+    nombre_comercial: str,
+    telefono_whatsapp: str,
+    representante_legal: str | None,
+    dni_representante: str | None,
+    direccion_fiscal: str | None,
+    distrito: str | None,
+    provincia: str | None,
+    estado: str,
+    es_test: bool,
+    solo_dni_sin_ruc: bool,
+) -> tuple[str, dict[str, Any]]:
+    bodega_id = str(uuid.uuid4())
+    dist_id = ZOOM_DISTRIBUIDOR_ID if es_test else DIMAX_DISTRIBUIDOR_ID
+    payload = {
+        "id": bodega_id,
+        "ruc": ruc,
+        "razon_social": razon_social,
+        "nombre_comercial": nombre_comercial,
+        "telefono_whatsapp": telefono_whatsapp,
+        "representante_legal": representante_legal,
+        "dni_representante": dni_representante,
+        "direccion_fiscal": direccion_fiscal,
+        "distrito": distrito,
+        "provincia": provincia,
+        "linea_aprobada": DEFAULT_LINEA_APROBADA,
+        "linea_disponible": 0,
+        "estado": estado,
+        "distribuidor_id": dist_id,
+        "es_test": es_test,
+        "solo_dni_sin_ruc": solo_dni_sin_ruc,
+        "en_piloto": True,
+    }
+    db.sb.table("bodegas").insert(payload).execute()
+    return bodega_id, payload
+
+
 @router.post("/bodegas")
 async def create_bodega(body: BodegaCreate, user: dict = Depends(get_backoffice_user)):
     verify_reauth_password(body.password)
@@ -240,25 +303,20 @@ async def create_bodega(body: BodegaCreate, user: dict = Depends(get_backoffice_
     if db.get_bodega_by_phone(tel):
         raise HTTPException(status_code=409, detail="Ya existe una bodega con ese teléfono")
 
-    bodega_id = str(uuid.uuid4())
-    dist_id = ZOOM_DISTRIBUIDOR_ID if body.es_test else DIMAX_DISTRIBUIDOR_ID
-    payload = {
-        "id": bodega_id,
-        "ruc": ruc,
-        "razon_social": body.razon_social.strip(),
-        "nombre_comercial": (body.nombre_comercial or body.razon_social).strip(),
-        "telefono_whatsapp": tel,
-        "representante_legal": body.representante_legal,
-        "dni_representante": body.dni_representante,
-        "linea_aprobada": body.linea_aprobada,
-        "linea_disponible": 0,
-        "estado": body.estado,
-        "distribuidor_id": dist_id,
-        "es_test": body.es_test,
-        "solo_dni_sin_ruc": body.solo_dni_sin_ruc,
-        "en_piloto": True,
-    }
-    db.sb.table("bodegas").insert(payload).execute()
+    bodega_id, payload = _insert_bodega_record(
+        ruc=ruc,
+        razon_social=body.razon_social.strip(),
+        nombre_comercial=(body.nombre_comercial or body.razon_social).strip(),
+        telefono_whatsapp=tel,
+        representante_legal=body.representante_legal,
+        dni_representante=body.dni_representante,
+        direccion_fiscal=body.direccion_fiscal,
+        distrito=body.distrito,
+        provincia=body.provincia,
+        estado=body.estado,
+        es_test=body.es_test,
+        solo_dni_sin_ruc=body.solo_dni_sin_ruc,
+    )
     log_action(
         user=user,
         action="bodega_create",
@@ -657,6 +715,82 @@ async def import_bodegas_excel(
         after={"creadas": result["creadas"], "errores": len(result["errores"])},
     )
     return result
+
+
+async def _read_xlsx_upload(file: UploadFile, max_mb: int = 5) -> bytes:
+    if not file.filename or not file.filename.lower().endswith((".xlsx", ".xls")):
+        raise HTTPException(status_code=400, detail="Sube un archivo .xlsx")
+    content = await file.read()
+    if len(content) > max_mb * 1024 * 1024:
+        raise HTTPException(status_code=400, detail=f"Archivo demasiado grande (máx {max_mb} MB)")
+    return content
+
+
+@router.post("/import/dimax-bodega/preview")
+async def preview_dimax_bodega_excel(
+    file: UploadFile = File(...),
+    user: dict = Depends(get_backoffice_user),
+):
+    content = await _read_xlsx_upload(file)
+    parsed = dimax_bod.parse_dimax_bodega_excel(content)
+    preview = dimax_bod.enrich_preview(parsed)
+    preview["filename"] = file.filename
+    return {"ok": True, "preview": preview}
+
+
+@router.post("/import/dimax-bodega/confirm")
+async def confirm_dimax_bodega_excel(
+    body: DimaxBodegaConfirm,
+    user: dict = Depends(get_backoffice_user),
+):
+    verify_reauth_password(body.password)
+    if len(body.comentario.strip()) < 8:
+        raise HTTPException(status_code=400, detail="Comentario mínimo 8 caracteres")
+
+    tel = _normalizar_telefono(body.telefono_whatsapp)
+    ruc = body.ruc.strip()
+
+    if db.get_bodega_by_ruc(ruc):
+        raise HTTPException(status_code=409, detail="Ya existe una bodega con ese documento")
+    if db.get_bodega_by_phone(tel):
+        raise HTTPException(status_code=409, detail="Ya existe una bodega con ese teléfono")
+
+    bodega_id, payload = _insert_bodega_record(
+        ruc=ruc,
+        razon_social=body.razon_social.strip(),
+        nombre_comercial=(body.nombre_comercial or body.razon_social).strip(),
+        telefono_whatsapp=tel,
+        representante_legal=body.representante_legal,
+        dni_representante=body.dni_representante,
+        direccion_fiscal=body.direccion_fiscal,
+        distrito=body.distrito,
+        provincia=body.provincia,
+        estado=body.estado,
+        es_test=body.es_test,
+        solo_dni_sin_ruc=body.solo_dni_sin_ruc,
+    )
+    audit_extra = {
+        "origen": "dimax_excel",
+        "codigo_dimax": body.codigo_dimax,
+        "vendedor_codigo": body.vendedor_codigo,
+        "vendedor_nombre": body.vendedor_nombre,
+        "fila_excel": body.fila_excel,
+    }
+    log_action(
+        user=user,
+        action="bodega_import_dimax",
+        entity_type="bodega",
+        entity_id=bodega_id,
+        comment=body.comentario.strip(),
+        after={**payload, **audit_extra},
+        bodega_id=bodega_id,
+    )
+    return {
+        "ok": True,
+        "bodega_id": bodega_id,
+        "telefono_whatsapp": tel,
+        "linea_aprobada": DEFAULT_LINEA_APROBADA,
+    }
 
 
 @router.post("/import/pedidos")
