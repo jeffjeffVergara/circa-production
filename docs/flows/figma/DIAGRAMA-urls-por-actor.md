@@ -44,12 +44,9 @@ flowchart TB
     BA["/api/backoffice/*"]
     SI["/support?embedded=1"]
     SA["/api/support/*"]
-    LEG["/static/admin.html (legacy)"]
-    ADM["/api/distribuidor/admin/*"]
     BO --> BA
     BO --> SI
     SI --> SA
-    LEG --> ADM
   end
 
   subgraph meta ["Meta / Sistema"]
@@ -71,7 +68,6 @@ flowchart TB
 | **Vendedor DIMAX** | Web móvil presencial | `/v/{token}/*` | `/v/{token}/api/*` | Token en URL |
 | **Distribuidor** | Portal web | `/static/distribuidor.html` | `/api/distribuidor/*` | `X-API-Token` |
 | **Admin / Ops Circa** | Backoffice unificado | `/backoffice` (+ pestaña Soporte WA) | `/api/backoffice/*`, `/api/support/*` | Login email/password (JWT) |
-| **Admin legacy** | Panel antiguo | `/static/admin.html` | `/api/distribuidor/admin/*` | `ADMIN_TOKEN` env |
 | **Meta (sistema)** | Webhooks | — | `GET|POST /webhook/meta` | Verify token / firma |
 | **Público** | Legal | `/terms`, `/privacy`, `/data-deletion` | — | — |
 
@@ -142,8 +138,13 @@ URL personal generada en backoffice: `/v/{access_token}`.
 
 ## 4. Admin / Ops Circa (portal unificado)
 
-Un solo login en `/backoffice` cubre operaciones **y** inbox WhatsApp (pestaña «Soporte WA»).  
-`/support` sin `?embedded=1` redirige a `/backoffice#soporte`. El acceso standalone con `SUPPORT_BOOTSTRAP_SECRET` queda legacy.
+Un solo login en `/backoffice` cubre **operaciones**, **inbox WhatsApp** y reemplaza los portales legacy.
+
+| Redirect legacy | Destino |
+|-----------------|---------|
+| `/admin` | `/backoffice` |
+| `/static/admin.html` | `/backoffice` |
+| `/support` (sin `?embedded=1`) | `/backoffice#soporte` |
 
 ### Backoffice
 
@@ -156,14 +157,9 @@ Un solo login en `/backoffice` cubre operaciones **y** inbox WhatsApp (pestaña 
 | Pedidos / preventa | — | `GET /api/backoffice/pedidos`, `POST .../preventa/{id}/aceptar` |
 | Bodegas / PIN | — | `GET|PATCH /api/backoffice/bodega/{id}` |
 | Vendedores | — | `GET|POST /api/backoffice/vendedores` → genera `/v/{token}` |
+| Imports Excel | — | `POST /api/backoffice/import/*` |
 
-### Panel legacy
-
-| Pantalla | URL | API |
-|----------|-----|-----|
-| Admin HTML | `/static/admin.html` | `/api/distribuidor/admin/*` |
-
-Rutas admin en router distribuidor: `resumen`, `cobranzas`, `verificar-pago`, `preventas/import`, etc.
+**API legacy:** `/api/distribuidor/admin/*` sigue existiendo para scripts con `CIRCA_ADMIN_TOKEN`; la UI ya no la expone.
 
 ---
 

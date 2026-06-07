@@ -292,7 +292,7 @@ Usar valores consistentes en **todos** los frames:
 | Página | Journey | Referencia |
 |--------|---------|------------|
 | `07 Distribuidor` | DIS-01 … DIS-05 | `static/distribuidor.html` |
-| `08 Admin` | ADM-* | `static/admin.html`, backoffice |
+| `08 Admin` | ADM-* | `static/backoffice.html` |
 | `09 Soporte` | SUP-* | `static/support_inbox.html` |
 | Component library publicada | Todos | Extraer de `02 Conversacion completa` |
 | Ramas PAY-04, PAY-05, PAY-06 | Pago | [03-pago-whatsapp.md](./03-pago-whatsapp.md) |

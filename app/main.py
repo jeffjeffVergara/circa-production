@@ -1789,6 +1789,14 @@ async def support_inbox_page(embedded: str | None = None):
     return RedirectResponse(url="/backoffice#soporte", status_code=302)
 
 
+@app.get("/admin")
+async def admin_legacy_redirect():
+    """Panel admin legacy → backoffice unificado."""
+    from fastapi.responses import RedirectResponse
+
+    return RedirectResponse(url="/backoffice", status_code=302)
+
+
 @app.get("/backoffice")
 async def backoffice_page():
     """Backoffice unificado Circa — operaciones y soporte."""

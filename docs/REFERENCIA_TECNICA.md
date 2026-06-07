@@ -478,7 +478,7 @@ Durante esta sesión cometí varios errores de asunción de nombres. Evitar:
 - `app/contracts.py` — contratos PDF (⚠️ **verificar si existe** — puede estar en otro lado)
 - `static/catalogo_v2.html` — catálogo web
 - `static/distribuidor.html` — portal distribuidor
-- `static/admin.html` — panel admin
+- `static/backoffice.html` — backoffice unificado (ops + soporte WA); `static/admin.html` redirige aquí
 
 ### Archivados (NO tocar, solo referencia histórica)
 - `.archive/main_BACKUP.py, main_BACKUP_DEMO.py`
@@ -542,7 +542,7 @@ Para compartir accesos con Jeff: invitarlo a Railway (Settings → Members → D
 ## 16. URLS IMPORTANTES
 
 - **Producción:** https://circa-production-c517.up.railway.app
-- **Admin panel:** https://circa-production-c517.up.railway.app/static/admin.html
+- **Backoffice (ops + soporte):** https://circa-production-c517.up.railway.app/backoffice
 - **Portal distribuidor:** https://circa-production-c517.up.railway.app/static/distribuidor.html
 - **Catálogo (por bodega):** https://circa-production-c517.up.railway.app/catalogo-v2?b={bodega_id}
 - **Supabase dashboard:** https://supabase.com/dashboard/project/rhxqcoijzgqlecpdfhde
