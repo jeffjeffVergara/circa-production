@@ -1780,9 +1780,13 @@ async def flyer_page():
 
 
 @app.get("/support")
-async def support_inbox_page():
-    """Consola web interna de soporte humano (WhatsApp shared inbox)."""
-    return FileResponse("static/support_inbox.html")
+async def support_inbox_page(embedded: str | None = None):
+    """Inbox embebido en backoffice; acceso directo redirige al portal unificado."""
+    if embedded == "1":
+        return FileResponse("static/support_inbox.html")
+    from fastapi.responses import RedirectResponse
+
+    return RedirectResponse(url="/backoffice#soporte", status_code=302)
 
 
 @app.get("/backoffice")

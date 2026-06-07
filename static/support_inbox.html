@@ -84,15 +84,17 @@ a{color:var(--accent)}
   .row{flex-direction:column}
   .sidebar{width:100%;max-height:42vh;border-right:none;border-bottom:1px solid var(--brd)}
 }
+body.embedded .login{display:none}
+body.embedded #btnLogout{display:none}
 </style>
 </head>
 <body>
 
 <section class="login" id="login">
   <h1>Soporte Circa</h1>
-  <p>Usa la palabra configurada en el servidor como <code>SUPPORT_BOOTSTRAP_SECRET</code> (Bearer). Solo se guarda en este navegador.</p>
-  <label for="tok">Palabra de acceso</label>
-  <input id="tok" type="password" autocomplete="off" placeholder="SUPPORT_BOOTSTRAP_SECRET"/>
+  <p>El inbox de WhatsApp vive en el <a href="/backoffice#soporte">backoffice unificado</a>. Redirigiendo…</p>
+  <label for="tok">Palabra de acceso (legacy)</label>
+  <input id="tok" type="password" autocomplete="off" placeholder="Token de agente"/>
   <button type="button" id="btnLogin">Entrar</button>
   <p class="err" id="loginErr"></p>
 </section>
@@ -182,7 +184,13 @@ a{color:var(--accent)}
 
 <script>
 (function(){
-  var LS='circa_support_token_v1';
+  var embedded = new URLSearchParams(location.search).get('embedded') === '1';
+  if (embedded) document.body.classList.add('embedded');
+  if (!embedded && !new URLSearchParams(location.search).has('legacy')) {
+    location.replace('/backoffice#soporte');
+  }
+
+  var LS='circa_bo_token';
   var me=null;
   var agents=[];
   var conversations=[];
@@ -202,7 +210,12 @@ a{color:var(--accent)}
     clearTimeout(toast._x);
     toast._x=setTimeout(function(){t.classList.remove('show');},2800);
   }
-  function token(){return localStorage.getItem(LS)||'';}
+  function token(){
+    return localStorage.getItem(LS)
+      || localStorage.getItem('circa_support_token')
+      || localStorage.getItem('circa_support_token_v1')
+      || '';
+  }
   function headers(withJson){
     var h={};
     var tk=token();
@@ -497,13 +510,25 @@ a{color:var(--accent)}
   }
 
   wire();
-  if(token()){
+  if (embedded) {
+    var bo = localStorage.getItem('circa_bo_token');
+    if (bo) {
+      loadMe().then(function(){
+        showApp();
+        return Promise.all([loadMetrics(),loadConversations()]);
+      }).then(function(){connectWs();}).catch(function(){
+        toast('Sesión expirada — recarga el backoffice');
+      });
+    } else {
+      toast('Sin sesión — abre el backoffice');
+    }
+  } else if(token()){
     document.getElementById('tok').value='••••••••';
     loadMe().then(function(){
       showApp();
       return Promise.all([loadMetrics(),loadConversations()]);
     }).then(function(){connectWs();}).catch(function(){showLogin();});
-  }else showLogin();
+  } else showLogin();
 })();
 </script>
 </body>

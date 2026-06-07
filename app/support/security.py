@@ -104,29 +104,52 @@ def write_audit_log(
         logger.exception("support audit insert failed")
 
 
-def resolve_support_agent_from_token(raw_token: str) -> dict[str, Any]:
-    """
-    1) Si ``SUPPORT_BOOTSTRAP_SECRET`` está definido y el Bearer es exactamente esa palabra,
-       se autentica como el agente consola en BD (UUID ``SUPPORT_CONSOLE_AGENT_ID``).
-    2) Si no, validación legacy por token por agente (SHA-256 + bcrypt).
-    """
+def _load_console_agent() -> dict[str, Any]:
     from app.services import db
 
+    cid = os.getenv("SUPPORT_CONSOLE_AGENT_ID", DEFAULT_SUPPORT_CONSOLE_AGENT_ID).strip()
+    r = db.sb.table("support_agents").select("*").eq("id", cid).limit(1).execute()
+    if not r.data:
+        logger.error(
+            "Support console agent row missing for id=%s (run migration 20260509)",
+            cid,
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="Support console agent row missing; apply migration 20260509_support_console_agent.sql",
+        )
+    return r.data[0]
+
+
+def _try_backoffice_jwt(raw_token: str) -> dict[str, Any] | None:
+    """JWT del backoffice unificado → mismo agente consola que bootstrap secret."""
+    if not raw_token or "." not in raw_token:
+        return None
+    try:
+        from app.services.backoffice_auth import decode_token
+
+        decode_token(raw_token)
+        return _load_console_agent()
+    except HTTPException:
+        return None
+
+
+def resolve_support_agent_from_token(raw_token: str) -> dict[str, Any]:
+    """
+    1) JWT del backoffice Circa (``/api/backoffice/auth/login``).
+    2) Si ``SUPPORT_BOOTSTRAP_SECRET`` coincide, agente consola en BD.
+    3) Token legacy por agente (SHA-256 + bcrypt).
+    """
     phrase = raw_token.strip()
+    bo = _try_backoffice_jwt(phrase)
+    if bo:
+        return bo
+
     boot = _bootstrap_secret()
     if boot and _secret_phrase_matches(phrase, boot):
-        cid = os.getenv("SUPPORT_CONSOLE_AGENT_ID", DEFAULT_SUPPORT_CONSOLE_AGENT_ID).strip()
-        r = db.sb.table("support_agents").select("*").eq("id", cid).limit(1).execute()
-        if not r.data:
-            logger.error(
-                "SUPPORT_BOOTSTRAP_SECRET matched but support_agents.id=%s is missing (run migration 20260509)",
-                cid,
-            )
-            raise HTTPException(
-                status_code=503,
-                detail="Support console agent row missing; apply migration 20260509_support_console_agent.sql",
-            )
-        return r.data[0]
+        return _load_console_agent()
+
+    from app.services import db
 
     sha = token_sha256_hex(raw_token)
     r = (

@@ -475,11 +475,13 @@ function login(){
       USER_PASSWORD = pass;
       sessionStorage.setItem('circa_bo_token', AUTH_TOKEN);
       sessionStorage.setItem('circa_bo_email', USER_EMAIL);
+      localStorage.setItem('circa_bo_token', AUTH_TOKEN);
       document.getElementById('loginScreen').style.display='none';
       document.getElementById('app').style.display='block';
       document.getElementById('fechaHeader').textContent = new Date().toLocaleDateString('es-PE',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
       document.getElementById('userHeader').textContent = USER_EMAIL;
       refreshAll();
+      if(location.hash === '#soporte') showTab('soporte');
     })
     .catch(function(e){document.getElementById('loginError').textContent = e.message});
 }
@@ -490,6 +492,7 @@ function logout(){
   USER_PASSWORD = "";
   sessionStorage.removeItem('circa_bo_token');
   sessionStorage.removeItem('circa_bo_email');
+  localStorage.removeItem('circa_bo_token');
   location.reload();
 }
 
@@ -897,6 +900,7 @@ function notifyPinResult(msg, type){
   if(saved && savedEmail){
     AUTH_TOKEN = saved;
     USER_EMAIL = savedEmail;
+    localStorage.setItem('circa_bo_token', AUTH_TOKEN);
     document.getElementById('emailInput').value = savedEmail;
     fetch('/api/backoffice/auth/me', {headers: authHeaders()}).then(function(r){
       if(!r.ok) throw new Error('expired');
@@ -905,7 +909,8 @@ function notifyPinResult(msg, type){
       document.getElementById('fechaHeader').textContent = new Date().toLocaleDateString('es-PE',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
       document.getElementById('userHeader').textContent = USER_EMAIL;
       refreshAll();
-    }).catch(function(){ sessionStorage.clear(); });
+      if(location.hash === '#soporte') showTab('soporte');
+    }).catch(function(){ sessionStorage.clear(); localStorage.removeItem('circa_bo_token'); });
   }
 })();
 
@@ -1196,7 +1201,7 @@ function openBodegaDetail(id, ev){
       '<div class="pin-admin-actions" style="margin-bottom:16px">'+
         '<button type="button" class="btn btn-outline btn-small" onclick="openEditBodega()">✏️ Editar bodega</button>'+
         '<button type="button" class="btn btn-secondary btn-small" onclick="openResetSesion()">🔄 Reset sesión WA</button>'+
-        '<a class="btn btn-outline btn-small" href="/support" target="_blank" rel="noopener">💬 Inbox WA</a>'+
+        '<button type="button" class="btn btn-outline btn-small" onclick="showTab(\'soporte\')">💬 Inbox WA</button>'+
       '</div>'+
       timelineHtml + pedidosHtml + pinAdminHtml;
   }).catch(function(e){
@@ -1588,16 +1593,16 @@ function submitImportPedidos(){
 var soporteLoaded = false;
 function loadSoporteInbox(){
   if(soporteLoaded) return;
-  api('/api/backoffice/support-bridge').then(function(d){
-    soporteLoaded = true;
-    localStorage.setItem('circa_support_token', d.token);
-    document.getElementById('soportePlaceholder').style.display='none';
-    var fr = document.getElementById('soporteFrame');
-    fr.style.display='block';
-    fr.src = d.inbox_url || '/support';
-  }).catch(function(e){
-    document.getElementById('soportePlaceholder').textContent = 'Inbox no disponible: '+e.message+' — abre /support manualmente';
-  });
+  if(!AUTH_TOKEN){
+    document.getElementById('soportePlaceholder').textContent = 'Inicia sesión para ver el inbox';
+    return;
+  }
+  soporteLoaded = true;
+  localStorage.setItem('circa_bo_token', AUTH_TOKEN);
+  document.getElementById('soportePlaceholder').style.display='none';
+  var fr = document.getElementById('soporteFrame');
+  fr.style.display='block';
+  fr.src = '/support?embedded=1';
 }
 
 // Inicialización del toggle al cargar

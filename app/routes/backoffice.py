@@ -12,12 +12,14 @@ from typing import Any, Optional
 import httpx
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response
+from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 
 from app.routes import distribuidor as dist
 from app.services import db
 from app.services.backoffice_audit import log_action
 from app.services.backoffice_auth import (
+    _bearer,
     bootstrap_credentials,
     create_token,
     get_backoffice_user,
@@ -75,11 +77,18 @@ async def me(user: dict = Depends(get_backoffice_user)):
 
 
 @router.get("/support-bridge")
-async def support_bridge(user: dict = Depends(get_backoffice_user)):
-    secret = os.getenv("SUPPORT_BOOTSTRAP_SECRET", "").strip()
-    if not secret:
-        raise HTTPException(status_code=503, detail="Inbox de soporte no configurado")
-    return {"token": secret, "inbox_url": "/support", "user": user["email"]}
+async def support_bridge(
+    user: dict = Depends(get_backoffice_user),
+    creds: HTTPAuthorizationCredentials | None = Depends(_bearer),
+):
+    """Puente legacy: el inbox embebido usa el JWT del backoffice (misma sesión)."""
+    tok = creds.credentials if creds else None
+    return {
+        "token": tok,
+        "inbox_url": "/support?embedded=1",
+        "user": user["email"],
+        "auth_mode": "backoffice",
+    }
 
 
 @router.get("/resumen")

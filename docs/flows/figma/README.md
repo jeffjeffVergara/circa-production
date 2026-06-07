@@ -15,7 +15,7 @@ Documento **único de entrada** para diseñadores, agentes Figma MCP y stakehold
 |-----------|-------------------|------------|------------------|
 | **Wireframes chat WhatsApp** | Design file | [Wireframes Onboarding](https://www.figma.com/design/8uXIOxgppRe67aNbThSyv6) | Specs `0X-*-whatsapp.md` + YAML onboarding |
 | **Flowcharts de journey** | FigJam | [Circa - Bodeguero](https://www.figma.com/board/S3d80RJeYAIuuyGz9V9Qk0) | `docs/flows/0X-*.md` (funcional) |
-| **Arquitectura / contexto** | FigJam | [Overview Diagramas](https://www.figma.com/board/FNDF15XL6aElJkAv9d7iIs) | `arquitectura.md` |
+| **Arquitectura / contexto** | FigJam | [Overview Diagramas](https://www.figma.com/board/FNDF15XL6aElJkAv9d7iIs) | `arquitectura.md` · [URLs por actor](./DIAGRAMA-urls-por-actor.md) |
 | **Componentes reutilizables** | Design file (library) | Mismo design file o librería team | Convenciones §5 de este doc |
 | **Pantallas web** (catálogo, backoffice, distribuidor) | Design file | Por crear páginas `07+` | `static/*.html` + journey `06–08` |
 
@@ -107,6 +107,8 @@ flowchart LR
 | 4 | Contrato y clave | `reg_contrato`, `reg_pin` → `menu` |
 
 Detalle pantalla a pantalla: [`onboarding-screens.yaml`](./onboarding-screens.yaml) (machine-readable).
+
+**URLs por actor (bodeguero, vendedor, distribuidor, admin, soporte):** [`DIAGRAMA-urls-por-actor.md`](./DIAGRAMA-urls-por-actor.md) · FigJam en [Overview](https://www.figma.com/board/FNDF15XL6aElJkAv9d7iIs).
 
 ---
 
