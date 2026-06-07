@@ -10,7 +10,8 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from app.routes import distribuidor as dist
@@ -24,6 +25,7 @@ from app.services.backoffice_auth import (
     verify_reauth_password,
 )
 from app.services.distribuidor_routing import DIMAX_DISTRIBUIDOR_ID, ZOOM_DISTRIBUIDOR_ID
+from app.services import excel_import as xls
 
 logger = logging.getLogger("circa.backoffice")
 router = APIRouter(prefix="/api/backoffice", tags=["backoffice"])
@@ -585,3 +587,103 @@ async def assign_cartera(
 async def list_distribuidores(user: dict = Depends(get_backoffice_user)):
     rows = _sb_get("distribuidores", {"select": "id,nombre_comercial,ruc,estado", "limit": "50"})
     return {"distribuidores": rows}
+
+
+# ── Importación Excel ─────────────────────────────────────────────
+
+@router.get("/import/plantilla/bodegas")
+async def plantilla_bodegas(user: dict = Depends(get_backoffice_user)):
+    data = xls.build_template_xlsx(xls.BODEGAS_HEADERS, xls.BODEGAS_EJEMPLO)
+    return Response(
+        content=data,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="circa_plantilla_bodegas.xlsx"'},
+    )
+
+
+@router.get("/import/plantilla/pedidos")
+async def plantilla_pedidos(user: dict = Depends(get_backoffice_user)):
+    data = xls.build_template_xlsx(xls.PEDIDOS_HEADERS, xls.PEDIDOS_EJEMPLO)
+    return Response(
+        content=data,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="circa_plantilla_pedidos.xlsx"'},
+    )
+
+
+@router.post("/import/bodegas")
+async def import_bodegas_excel(
+    file: UploadFile = File(...),
+    password: str = Form(...),
+    comentario: str = Form(...),
+    respetar_modo: bool = Form(True),
+    user: dict = Depends(get_backoffice_user),
+):
+    verify_reauth_password(password)
+    if len(comentario.strip()) < 8:
+        raise HTTPException(status_code=400, detail="Comentario mínimo 8 caracteres")
+    if not file.filename or not file.filename.lower().endswith((".xlsx", ".xls")):
+        raise HTTPException(status_code=400, detail="Sube un archivo .xlsx")
+
+    content = await file.read()
+    if len(content) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Archivo demasiado grande (máx 5 MB)")
+
+    rows = xls.parse_xlsx(content)
+    if not rows:
+        raise HTTPException(status_code=400, detail="Sin filas de datos")
+
+    mode_test = None
+    if respetar_modo:
+        # El front puede enviar respetar_modo=false para forzar según columnas es_test
+        pass
+
+    result = xls.import_bodegas_rows(rows, user=user, comentario=comentario.strip(), mode_test=mode_test)
+    log_action(
+        user=user,
+        action="import_bodegas_excel",
+        entity_type="import",
+        entity_id=file.filename,
+        comment=comentario.strip(),
+        after={"creadas": result["creadas"], "errores": len(result["errores"])},
+    )
+    return result
+
+
+@router.post("/import/pedidos")
+async def import_pedidos_excel(
+    file: UploadFile = File(...),
+    password: str = Form(...),
+    comentario: str = Form(...),
+    crear_bodega_si_falta: bool = Form(False),
+    user: dict = Depends(get_backoffice_user),
+):
+    verify_reauth_password(password)
+    if len(comentario.strip()) < 8:
+        raise HTTPException(status_code=400, detail="Comentario mínimo 8 caracteres")
+    if not file.filename or not file.filename.lower().endswith((".xlsx", ".xls")):
+        raise HTTPException(status_code=400, detail="Sube un archivo .xlsx")
+
+    content = await file.read()
+    if len(content) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Archivo demasiado grande (máx 5 MB)")
+
+    rows = xls.parse_xlsx(content)
+    if not rows:
+        raise HTTPException(status_code=400, detail="Sin filas de datos")
+
+    result = xls.import_pedidos_rows(
+        rows,
+        user=user,
+        comentario=comentario.strip(),
+        crear_bodega_si_falta=crear_bodega_si_falta,
+    )
+    log_action(
+        user=user,
+        action="import_pedidos_excel",
+        entity_type="import",
+        entity_id=file.filename,
+        comment=comentario.strip(),
+        after={"creados": result["creados"], "errores": len(result["errores"])},
+    )
+    return result

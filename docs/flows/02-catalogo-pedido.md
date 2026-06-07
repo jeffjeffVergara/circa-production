@@ -2,7 +2,7 @@
 
 | | |
 |--|--|
-| **Figma** | *[pendiente — página «02 Catálogo»]* |
+| **Figma** | [Wireframes — página 03 Catalogo](https://www.figma.com/design/8uXIOxgppRe67aNbThSyv6) · [Spec WhatsApp](./figma/02-catalogo-whatsapp.md) |
 | **Escenarios** | CAT-01 … CAT-09 |
 | **Código** | `static/catalogo_v2.html`, `POST /api/catalogo/submit-cart`, `app/state_machine.py` (menú, REPETIR) |
 | **URL** | `/catalogo-v2?b=…&t=venta|preventa` — `fresh=1` pedido nuevo, `repeat=1` REPETIR, `edit=1` EDITAR |

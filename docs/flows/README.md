@@ -12,9 +12,10 @@
 | Este `README.md` | Matriz de todos los escenarios (filtrar por journey / grupo / estado) |
 | [`scenarios.yaml`](./scenarios.yaml) | Misma matriz en YAML (IDs estables, scripts/checklists) |
 | `01-…` → `09-…` | Detalle por journey: diagrama, código, checklist P0 |
+| [`figma/`](./figma/README.md) | **Guía maestra Figma:** wireframes, diagramas, componentes, journeys funcional + técnico, file keys MCP |
 
-**Wireframes visuales (Figma):** crear proyecto *Circa — WhatsApp* y pegar el enlace en cada journey bajo *Figma*.  
-**Regla de PR:** si cambia UX o un camino de usuario, actualizar la fila del escenario y el `.md` del journey.
+**Wireframes visuales (Figma):** ver [`figma/README.md`](./figma/README.md) — onboarding wireframeado; catálogo/pago/preventa/postventa con spec listo para diseñar.  
+**Regla de PR:** si cambia UX o un camino de usuario, actualizar la fila del escenario, el `.md` del journey y el spec en `figma/` si aplica.
 
 ### Leyenda de estado
 

@@ -2,7 +2,7 @@
 
 | | |
 |--|--|
-| **Figma** | *[pendiente — página «05 Postventa»]* |
+| **Figma** | [Wireframes — página 06 Postventa](https://www.figma.com/design/8uXIOxgppRe67aNbThSyv6) · [Spec WhatsApp](./figma/05-postventa-whatsapp.md) |
 | **Escenarios** | POS-01 … POS-06 |
 | **Código** | `app/state_machine.py` (menú), `app/services/cobranza.py`, `app/routes/distribuidor.py` admin |
 

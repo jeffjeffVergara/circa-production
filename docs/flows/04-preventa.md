@@ -2,7 +2,7 @@
 
 | | |
 |--|--|
-| **Figma** | *[pendiente — página «04 Preventa»]* |
+| **Figma** | [Wireframes — página 05 Preventa](https://www.figma.com/design/8uXIOxgppRe67aNbThSyv6) · [Spec WhatsApp](./figma/04-preventa-whatsapp.md) |
 | **Escenarios** | PRV-01 … PRV-06 |
 | **Código** | `tipo_operacion=preventa`, `db.get_preventa_pendiente`, `app/routes/distribuidor.py` admin |
 

@@ -2,7 +2,7 @@
 
 | | |
 |--|--|
-| **Figma** | *[pendiente — página «01 Onboarding»]* |
+| **Figma** | [Wireframes Onboarding](https://www.figma.com/design/8uXIOxgppRe67aNbThSyv6) · [Spec WhatsApp](./figma/01-onboarding-whatsapp.md) · [YAML pantallas](./figma/onboarding-screens.yaml) |
 | **Escenarios** | ONB-01 … ONB-11 |
 | **Código** | `app/state_machine.py` (`welcome`, `reg_*`), `app/flows/onboarding.py`, `app/flows/flow_onboarding.json` |
 | **Endpoint Flow** | `POST /flows/onboarding` |
@@ -28,15 +28,18 @@ stateDiagram-v2
 
 Detalle pantallas Flow: ver diagrama en [`arquitectura.md` §4.7](../../arquitectura.md).
 
-## Wireframes (placeholder)
+## Wireframes WhatsApp
+
+Conversación completa (16 pantallas happy path + 6 errores): ver [spec Figma](./figma/01-onboarding-whatsapp.md).
 
 | Pantalla | ID escenario | Notas |
 |----------|--------------|-------|
-| Bienvenida + pedir RUC | ONB-01, ONB-02 | Texto o Flow `RUC_INPUT` |
-| Verificación DNI foto | ONB-04 | Chat imagen → Vision |
-| Oferta línea S/XXX | ONB-06 | Botones aceptar |
-| Contrato PDF + ACEPTO | ONB-07 | Botón lista `ACEPTO` |
+| Bienvenida + pedir RUC | ONB-01, ONB-02 | `button_reply` + texto RUC |
+| Verificación DNI foto | ONB-04 | Imagen DNI → Vision |
+| Oferta línea S/XXX | ONB-06 | Botones Continuar / No gracias |
+| Contrato + ACEPTO | ONB-07 | `button_reply` |
 | Crear PIN (Flow) | ONB-08 | `/flows/pin` mode create |
+| Menú activo | ONB-09 | `list_reply` |
 
 ## Checklist por escenario
 

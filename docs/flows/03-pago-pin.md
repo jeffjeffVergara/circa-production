@@ -2,7 +2,7 @@
 
 | | |
 |--|--|
-| **Figma** | *[pendiente — página «03 Pago y PIN»]* |
+| **Figma** | [Wireframes — página 04 Pago](https://www.figma.com/design/8uXIOxgppRe67aNbThSyv6) · [Spec WhatsApp](./figma/03-pago-whatsapp.md) |
 | **Escenarios** | PAY-01 … PAY-09 |
 | **Código** | `app/flows/catalogo.py` (`_send_payment_options`), `app/main.py` (CONTADO/FINFIJO/PAY*), `app/flows/pin_flow.py` |
 

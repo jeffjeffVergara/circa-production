@@ -326,6 +326,10 @@ tr:hover td{background:var(--card-hover)}
 <div id="view-pedidos" style="display:none">
 <div class="section">
 <h2>📋 Todos los pedidos</h2>
+<div class="filters" style="margin-bottom:12px">
+<button class="btn btn-outline btn-small" onclick="downloadPlantillaPedidos()">📥 Plantilla Excel</button>
+<button class="btn btn-green btn-small" onclick="openImportPedidos()">📤 Importar Excel</button>
+</div>
 <div class="filters">
 <input type="text" id="pedFiltroBodega" placeholder="Buscar bodega..." onkeyup="loadPedidos()">
 <input type="text" id="pedFiltroDist" placeholder="Distribuidor..." onkeyup="loadPedidos()">
@@ -361,7 +365,11 @@ tr:hover td{background:var(--card-hover)}
 <div id="view-bodegas" style="display:none">
 <div class="section">
 <h2>🏪 Bodegas <span style="font-size:12px;color:var(--muted);font-weight:400" id="bodegasInfoLine">cargando...</span>
-<button class="btn btn-green btn-small" style="float:right;margin-top:-4px" onclick="openCreateBodega()">+ Nueva bodega</button>
+<span style="float:right;display:flex;gap:8px;margin-top:-4px">
+<button class="btn btn-outline btn-small" onclick="downloadPlantillaBodegas()">📥 Plantilla</button>
+<button class="btn btn-outline btn-small" onclick="openImportBodegas()">📤 Importar Excel</button>
+<button class="btn btn-green btn-small" onclick="openCreateBodega()">+ Nueva bodega</button>
+</span>
 </h2>
 <div class="search-bar">
 <input type="search" id="bodegasSearch" name="circa-bodegas-filter" placeholder="Buscar razón social, dueño, DNI, RUC o teléfono..." autocomplete="off" autocorrect="off" spellcheck="false" data-lpignore="true" data-form-type="other" oninput="onBodegasSearchInput()">
@@ -1341,7 +1349,7 @@ function setPinAdminBusy(on){
   });
 }
 
-// ── Backoffice: vendedores, bodegas, soporte ──
+// ── Backoffice: vendedores, bodegas, soporte, excel ──
 
 function loadVendedores(){
   return api('/api/backoffice/vendedores').then(function(d){
@@ -1489,6 +1497,92 @@ function submitResetSesion(){
     showToast('Sesión reseteada a '+x.d.fase,'success');
     openBodegaDetail(bodegaModalId);
   }).catch(function(e){ showToast(e.message,'error'); });
+}
+
+function downloadBlob(path, filename){
+  fetch(path, {headers: authHeaders()}).then(function(r){
+    if(!r.ok) throw new Error('No se pudo descargar plantilla');
+    return r.blob();
+  }).then(function(blob){
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    a.click();
+    showToast('Plantilla descargada','success');
+  }).catch(function(e){ showToast(e.message,'error'); });
+}
+
+function downloadPlantillaBodegas(){
+  downloadBlob('/api/backoffice/import/plantilla/bodegas', 'circa_plantilla_bodegas.xlsx');
+}
+
+function downloadPlantillaPedidos(){
+  downloadBlob('/api/backoffice/import/plantilla/pedidos', 'circa_plantilla_pedidos.xlsx');
+}
+
+function openImportBodegas(){
+  document.getElementById('modalContainer').innerHTML =
+    '<div class="modal-overlay open" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:520px"><h3>Importar bodegas desde Excel</h3>'+
+    '<p style="color:var(--muted);font-size:13px;margin-bottom:12px">Usa la plantilla (.xlsx). RUC duplicados se omiten.</p>'+
+    '<div class="modal-field"><label>Archivo .xlsx</label><input type="file" id="impBodFile" accept=".xlsx,.xls"></div>'+
+    '<div class="modal-field"><label>Comentario (mín. 8 caracteres)</label><input id="impBodComentario" class="input"></div>'+
+    '<div class="modal-field"><label>Contraseña</label><input type="password" id="impBodPass" class="input"></div>'+
+    '<div class="modal-actions"><button class="btn btn-outline" onclick="closeModal()">Cancelar</button>'+
+    '<button class="btn btn-green" onclick="submitImportBodegas()">Importar</button></div></div></div>';
+}
+
+function openImportPedidos(){
+  document.getElementById('modalContainer').innerHTML =
+    '<div class="modal-overlay open" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:520px"><h3>Importar pedidos desde Excel</h3>'+
+    '<p style="color:var(--muted);font-size:13px;margin-bottom:12px">Mismo <strong>ref_pedido</strong> = un pedido con varias filas (ítems).</p>'+
+    '<div class="modal-field"><label>Archivo .xlsx</label><input type="file" id="impPedFile" accept=".xlsx,.xls"></div>'+
+    '<div class="modal-field"><label>Comentario (mín. 8 caracteres)</label><input id="impPedComentario" class="input"></div>'+
+    '<div class="modal-field"><label>Contraseña</label><input type="password" id="impPedPass" class="input"></div>'+
+    '<label style="display:block;margin:8px 0;font-size:12px;color:var(--muted)"><input type="checkbox" id="impPedCrearBod"> Crear bodega si no existe (requiere teléfono en Excel)</label>'+
+    '<div class="modal-actions"><button class="btn btn-outline" onclick="closeModal()">Cancelar</button>'+
+    '<button class="btn btn-green" onclick="submitImportPedidos()">Importar</button></div></div></div>';
+}
+
+function submitImportBodegas(){
+  var f = document.getElementById('impBodFile').files[0];
+  if(!f){ showToast('Selecciona un archivo','error'); return; }
+  var fd = new FormData();
+  fd.append('file', f);
+  fd.append('comentario', document.getElementById('impBodComentario').value.trim());
+  fd.append('password', document.getElementById('impBodPass').value || USER_PASSWORD);
+  fd.append('respetar_modo', 'true');
+  showPanelLoader('Importando bodegas…', true);
+  fetch('/api/backoffice/import/bodegas', {method:'POST', headers: authHeaders(), body: fd})
+    .then(function(r){ return r.json().then(function(d){ return {ok:r.ok,d:d}; }); })
+    .then(function(x){
+      if(!x.ok) throw new Error(x.d.detail || JSON.stringify(x.d.errores||x.d));
+      closeModal();
+      var msg = 'Creadas: '+(x.d.creadas||0)+', omitidas: '+(x.d.omitidas||0)+', errores: '+(x.d.errores||[]).length;
+      showToast(msg,'success');
+      loadBodegas();
+    }).catch(function(e){ showToast(String(e.message).slice(0,200),'error'); })
+    .finally(function(){ hidePanelLoader(); });
+}
+
+function submitImportPedidos(){
+  var f = document.getElementById('impPedFile').files[0];
+  if(!f){ showToast('Selecciona un archivo','error'); return; }
+  var fd = new FormData();
+  fd.append('file', f);
+  fd.append('comentario', document.getElementById('impPedComentario').value.trim());
+  fd.append('password', document.getElementById('impPedPass').value || USER_PASSWORD);
+  fd.append('crear_bodega_si_falta', document.getElementById('impPedCrearBod').checked ? 'true' : 'false');
+  showPanelLoader('Importando pedidos…', true);
+  fetch('/api/backoffice/import/pedidos', {method:'POST', headers: authHeaders(), body: fd})
+    .then(function(r){ return r.json().then(function(d){ return {ok:r.ok,d:d}; }); })
+    .then(function(x){
+      if(!x.ok && !(x.d && x.d.creados>0)) throw new Error(x.d.detail || 'Importación fallida');
+      closeModal();
+      var msg = 'Pedidos creados: '+(x.d.creados||0)+', errores: '+(x.d.errores||[]).length;
+      showToast(msg,'success');
+      loadPedidos();
+    }).catch(function(e){ showToast(String(e.message).slice(0,200),'error'); })
+    .finally(function(){ hidePanelLoader(); });
 }
 
 var soporteLoaded = false;

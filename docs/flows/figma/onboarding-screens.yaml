@@ -1,0 +1,455 @@
+# Especificación machine-readable — onboarding WhatsApp bodeguero
+# Usar con Figma MCP, wireframes o tests. Copy alineado a meta_client.py + state_machine.py
+# Variables: {nombre} {distribuidor} {linea} {ruc} {razon_social} {direccion} {rep_legal} {dni_nombre}
+
+journey: onboarding
+actor: bodeguero
+channel: meta_whatsapp
+figma_file: https://www.figma.com/design/8uXIOxgppRe67aNbThSyv6
+figma_page: "02 Conversacion completa"
+
+progress_phases:
+  - id: 1
+    label: Verificar negocio
+    fases_bd: [welcome, reg_ruc]
+  - id: 2
+    label: Identidad
+    fases_bd: [reg_dni, reg_biometria]
+  - id: 3
+    label: Activacion
+    fases_bd: [reg_linea_acepta]
+  - id: 4
+    label: Contrato y clave
+    fases_bd: [reg_contrato, reg_pin, menu]
+
+screens:
+  - screen_id: "01"
+    scenario_id: ONB-01
+    figma_frame: "01 Bienvenida"
+    fase_bd: welcome
+    progress_step: 0
+    circa:
+      interaction_type: button_reply
+      header: Circa
+      body: |
+        Hola, {nombre}
+
+        Con Circa + {distribuidor} puedes:
+
+        Pedir por WhatsApp
+        Ver promos del mes
+        Repetir pedidos rapido
+        Y si te falta caja, pagar despues
+
+        Todo desde este chat.
+
+        ¿Activamos tu cuenta?
+      buttons:
+        - id: SI
+          title: "Activar Circa"
+      codigo: meta_client.send_welcome
+    bodeguero:
+      action: tap_button
+      input: SI
+      aliases: [SI, ACTIVAR, "1", HOLA]
+    next: "02"
+
+  - screen_id: "02"
+    scenario_id: ONB-02
+    figma_frame: "02 Pedir RUC"
+    fase_bd: reg_ruc
+    progress_step: 1
+    circa:
+      interaction_type: text
+      body: |
+        Para activar, necesito verificar tu negocio.
+
+        Escribe tu RUC (11 digitos):
+      codigo: meta_client.send_ruc_request
+    bodeguero:
+      action: type_text
+      input: "{ruc}"
+      example: "20123456789"
+    next: "03"
+
+  - screen_id: "03"
+    scenario_id: ONB-02
+    figma_frame: "03 Validando RUC"
+    fase_bd: reg_ruc
+    progress_step: 1
+    circa:
+      interaction_type: loading
+      body: Verificando RUC en SUNAT...
+    bodeguero:
+      action: wait
+    next: "04"
+
+  - screen_id: "04"
+    scenario_id: ONB-02
+    figma_frame: "04 RUC verificado"
+    fase_bd: reg_ruc
+    progress_step: 1
+    circa:
+      interaction_type: button_reply
+      body: |
+        RUC verificado en SUNAT:
+
+        {razon_social}
+        RUC: {ruc}
+        {direccion}
+        Rep. Legal: {rep_legal}
+
+        La direccion fiscal sera tu direccion de despacho.
+
+        ¿Los datos son correctos?
+      buttons:
+        - id: SI
+          title: "Si, correcto"
+        - id: "NO"
+          title: "No, corregir"
+      codigo: meta_client.send_ruc_verified
+    bodeguero:
+      action: tap_button
+      input: SI
+    next:
+      SI: "05"
+      "NO": "02"
+
+  - screen_id: "05"
+    scenario_id: ONB-04
+    figma_frame: "05 Pedir DNI"
+    fase_bd: reg_dni
+    progress_step: 2
+    circa:
+      interaction_type: text
+      body: |
+        Paso 2 de 4: Verificar identidad
+
+        Este paso debe completarlo el representante legal personalmente. Se le pedira:
+
+        1. Escribir su numero de DNI
+        2. Enviar foto de su DNI fisico
+        3. Tomarse una selfie en vivo
+
+        Empecemos. Escribe el DNI del representante legal (8 digitos):
+      codigo: meta_client.send_dni_request
+    bodeguero:
+      action: type_text
+      input: "{dni}"
+      example: "45678901"
+    next: "06"
+
+  - screen_id: "06"
+    scenario_id: ONB-04
+    figma_frame: "06 Validando DNI"
+    fase_bd: reg_dni
+    progress_step: 2
+    circa:
+      interaction_type: loading
+      body: Consultando RENIEC...
+    bodeguero:
+      action: wait
+    next: "07"
+
+  - screen_id: "07"
+    scenario_id: ONB-04
+    figma_frame: "07 DNI OK + foto"
+    fase_bd: reg_dni
+    progress_step: 2
+    circa:
+      - interaction_type: text
+        body: |
+          Listo, {dni_nombre}. Identidad verificada.
+
+          Ahora enviame una foto de tu DNI fisico para confirmar que lo tienes contigo.
+        success: true
+      - interaction_type: text
+        body: |
+          Envia una foto del anverso de tu DNI fisico para verificar que lo tienes en tu poder.
+
+          Tip: enviala como Vista unica para mayor seguridad.
+    bodeguero:
+      action: send_image
+      input: dni_photo
+    next: "08"
+
+  - screen_id: "08"
+    scenario_id: ONB-04
+    figma_frame: "08 Verificando foto"
+    fase_bd: reg_dni
+    progress_step: 2
+    circa:
+      interaction_type: loading
+      body: Verificando documento...
+    bodeguero:
+      action: wait
+    next: "09"
+
+  - screen_id: "09"
+    scenario_id: ONB-05
+    figma_frame: "09 Doc OK + selfie"
+    fase_bd: reg_biometria
+    progress_step: 2
+    circa:
+      - interaction_type: text
+        body: |
+          Documento verificado
+          DNI {dni} — {dni_nombre}
+
+          Por tu seguridad, ya puedes eliminar la foto de este chat.
+        success: true
+      - interaction_type: text
+        body: |
+          {dni_nombre}, ahora tomate una selfie rapida.
+
+          Es solo para confirmar que eres tu y proteger tu cuenta Circa.
+        codigo: meta_client.send_biometria_request
+    bodeguero:
+      action: send_image
+      input: selfie
+    next: "10"
+
+  - screen_id: "10"
+    scenario_id: ONB-05
+    figma_frame: "10 Verificando selfie"
+    fase_bd: reg_biometria
+    progress_step: 2
+    circa:
+      interaction_type: loading
+      body: Verificando identidad...
+    bodeguero:
+      action: wait
+    next: "11"
+
+  - screen_id: "11"
+    scenario_id: ONB-06
+    figma_frame: "11 Oferta linea"
+    fase_bd: reg_linea_acepta
+    progress_step: 3
+    circa:
+      interaction_type: button_reply
+      body: |
+        Listo, {dni_nombre}. Verificacion completa.
+
+        Tu cuenta Circa con {distribuidor} incluye:
+
+        Pedir por WhatsApp
+        Promos del mes al toque
+        Comprar hoy y pagar despues si te falta caja (hasta S/{linea})
+
+        Sin papeleos. Todo desde este chat.
+
+        ¿Continuamos?
+      buttons:
+        - id: ACEPTO_LINEA
+          title: Continuar
+        - id: NO_GRACIAS
+          title: "No, gracias"
+      codigo: meta_client.send_linea_oferta
+    bodeguero:
+      action: tap_button
+      input: ACEPTO_LINEA
+    next:
+      ACEPTO_LINEA: "12"
+      NO_GRACIAS: end_rejected
+
+  - screen_id: "12"
+    scenario_id: ONB-07
+    figma_frame: "12 Terminos"
+    fase_bd: reg_contrato
+    progress_step: 4
+    circa:
+      interaction_type: button_reply
+      body: |
+        Terminos de uso Circa
+
+        Resumen rapido:
+
+        Puedes comprar hoy y pagar despues
+        Tu eliges cuando usarlo
+        No hay costo de activacion
+        Todo se maneja por WhatsApp
+        Si te atrasas, se pausa la opcion de pago despues
+      footer: "Ver detalle completo: circa.pe/terminos"
+      buttons:
+        - id: ACEPTO
+          title: Acepto
+      codigo: meta_client.send_contrato
+    bodeguero:
+      action: tap_button
+      input: ACEPTO
+    next: "13"
+
+  - screen_id: "13"
+    scenario_id: ONB-08
+    figma_frame: "13 Crear PIN Flow"
+    fase_bd: reg_pin
+    progress_step: 4
+    circa:
+      interaction_type: flow
+      body: Crea tu clave Circa de 4 digitos. La necesitaras para confirmar cada pedido financiado.
+      flow_cta: Crear clave
+      flow_screen: PIN_CREATE
+      codigo: meta_client.send_pin_request
+    bodeguero:
+      action: open_flow
+      input: pin_create
+    next: "14"
+
+  - screen_id: "14"
+    scenario_id: ONB-08
+    figma_frame: "14 Activando cuenta"
+    fase_bd: reg_pin
+    progress_step: 4
+    circa:
+      - interaction_type: system
+        body: Clave creada correctamente
+      - interaction_type: loading
+        body: Activando tu cuenta Circa...
+    bodeguero:
+      action: wait
+    next: "15"
+
+  - screen_id: "15"
+    scenario_id: ONB-09
+    figma_frame: "15 Cuenta activa"
+    fase_bd: menu
+    progress_step: 4
+    circa:
+      - interaction_type: text
+        body: |
+          Tu cuenta ya esta lista!
+
+          Con Circa puedes pedir hasta:
+          S/{linea} con pago despues
+
+          {distribuidor} seguira entregandote como siempre
+        success: true
+        codigo: meta_client.send_cuenta_activa
+      - interaction_type: text
+        body: |
+          Puedes:
+
+          Pedir normal
+          Pagar despues si lo necesitas
+          Aprovechar promos exclusivas
+    bodeguero:
+      action: read
+    next: "16"
+
+  - screen_id: "16"
+    scenario_id: ONB-09
+    figma_frame: "16 Menu principal"
+    fase_bd: menu
+    progress_step: 4
+    circa:
+      interaction_type: list_reply
+      body: "¿Que deseas hacer?"
+      button_text: Ver opciones
+      list_rows:
+        - id: VER_PROMOS
+          title: Ver promos
+        - id: PEDIDO
+          title: "Pedido / preventa"
+        - id: REPETIR
+          title: Repetir ultimo pedido
+        - id: LINEA
+          title: "Comprar y pagar luego"
+        - id: ESTADO
+          title: Ver mis pedidos
+        - id: OLVIDE_CLAVE
+          title: Olvide mi clave
+        - id: CONTACTO
+          title: Hablar con Circa
+      codigo: meta_client.send_menu
+    bodeguero:
+      action: tap_list
+      input: list_open
+    next: journey_catalogo
+
+error_screens:
+  - screen_id: E01
+    scenario_id: ONB-02
+    figma_frame: "E01 RUC invalido"
+    circa:
+      interaction_type: text
+      body: |
+        RUC invalido. Debe tener 11 digitos y empezar con 10 o 20.
+
+        Escribe tu RUC:
+      error: true
+    bodeguero:
+      action: type_text
+      input: "{ruc_valido}"
+    next: "03"
+
+  - screen_id: E02
+    scenario_id: ONB-03
+    figma_frame: "E02 RUC no preaprobado"
+    circa:
+      interaction_type: text
+      body: |
+        Este RUC no tiene una linea pre-aprobada en Circa.
+
+        Verifica el numero e intenta de nuevo.
+      error: true
+    bodeguero:
+      action: type_text
+      retry: true
+
+  - screen_id: E03
+    scenario_id: ONB-04
+    figma_frame: "E03 DNI no coincide"
+    circa:
+      interaction_type: text
+      body: |
+        Este DNI no coincide con el representante legal de tu negocio.
+
+        En SUNAT figura como representante: {rep_legal}.
+
+        Escribe el DNI correcto del representante legal:
+      error: true
+    bodeguero:
+      action: type_text
+
+  - screen_id: E04
+    scenario_id: ONB-04
+    figma_frame: "E04 Foto DNI rechazada"
+    circa:
+      interaction_type: text
+      body: |
+        No se pudo verificar el DNI.
+
+        Envia una foto clara del anverso de tu DNI fisico.
+      error: true
+    bodeguero:
+      action: send_image
+      retry: true
+
+  - screen_id: E05
+    scenario_id: ONB-05
+    figma_frame: "E05 Selfie rechazada"
+    circa:
+      interaction_type: text
+      body: |
+        La imagen no es una selfie valida.
+
+        Por favor, toma una selfie mirando a la camara.
+      error: true
+    bodeguero:
+      action: send_image
+      retry: true
+
+  - screen_id: E06
+    scenario_id: ONB-08
+    figma_frame: "E06 PIN debil"
+    circa:
+      interaction_type: text
+      body: |
+        No uses secuencias como 1234.
+
+        Intenta con otra clave de 4 digitos:
+      error: true
+    bodeguero:
+      action: type_text
+      input: pin

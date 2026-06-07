@@ -11,4 +11,4 @@ cryptography>=42.0.0
 redis>=5.0.0,<6
 # force rebuild v5 - added flows infrastructure
 reportlab
-openpyxl>=3.1
+openpyxl>=3.1.0
