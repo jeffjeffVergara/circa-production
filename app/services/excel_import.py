@@ -211,6 +211,105 @@ def normalizar_telefono_peru(tel: str) -> str:
     raise ValueError("Teléfono WhatsApp inválido (Perú)")
 
 
+def _normalize_bodega_row(row: dict[str, Any], *, mode_test: bool | None = None) -> dict[str, Any]:
+    ruc = _cell_str(row.get("ruc"))
+    razon = _cell_str(row.get("razon_social"))
+    tel_raw = _cell_str(row.get("telefono_whatsapp"))
+    if not ruc or not razon or not tel_raw:
+        raise ValueError("Faltan ruc, razon_social o telefono_whatsapp")
+
+    tel = normalizar_telefono_peru(tel_raw)
+    es_test = _cell_bool(row.get("es_test"), default=False)
+    if mode_test is True:
+        es_test = True
+    elif mode_test is False:
+        es_test = False
+
+    linea = _cell_float(row.get("linea_aprobada"), 500.0)
+    if linea <= 0:
+        linea = 500.0
+
+    return {
+        "fila": row.get("_fila", "?"),
+        "ruc": ruc,
+        "razon_social": razon,
+        "nombre_comercial": _cell_str(row.get("nombre_comercial")) or razon,
+        "telefono_whatsapp": tel,
+        "representante_legal": _cell_str(row.get("representante_legal")) or None,
+        "dni_representante": _cell_str(row.get("dni_representante")) or None,
+        "linea_aprobada": linea,
+        "estado": _cell_str(row.get("estado")) or "preaprobada",
+        "es_test": es_test,
+        "solo_dni_sin_ruc": _cell_bool(row.get("solo_dni_sin_ruc")),
+        "direccion_fiscal": _cell_str(row.get("direccion_fiscal")) or None,
+        "distrito": _cell_str(row.get("distrito")) or None,
+        "provincia": _cell_str(row.get("provincia")) or None,
+    }
+
+
+def preview_bodegas_rows(
+    rows: list[dict[str, Any]],
+    *,
+    mode_test: bool | None = None,
+) -> dict[str, Any]:
+    """Valida filas sin insertar — para tabla de previsualización."""
+    previews: list[dict[str, Any]] = []
+    listas = omitidas = errores = 0
+
+    for row in rows:
+        fila = row.get("_fila", "?")
+        status = "ok"
+        issues: list[str] = []
+        normalized: dict[str, Any] = {}
+
+        try:
+            normalized = _normalize_bodega_row(row, mode_test=mode_test)
+            if db.get_bodega_by_ruc(normalized["ruc"]):
+                status = "omitir"
+                issues.append("RUC ya existe")
+            elif db.get_bodega_by_phone(normalized["telefono_whatsapp"]):
+                status = "error"
+                issues.append("Teléfono ya registrado")
+        except Exception as e:
+            status = "error"
+            issues.append(str(e))
+            normalized = {
+                "fila": fila,
+                "ruc": _cell_str(row.get("ruc")),
+                "razon_social": _cell_str(row.get("razon_social")),
+                "nombre_comercial": _cell_str(row.get("nombre_comercial")),
+                "telefono_whatsapp": _cell_str(row.get("telefono_whatsapp")),
+                "linea_aprobada": _cell_float(row.get("linea_aprobada"), 500.0),
+                "estado": _cell_str(row.get("estado")) or "preaprobada",
+                "es_test": _cell_bool(row.get("es_test")),
+            }
+
+        if status == "ok":
+            listas += 1
+        elif status == "omitir":
+            omitidas += 1
+        else:
+            errores += 1
+
+        previews.append({
+            **normalized,
+            "status": status,
+            "issues": issues,
+            "can_import": status == "ok",
+        })
+
+    return {
+        "rows": previews,
+        "summary": {
+            "total": len(previews),
+            "listas": listas,
+            "omitidas": omitidas,
+            "errores": errores,
+            "can_import": listas > 0,
+        },
+    }
+
+
 def import_bodegas_rows(
     rows: list[dict[str, Any]],
     *,
@@ -225,46 +324,25 @@ def import_bodegas_rows(
     for row in rows:
         fila = row.get("_fila", "?")
         try:
-            ruc = _cell_str(row.get("ruc"))
-            razon = _cell_str(row.get("razon_social"))
-            tel_raw = _cell_str(row.get("telefono_whatsapp"))
-            if not ruc or not razon or not tel_raw:
-                raise ValueError("Faltan ruc, razon_social o telefono_whatsapp")
+            normalized = _normalize_bodega_row(row, mode_test=mode_test)
+            ruc = normalized["ruc"]
 
             if db.get_bodega_by_ruc(ruc):
                 omitidas += 1
                 errores.append({"fila": fila, "ruc": ruc, "error": "RUC ya existe (omitida)"})
                 continue
 
-            tel = normalizar_telefono_peru(tel_raw)
-            if db.get_bodega_by_phone(tel):
+            if db.get_bodega_by_phone(normalized["telefono_whatsapp"]):
                 raise ValueError("Teléfono ya registrado en otra bodega")
 
-            es_test = _cell_bool(row.get("es_test"), default=False)
-            if mode_test is True:
-                es_test = True
-            elif mode_test is False:
-                es_test = False
-
-            dist_id = ZOOM_DISTRIBUIDOR_ID if es_test else DIMAX_DISTRIBUIDOR_ID
+            dist_id = ZOOM_DISTRIBUIDOR_ID if normalized["es_test"] else DIMAX_DISTRIBUIDOR_ID
             payload = {
-                "ruc": ruc,
-                "razon_social": razon,
-                "nombre_comercial": _cell_str(row.get("nombre_comercial")) or razon,
-                "telefono_whatsapp": tel,
-                "representante_legal": _cell_str(row.get("representante_legal")) or None,
-                "dni_representante": _cell_str(row.get("dni_representante")) or None,
-                "linea_aprobada": _cell_float(row.get("linea_aprobada"), 0),
+                **normalized,
                 "linea_disponible": 0,
-                "estado": _cell_str(row.get("estado")) or "preaprobada",
                 "distribuidor_id": dist_id,
-                "es_test": es_test,
-                "solo_dni_sin_ruc": _cell_bool(row.get("solo_dni_sin_ruc")),
-                "direccion_fiscal": _cell_str(row.get("direccion_fiscal")) or None,
-                "distrito": _cell_str(row.get("distrito")) or None,
-                "provincia": _cell_str(row.get("provincia")) or None,
                 "en_piloto": True,
             }
+            payload.pop("fila", None)
             ins = db.sb.table("bodegas").insert(payload).execute()
             bodega_id = ins.data[0]["id"] if ins.data else None
             creadas += 1

@@ -123,6 +123,27 @@ async def bodega_detalle(bodega_id: str, user: dict = Depends(get_backoffice_use
     return await dist.admin_bodega_detalle(bodega_id, admin=True)
 
 
+@router.get("/bodega/{bodega_id}/perfil")
+async def bodega_perfil(bodega_id: str, user: dict = Depends(get_backoffice_user)):
+    """Perfil completo de bodega con features analíticas y score."""
+    from app.services.analytics import get_bodega_features
+    from app.services.bodega_score import compute_bodega_score
+
+    detalle = await dist.admin_bodega_detalle(bodega_id, admin=True)
+    features = get_bodega_features(bodega_id)
+    score = compute_bodega_score(
+        bodega=detalle.get("bodega") or {},
+        features=features,
+        stats=detalle.get("stats") or {},
+        pedidos=detalle.get("pedidos") or [],
+    )
+    return {
+        **detalle,
+        "features": features,
+        "score": score,
+    }
+
+
 @router.get("/pedidos")
 async def list_pedidos(
     bodega: Optional[str] = None,
@@ -200,6 +221,10 @@ class BodegaCreate(ReauthMixin):
     estado: str = "preaprobada"
     es_test: bool = False
     solo_dni_sin_ruc: bool = False
+
+
+class BodegasImportConfirm(ReauthMixin):
+    rows: list[dict[str, Any]] = Field(..., min_length=1)
 
 
 class DimaxBodegaConfirm(ReauthMixin):
@@ -676,6 +701,65 @@ async def plantilla_pedidos(user: dict = Depends(get_backoffice_user)):
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": 'attachment; filename="circa_plantilla_pedidos.xlsx"'},
     )
+
+
+@router.post("/import/bodegas/preview")
+async def preview_bodegas_excel(
+    file: UploadFile = File(...),
+    user: dict = Depends(get_backoffice_user),
+):
+    content = await _read_xlsx_upload(file)
+    rows = xls.parse_xlsx(content)
+    if not rows:
+        raise HTTPException(status_code=400, detail="Sin filas de datos")
+    preview = xls.preview_bodegas_rows(rows)
+    preview["filename"] = file.filename
+    return {"ok": True, "preview": preview}
+
+
+@router.post("/import/bodegas/confirm")
+async def confirm_bodegas_import(
+    body: BodegasImportConfirm,
+    user: dict = Depends(get_backoffice_user),
+):
+    verify_reauth_password(body.password)
+    import_rows: list[dict[str, Any]] = []
+    for r in body.rows:
+        if not (r.get("can_import") and r.get("status") == "ok"):
+            continue
+        import_rows.append({
+            "_fila": r.get("fila"),
+            "ruc": r.get("ruc"),
+            "razon_social": r.get("razon_social"),
+            "nombre_comercial": r.get("nombre_comercial"),
+            "telefono_whatsapp": r.get("telefono_whatsapp"),
+            "representante_legal": r.get("representante_legal"),
+            "dni_representante": r.get("dni_representante"),
+            "linea_aprobada": r.get("linea_aprobada"),
+            "estado": r.get("estado"),
+            "es_test": r.get("es_test"),
+            "solo_dni_sin_ruc": r.get("solo_dni_sin_ruc"),
+            "direccion_fiscal": r.get("direccion_fiscal"),
+            "distrito": r.get("distrito"),
+            "provincia": r.get("provincia"),
+        })
+    if not import_rows:
+        raise HTTPException(status_code=400, detail="No hay filas válidas para importar")
+
+    result = xls.import_bodegas_rows(
+        import_rows,
+        user=user,
+        comentario=body.comentario.strip(),
+    )
+    log_action(
+        user=user,
+        action="import_bodegas_excel",
+        entity_type="import",
+        entity_id="confirm",
+        comment=body.comentario.strip(),
+        after={"creadas": result["creadas"], "errores": len(result["errores"])},
+    )
+    return result
 
 
 @router.post("/import/bodegas")

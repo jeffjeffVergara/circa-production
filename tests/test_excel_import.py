@@ -1,5 +1,9 @@
 """Tests importación Excel backoffice."""
 import io
+import os
+
+os.environ.setdefault("SUPABASE_URL", "http://localhost")
+os.environ.setdefault("SUPABASE_SERVICE_KEY", "test-key")
 
 import pytest
 from openpyxl import Workbook
@@ -44,3 +48,30 @@ def test_cell_bool():
     assert xls._cell_bool("si") is True
     assert xls._cell_bool("0") is False
     assert xls._cell_bool(None, default=True) is True
+
+
+def test_preview_bodegas_rows_ok(monkeypatch):
+    monkeypatch.setattr(xls.db, "get_bodega_by_ruc", lambda _r: None)
+    monkeypatch.setattr(xls.db, "get_bodega_by_phone", lambda _t: None)
+    rows = [
+        {
+            "_fila": 2,
+            "ruc": "20123456789",
+            "razon_social": "Test SAC",
+            "telefono_whatsapp": "999888777",
+            "nombre_comercial": "Minimarket",
+        }
+    ]
+    preview = xls.preview_bodegas_rows(rows)
+    assert preview["summary"]["listas"] == 1
+    assert preview["rows"][0]["status"] == "ok"
+    assert preview["rows"][0]["telefono_whatsapp"] == "+51999888777"
+
+
+def test_preview_bodegas_rows_duplicate_ruc(monkeypatch):
+    monkeypatch.setattr(xls.db, "get_bodega_by_ruc", lambda _r: {"id": "x"})
+    monkeypatch.setattr(xls.db, "get_bodega_by_phone", lambda _t: None)
+    rows = [{"_fila": 2, "ruc": "20123456789", "razon_social": "Test SAC", "telefono_whatsapp": "999888777"}]
+    preview = xls.preview_bodegas_rows(rows)
+    assert preview["summary"]["omitidas"] == 1
+    assert preview["rows"][0]["status"] == "omitir"
