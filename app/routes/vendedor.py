@@ -586,52 +586,6 @@ def vendedor_share_link(
     return HTMLResponse(content=html)
 
 
-def _norm_nombre(s):
-    import re, unicodedata
-    s = unicodedata.normalize("NFKD", str(s or "")).encode("ascii", "ignore").decode()
-    return re.sub(r"\s+", " ", s.upper().strip())
-
-
-def _match_bodega_por_nombre(nombre_archivo, distribuidor_id):
-    """Busca la bodega del distribuidor cuyo nombre se parezca al del archivo.
-    Devuelve (sugerida|None, candidatos[]). Sin tocar bodega_vendedores (scope = distribuidor)."""
-    from app.services import db as circa_db
-    target = _norm_nombre(nombre_archivo)
-    if not target:
-        return None, []
-    filas = circa_db.sb.table("bodegas").select(
-        "id, razon_social, nombre_comercial, distrito, linea_disponible, estado, distribuidor_id"
-    ).eq("distribuidor_id", distribuidor_id).execute().data or []
-    tset = set(target.split())
-    scored = []
-    for b in filas:
-        score = 0
-        for campo in (b.get("razon_social"), b.get("nombre_comercial")):
-            c = _norm_nombre(campo)
-            if not c:
-                continue
-            if c == target:
-                score = 100
-                break
-            cset = set(c.split())
-            if tset and cset:
-                ov = len(tset & cset) / len(tset | cset)
-                score = max(score, int(round(ov * 100)))
-        if score >= 55:
-            scored.append((score, b))
-    scored.sort(key=lambda x: x[0], reverse=True)
-    candidatos = [{
-        "id": b["id"],
-        "razon_social": b.get("razon_social") or b.get("nombre_comercial") or "(sin nombre)",
-        "distrito": b.get("distrito") or "",
-        "linea_disponible": b.get("linea_disponible") or 0,
-        "estado": b.get("estado") or "",
-        "score": s,
-    } for s, b in scored[:5]]
-    sugerida = candidatos[0] if (candidatos and candidatos[0]["score"] >= 80) else None
-    return sugerida, candidatos
-
-
 @router.post("/{token}/preventa/upload")
 async def preventa_upload(
     token: str = Path(..., min_length=16, max_length=64),
@@ -645,11 +599,11 @@ async def preventa_upload(
     if not contents:
         raise HTTPException(status_code=400, detail="El archivo llego vacio.")
     try:
-        from app.services.preventa_excel import parse_preventa_excel
+        from app.services.preventa_excel import parse_preventa_excel, match_bodega_por_nombre
         parsed = parse_preventa_excel(contents, filename=file.filename)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"No pude leer el Excel: {e}")
-    sugerida, candidatos = _match_bodega_por_nombre(
+    sugerida, candidatos = match_bodega_por_nombre(
         parsed.get("bodega_nombre"), vendedor["distribuidor_id"]
     )
     return {

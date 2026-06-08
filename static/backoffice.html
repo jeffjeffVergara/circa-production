@@ -512,6 +512,8 @@ var dimaxBodegaPreview = null;
 var circaBodegaPreview = null;
 var circaImportEditMode = false;
 var dimaxImportEditMode = false;
+var preventaPedPreview = null;
+var preventaImportEditMode = false;
 
 function onBodegasSearchInput(){
   if(bodegaModalId) return;
@@ -2131,16 +2133,230 @@ function confirmDimaxBodega(){
   .finally(function(){ hidePanelLoader(); });
 }
 
-function openImportPedidos(){
+function openImportPedidos(mode){
+  preventaPedPreview = null;
+  preventaImportEditMode = false;
+  mode = mode || 'circa';
   document.getElementById('modalContainer').innerHTML =
-    '<div class="modal-overlay open" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:520px"><h3>Importar pedidos desde Excel</h3>'+
-    '<p style="color:var(--muted);font-size:13px;margin-bottom:12px">Mismo <strong>ref_pedido</strong> = un pedido con varias filas (ítems).</p>'+
-    '<div class="modal-field"><label>Archivo .xlsx</label><input type="file" id="impPedFile" accept=".xlsx,.xls"></div>'+
-    '<div class="modal-field"><label>Comentario (mín. 8 caracteres)</label><input id="impPedComentario" class="input"></div>'+
-    '<div class="modal-field"><label>Contraseña</label><input type="password" id="impPedPass" class="input"></div>'+
-    '<label style="display:block;margin:8px 0;font-size:12px;color:var(--muted)"><input type="checkbox" id="impPedCrearBod"> Crear bodega si no existe (requiere teléfono en Excel)</label>'+
-    '<div class="modal-actions"><button class="btn btn-outline" onclick="closeModal()">Cancelar</button>'+
-    '<button class="btn btn-green" onclick="submitImportPedidos()">Importar</button></div></div></div>';
+    '<div class="modal-overlay open" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:520px"><h3>Importar pedidos</h3>'+
+    '<div class="perfil-tabs" style="margin-bottom:14px">'+
+      '<button type="button" class="perfil-tab import-ped-tab" data-mode="circa" onclick="switchImportPedidoMode(\'circa\')">Plantilla Circa</button>'+
+      '<button type="button" class="perfil-tab import-ped-tab" data-mode="preventa" onclick="switchImportPedidoMode(\'preventa\')">🆕 Preventa DIMAX</button>'+
+    '</div>'+
+    '<div id="importPedPanelCirca">'+
+      '<p style="color:var(--muted);font-size:13px;margin-bottom:12px">Mismo <strong>ref_pedido</strong> = un pedido con varias filas (ítems).</p>'+
+      '<div class="modal-field"><label>Archivo .xlsx</label><input type="file" id="impPedFile" accept=".xlsx,.xls"></div>'+
+      '<div class="modal-field"><label>Comentario (mín. 8 caracteres)</label><input id="impPedComentario" class="input"></div>'+
+      '<div class="modal-field"><label>Contraseña</label><input type="password" id="impPedPass" class="input"></div>'+
+      '<label style="display:block;margin:8px 0;font-size:12px;color:var(--muted)"><input type="checkbox" id="impPedCrearBod"> Crear bodega si no existe (requiere teléfono en Excel)</label>'+
+      '<div class="modal-actions"><button class="btn btn-outline" onclick="closeModal()">Cancelar</button>'+
+      '<button class="btn btn-green" onclick="submitImportPedidos()">Importar</button></div>'+
+    '</div>'+
+    '<div id="importPedPanelPreventa" style="display:none">'+
+      '<p style="color:var(--muted);font-size:13px;margin-bottom:12px">Excel de <strong>preventa</strong> del distribuidor (columnas Codigo, Descripcion, Cantidad, Total). El nombre del archivo identifica la bodega.</p>'+
+      '<div class="modal-field"><label>Archivo .xlsx</label><input type="file" id="impPrevFile" accept=".xlsx,.xls"></div>'+
+      '<div class="modal-actions"><button class="btn btn-outline" onclick="closeModal()">Cancelar</button>'+
+      '<button class="btn btn-green" onclick="analyzePreventaPedido()">Analizar Excel</button></div>'+
+    '</div></div></div>';
+  switchImportPedidoMode(mode);
+}
+
+function switchImportPedidoMode(mode){
+  var isPrev = mode === 'preventa';
+  document.querySelectorAll('.import-ped-tab').forEach(function(btn){
+    btn.classList.toggle('active', btn.dataset.mode === mode);
+  });
+  var circa = document.getElementById('importPedPanelCirca');
+  var prev = document.getElementById('importPedPanelPreventa');
+  if(circa) circa.style.display = isPrev ? 'none' : 'block';
+  if(prev) prev.style.display = isPrev ? 'block' : 'none';
+}
+
+function analyzePreventaPedido(){
+  var f = document.getElementById('impPrevFile').files[0];
+  if(!f){ showToast('Selecciona un archivo','error'); return; }
+  var fd = new FormData();
+  fd.append('file', f);
+  fd.append('es_test', (window.MODE_FILTER||'real')==='test' ? 'true' : 'false');
+  preventaImportEditMode = false;
+  showPanelLoader('Analizando preventa…', true);
+  fetch('/api/backoffice/import/preventa/preview', {method:'POST', headers: authHeaders(), body: fd})
+    .then(function(r){ return r.json().then(function(d){ return {ok:r.ok,d:d}; }); })
+    .then(function(x){
+      if(!x.ok) throw new Error(x.d.detail || 'No se pudo leer el Excel');
+      var p = x.d.preview || {};
+      p.filename = f.name;
+      renderPreventaPedidoPreview(p);
+    }).catch(function(e){ showToast(String(e.message).slice(0,200),'error'); })
+    .finally(function(){ hidePanelLoader(); });
+}
+
+function collectPreventaPreviewData(){
+  if(!preventaPedPreview) return null;
+  var items = (preventaPedPreview.items || []).map(function(it, idx){
+    if(!preventaImportEditMode) return it;
+    var tr = document.querySelector('#importPreventaItemsBody tr[data-item-idx="'+idx+'"]');
+    if(!tr) return it;
+    function val(field){ var el = tr.querySelector('[data-field="'+field+'"]'); return el ? el.value.trim() : ''; }
+    return {
+      sku_distribuidor: val('sku') || it.sku_distribuidor,
+      descripcion: val('descripcion') || it.descripcion,
+      cantidad: parseInt(val('cantidad'), 10) || it.cantidad,
+      unidad: it.unidad || 'UND x 1',
+      precio_unitario: parseFloat(val('precio')) || it.precio_unitario,
+      subtotal: parseFloat(val('subtotal')) || it.subtotal,
+      es_regalo: it.es_regalo
+    };
+  });
+  var bodegaNombre = preventaPedPreview.bodega_nombre || '';
+  var fecha = preventaPedPreview.fecha || '';
+  if(preventaImportEditMode){
+    var nomEl = document.getElementById('prevEditBodegaNombre');
+    var fecEl = document.getElementById('prevEditFecha');
+    if(nomEl) bodegaNombre = nomEl.value.trim();
+    if(fecEl) fecha = fecEl.value.trim() || null;
+  }
+  var bodegaId = document.getElementById('prevBodegaSelect')
+    ? document.getElementById('prevBodegaSelect').value
+    : (preventaPedPreview.bodega_seleccionada || (preventaPedPreview.bodega_sugerida && preventaPedPreview.bodega_sugerida.id) || '');
+  return {
+    bodega_nombre: bodegaNombre,
+    fecha: fecha || null,
+    items: items,
+    descuento_prorrateado: preventaPedPreview.descuento_prorrateado || 0,
+    es_test: !!preventaPedPreview.es_test,
+    bodega_id: bodegaId || null,
+    filename: preventaPedPreview.filename
+  };
+}
+
+function togglePreventaImportEdit(){
+  if(preventaImportEditMode){
+    var data = collectPreventaPreviewData();
+    if(data){
+      preventaPedPreview.bodega_nombre = data.bodega_nombre;
+      preventaPedPreview.fecha = data.fecha;
+      preventaPedPreview.items = data.items;
+    }
+  }
+  preventaImportEditMode = !preventaImportEditMode;
+  var stash = _stashImportFields(['prevComentario','prevBodegaSelect']);
+  renderPreventaPedidoPreview(preventaPedPreview, stash);
+}
+
+function revalidatePreventaPedido(){
+  if(!preventaPedPreview) return;
+  var data = collectPreventaPreviewData();
+  if(!data) return;
+  var stash = _stashImportFields(['prevComentario','prevBodegaSelect']);
+  showPanelLoader('Revalidando preventa…', true);
+  apiPost('/api/backoffice/import/preventa/revalidate', data).then(function(x){
+    if(!x.ok) throw new Error(x.d.detail || 'No se pudo revalidar');
+    preventaImportEditMode = false;
+    var p = x.d.preview || {};
+    p.filename = preventaPedPreview.filename;
+    if(data.bodega_id) p.bodega_seleccionada = data.bodega_id;
+    renderPreventaPedidoPreview(p, stash);
+    showToast('Validación actualizada','success');
+  }).catch(function(e){ showToast(String(e.message).slice(0,200),'error'); })
+  .finally(function(){ hidePanelLoader(); });
+}
+
+function renderPreventaPedidoPreview(p, fieldStash){
+  preventaPedPreview = p;
+  var items = p.items || [];
+  var candidatos = p.candidatos || [];
+  var selectedId = (fieldStash && fieldStash.prevBodegaSelect) || p.bodega_seleccionada || (p.bodega_sugerida && p.bodega_sugerida.id) || '';
+  var bodegaOpts = candidatos.map(function(c){
+    return '<option value="'+c.id+'" '+(c.id===selectedId?'selected':'')+'>'+escAttr(c.razon_social)+' ('+c.score+'%) · '+escAttr(c.distrito||'')+'</option>';
+  }).join('');
+  if(!bodegaOpts){
+    bodegaOpts = '<option value="">Sin coincidencias</option>';
+  }
+
+  var issuesHtml = (p.issues||[]).length
+    ? '<div style="background:rgba(239,68,68,.1);border:1px solid var(--red);border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:12px;color:var(--red)">'+
+      (p.issues||[]).map(function(w){return '⚠️ '+escAttr(w);}).join('<br>')+'</div>'
+    : '<div style="background:rgba(34,197,94,.08);border:1px solid var(--green);border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:12px;color:var(--green)">✓ Listo para revisar y confirmar</div>';
+
+  var itemRows = items.map(function(it, idx){
+    if(preventaImportEditMode){
+      return '<tr data-item-idx="'+idx+'">'+
+        '<td>'+_importEditInput('sku', it.sku_distribuidor)+'</td>'+
+        '<td>'+_importEditInput('descripcion', it.descripcion)+'</td>'+
+        '<td>'+_importEditInput('cantidad', it.cantidad, ' inputmode="numeric"')+'</td>'+
+        '<td>'+_importEditInput('precio', it.precio_unitario)+'</td>'+
+        '<td>'+_importEditInput('subtotal', it.subtotal)+'</td>'+
+        '<td>'+(it.es_regalo ? '<span class="import-badge warn">Regalo</span>' : '—')+'</td></tr>';
+    }
+    return '<tr><td class="mono">'+escAttr(it.sku_distribuidor)+'</td>'+
+      '<td style="font-size:11px">'+escAttr(it.descripcion)+'</td>'+
+      '<td>'+escAttr(it.cantidad)+'</td>'+
+      '<td class="mono">S/ '+Number(it.precio_unitario||0).toFixed(2)+'</td>'+
+      '<td class="mono">S/ '+Number(it.subtotal||0).toFixed(2)+'</td>'+
+      '<td>'+(it.es_regalo ? '<span class="import-badge warn">Regalo</span>' : '—')+'</td></tr>';
+  }).join('');
+
+  var editPanel = preventaImportEditMode
+    ? '<div class="import-edit-panel"><div class="import-edit-grid">'+
+        '<div class="modal-field" style="grid-column:1/-1"><label>Nombre bodega (del archivo)</label><input id="prevEditBodegaNombre" class="input" value="'+escAttr(p.bodega_nombre||'')+'"></div>'+
+        '<div class="modal-field"><label>Fecha visita (opcional)</label><input id="prevEditFecha" class="input" type="date" value="'+escAttr(p.fecha||'')+'"></div>'+
+      '</div></div>'
+    : '';
+
+  document.getElementById('modalContainer').innerHTML =
+    '<div class="modal-overlay open" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:980px;max-height:92vh;overflow:auto"><h3>Vista previa — preventa DIMAX</h3>'+
+    '<p style="color:var(--muted);font-size:12px;margin-bottom:12px">Archivo: '+escAttr(p.filename||'—')+' · detectado: <strong>'+escAttr(p.bodega_nombre||'—')+'</strong></p>'+
+    '<div class="import-summary">'+
+      '<span>Ítems: <strong>'+(p.n_items||0)+'</strong></span>'+
+      '<span>Regalos: <strong>'+(p.n_regalos||0)+'</strong></span>'+
+      '<span>Total: <strong>S/ '+Number(p.total_pedido||0).toFixed(2)+'</strong></span>'+
+      '<span>Descuento: <strong>S/ '+Number(p.descuento_prorrateado||0).toFixed(2)+'</strong></span>'+
+    '</div>'+
+    issuesHtml+
+    renderImportPreviewToolbar(preventaImportEditMode, 'togglePreventaImportEdit', 'revalidatePreventaPedido')+
+    editPanel+
+    '<div class="modal-field"><label>Bodega destino</label><select id="prevBodegaSelect" class="input">'+bodegaOpts+'</select></div>'+
+    '<div class="import-preview-wrap"><table class="import-preview-table"><thead><tr>'+
+      '<th>SKU</th><th>Descripción</th><th>Cant.</th><th>P. unit.</th><th>Total</th><th>Tipo</th>'+
+    '</tr></thead><tbody id="importPreventaItemsBody">'+(itemRows || '<tr><td colspan="6" class="empty">Sin ítems</td></tr>')+'</tbody></table></div>'+
+    '<div class="modal-field"><label>Comentario (mín. 8 caracteres)</label><input id="prevComentario" class="input" placeholder="Import preventa DIMAX"></div>'+
+    '<div class="modal-actions"><button class="btn btn-outline" onclick="openImportPedidos(\'preventa\')">← Otro archivo</button>'+
+    '<button class="btn btn-outline" onclick="closeModal()">Cancelar</button>'+
+    '<button class="btn btn-green" onclick="confirmPreventaPedido()" '+(p.can_create===false?'disabled title="Corrige datos o bodega"':'')+'>Confirmar preventa</button></div></div></div>';
+  _applyImportFields(fieldStash);
+}
+
+function confirmPreventaPedido(){
+  if(!preventaPedPreview) return;
+  var data = collectPreventaPreviewData();
+  if(!data || !data.bodega_id){
+    showToast('Selecciona una bodega destino','error'); return;
+  }
+  var comentario = (document.getElementById('prevComentario').value || '').trim();
+  if(comentario.length < 8){
+    showToast('El comentario debe tener al menos 8 caracteres','error'); return;
+  }
+  showPanelLoader('Creando preventa…', true);
+  apiPost('/api/backoffice/import/preventa/confirm', {
+    comentario: comentario,
+    bodega_id: data.bodega_id,
+    items: data.items,
+    descuento_prorrateado: data.descuento_prorrateado,
+    fecha: data.fecha,
+    filename: data.filename,
+    bodega_nombre: data.bodega_nombre
+  }).then(function(x){
+    if(!x.ok) throw new Error(x.d.detail || 'Error al crear preventa');
+    closeModal();
+    preventaPedPreview = null;
+    var d = x.d || {};
+    var msg = 'Preventa creada · S/ '+Number(d.total_pedido||0).toFixed(2)+' · ítems: '+(d.items_creados||0);
+    if((d.items_no_match||[]).length) msg += ' · sin catálogo: '+d.items_no_match.length;
+    showToast(msg,'success');
+    loadPedidos();
+  }).catch(function(e){ showToast(String(e.message).slice(0,200),'error'); })
+  .finally(function(){ hidePanelLoader(); });
 }
 
 function submitImportPedidos(){

@@ -29,6 +29,7 @@ from app.services.backoffice_auth import (
 from app.services.distribuidor_routing import DIMAX_DISTRIBUIDOR_ID, ZOOM_DISTRIBUIDOR_ID
 from app.services import dimax_bodega_excel as dimax_bod
 from app.services import excel_import as xls
+from app.services.preventa_excel import match_bodega_por_nombre, parse_preventa_excel
 
 logger = logging.getLogger("circa.backoffice")
 router = APIRouter(prefix="/api/backoffice", tags=["backoffice"])
@@ -250,6 +251,27 @@ class DimaxBodegaRevalidate(BaseModel):
     filename: Optional[str] = None
 
 
+class PreventaRevalidate(BaseModel):
+    bodega_nombre: str = Field(..., min_length=2, max_length=200)
+    fecha: Optional[str] = None
+    items: list[dict[str, Any]] = Field(..., min_length=1)
+    descuento_prorrateado: float = 0
+    es_test: bool = False
+    bodega_id: Optional[str] = None
+    filename: Optional[str] = None
+
+
+class PreventaImportConfirm(BaseModel):
+    comentario: str = Field(..., min_length=8, max_length=500)
+    bodega_id: str
+    items: list[dict[str, Any]] = Field(..., min_length=1)
+    descuento_prorrateado: float = 0
+    fecha: Optional[str] = None
+    vendedor_id: Optional[str] = None
+    filename: Optional[str] = None
+    bodega_nombre: Optional[str] = None
+
+
 class DimaxBodegaConfirm(BaseModel):
     comentario: str = Field(..., min_length=8, max_length=500)
     ruc: str = Field(..., min_length=8, max_length=11)
@@ -311,7 +333,7 @@ def _insert_bodega_record(
     dni_representante: str | None,
     direccion_fiscal: str | None,
     distrito: str | None,
-    provincia: str | None,
+    provincia: str | None,  # solo preview/UI; no existe columna en bodegas
     estado: str,
     es_test: bool,
     solo_dni_sin_ruc: bool,
@@ -328,7 +350,6 @@ def _insert_bodega_record(
         "dni_representante": dni_representante,
         "direccion_fiscal": direccion_fiscal,
         "distrito": distrito,
-        "provincia": provincia,
         "linea_aprobada": DEFAULT_LINEA_APROBADA,
         "linea_disponible": 0,
         "estado": estado,
@@ -996,3 +1017,138 @@ async def import_pedidos_excel(
         after={"creados": result["creados"], "errores": len(result["errores"])},
     )
     return result
+
+
+def _preventa_preview_payload(parsed: dict[str, Any], *, es_test: bool, filename: str | None = None) -> dict[str, Any]:
+    dist_id = ZOOM_DISTRIBUIDOR_ID if es_test else DIMAX_DISTRIBUIDOR_ID
+    sugerida, candidatos = match_bodega_por_nombre(parsed.get("bodega_nombre") or "", dist_id)
+    total = round(sum(float(i.get("subtotal") or 0) for i in parsed.get("items") or []), 2)
+    can_create = total > 0 and bool(candidatos or sugerida)
+    issues: list[str] = []
+    if total <= 0:
+        issues.append("El total cobrado es 0")
+    if not candidatos:
+        issues.append("No se encontró bodega coincidente en el distribuidor")
+    return {
+        **parsed,
+        "total_pedido": total,
+        "bodega_sugerida": sugerida,
+        "candidatos": candidatos,
+        "can_create": can_create,
+        "issues": issues,
+        "es_test": es_test,
+        "filename": filename,
+    }
+
+
+@router.post("/import/preventa/preview")
+async def preview_preventa_excel(
+    file: UploadFile = File(...),
+    es_test: bool = Form(False),
+    user: dict = Depends(get_backoffice_user),
+):
+    content = await _read_xlsx_upload(file, max_mb=10)
+    try:
+        parsed = parse_preventa_excel(content, filename=file.filename)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    preview = _preventa_preview_payload(parsed, es_test=es_test, filename=file.filename)
+    return {"ok": True, "preview": preview}
+
+
+@router.post("/import/preventa/revalidate")
+async def revalidate_preventa_import(
+    body: PreventaRevalidate,
+    user: dict = Depends(get_backoffice_user),
+):
+    total = round(sum(float(i.get("subtotal") or 0) for i in body.items), 2)
+    parsed = {
+        "bodega_nombre": body.bodega_nombre.strip(),
+        "fecha": body.fecha,
+        "items": body.items,
+        "total_pedido": total,
+        "descuento_prorrateado": body.descuento_prorrateado,
+        "monto_productos": round(total + body.descuento_prorrateado, 2),
+        "n_items": len([i for i in body.items if not i.get("es_regalo")]),
+        "n_regalos": len([i for i in body.items if i.get("es_regalo")]),
+        "warnings": [],
+    }
+    preview = _preventa_preview_payload(parsed, es_test=body.es_test, filename=body.filename)
+    if body.bodega_id:
+        preview["bodega_seleccionada"] = body.bodega_id
+        if not any(c["id"] == body.bodega_id for c in preview.get("candidatos") or []):
+            preview["can_create"] = False
+            preview["issues"] = list(preview.get("issues") or []) + ["Bodega seleccionada no válida"]
+    return {"ok": True, "preview": preview}
+
+
+@router.post("/import/preventa/confirm")
+async def confirm_preventa_import(
+    body: PreventaImportConfirm,
+    user: dict = Depends(get_backoffice_user),
+):
+    if not body.bodega_id:
+        raise HTTPException(status_code=400, detail="Selecciona una bodega")
+
+    bodega_rows = db.sb.table("bodegas").select("id, distribuidor_id, estado, es_test").eq(
+        "id", body.bodega_id
+    ).limit(1).execute().data
+    if not bodega_rows:
+        raise HTTPException(status_code=404, detail="Bodega no encontrada")
+    bodega = bodega_rows[0]
+    if bodega.get("estado") not in ("activo", "preaprobada"):
+        raise HTTPException(status_code=400, detail=f"Bodega en estado '{bodega.get('estado')}'")
+
+    items_dimax = []
+    for it in body.items:
+        items_dimax.append({
+            "sku_distribuidor": str(it.get("sku_distribuidor") or "").lstrip("0") or "0",
+            "descripcion": it.get("descripcion"),
+            "cantidad": int(it.get("cantidad") or 0),
+            "unidad": it.get("unidad") or "UND x 1",
+            "precio_unitario": float(it.get("precio_unitario") or 0),
+            "subtotal": float(it.get("subtotal") or 0),
+        })
+
+    total_pedido = round(sum(float(i.get("subtotal") or 0) for i in items_dimax), 2)
+    if total_pedido <= 0:
+        raise HTTPException(status_code=400, detail="El total cobrado es 0")
+
+    resultado = db.crear_pedido_preventa(
+        bodega_id=body.bodega_id,
+        distribuidor_id=bodega["distribuidor_id"],
+        items_dimax=items_dimax,
+        total_pedido=total_pedido,
+        descuento_prorrateado=body.descuento_prorrateado,
+        vendedor_id=body.vendedor_id,
+        fecha_visita=body.fecha,
+    )
+    pedido_id = resultado.get("pedido_id")
+    if pedido_id:
+        db.sb.table("pedidos").update({
+            "origen": "backoffice_preventa_excel",
+        }).eq("id", pedido_id).execute()
+
+    log_action(
+        user=user,
+        action="import_preventa_excel",
+        entity_type="pedido",
+        entity_id=pedido_id,
+        comment=body.comentario.strip(),
+        after={
+            "bodega_id": body.bodega_id,
+            "total_pedido": total_pedido,
+            "items_creados": resultado.get("items_creados"),
+            "filename": body.filename,
+        },
+        bodega_id=body.bodega_id,
+        pedido_id=pedido_id,
+    )
+    return {
+        "ok": True,
+        "pedido_id": pedido_id,
+        "total_pedido": total_pedido,
+        "items_creados": resultado.get("items_creados"),
+        "items_no_match": resultado.get("items_no_match") or [],
+        "link_token": resultado.get("link_token"),
+    }

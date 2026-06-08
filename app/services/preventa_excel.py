@@ -33,10 +33,11 @@ _FECHA_RE = re.compile(r"[ ._\-]+(\d{1,2})[ ._\-](\d{1,2})[ ._\-](\d{2,4})\s*$")
 
 
 def parse_filename(filename: str):
-    """'URBANO CHIHUANTITO DAVID GENARO 04.06.26.xlsx' o la version con _
+    """'URBANO CHIHUANTITO DAVID GENARO 04.06.26.xlsx' o 'NOMBRE_preventa.xlsx'
        -> ('URBANO CHIHUANTITO DAVID GENARO', '2026-06-04').
        Si no hay fecha al final, devuelve (nombre_limpio, None)."""
     base = os.path.splitext(os.path.basename(filename or ""))[0]
+    base = re.sub(r"[_\s\-]+preventa\s*$", "", base, flags=re.I)
     fecha_iso, nombre_part = None, base
     m = _FECHA_RE.search(base)
     if m:
@@ -124,6 +125,52 @@ def parse_preventa_excel(source, filename: str = None) -> dict:
         "n_items": len([i for i in items if not i["es_regalo"]]),
         "n_regalos": n_regalos, "warnings": warnings,
     }
+
+
+def _norm_nombre(s: str) -> str:
+    import unicodedata
+    s = unicodedata.normalize("NFKD", str(s or "")).encode("ascii", "ignore").decode()
+    return re.sub(r"\s+", " ", s.upper().strip())
+
+
+def match_bodega_por_nombre(nombre_archivo: str, distribuidor_id: str) -> tuple[dict | None, list[dict]]:
+    """Busca bodega del distribuidor similar al nombre del archivo Excel."""
+    from app.services import db as circa_db
+
+    target = _norm_nombre(nombre_archivo)
+    if not target:
+        return None, []
+    filas = circa_db.sb.table("bodegas").select(
+        "id, razon_social, nombre_comercial, distrito, linea_disponible, estado, distribuidor_id"
+    ).eq("distribuidor_id", distribuidor_id).execute().data or []
+    tset = set(target.split())
+    scored: list[tuple[int, dict]] = []
+    for b in filas:
+        score = 0
+        for campo in (b.get("razon_social"), b.get("nombre_comercial")):
+            c = _norm_nombre(campo)
+            if not c:
+                continue
+            if c == target:
+                score = 100
+                break
+            cset = set(c.split())
+            if tset and cset:
+                ov = len(tset & cset) / len(tset | cset)
+                score = max(score, int(round(ov * 100)))
+        if score >= 55:
+            scored.append((score, b))
+    scored.sort(key=lambda x: x[0], reverse=True)
+    candidatos = [{
+        "id": b["id"],
+        "razon_social": b.get("razon_social") or b.get("nombre_comercial") or "(sin nombre)",
+        "distrito": b.get("distrito") or "",
+        "linea_disponible": b.get("linea_disponible") or 0,
+        "estado": b.get("estado") or "",
+        "score": s,
+    } for s, b in scored[:5]]
+    sugerida = candidatos[0] if (candidatos and candidatos[0]["score"] >= 80) else None
+    return sugerida, candidatos
 
 
 if __name__ == "__main__":

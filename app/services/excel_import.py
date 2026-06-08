@@ -343,6 +343,7 @@ def import_bodegas_rows(
                 "en_piloto": True,
             }
             payload.pop("fila", None)
+            payload.pop("provincia", None)  # columna no existe en bodegas (solo preview/UI)
             ins = db.sb.table("bodegas").insert(payload).execute()
             bodega_id = ins.data[0]["id"] if ins.data else None
             creadas += 1

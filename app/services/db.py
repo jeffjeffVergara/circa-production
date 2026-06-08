@@ -599,7 +599,11 @@ def upsert_bodega_para_preventa(ruc: str, distribuidor_id: str, **datos_bodega) 
         "estado": "inactivo",
         "linea_aprobada": 500,
         "linea_disponible": 0,  # Bloqueada hasta firmar contrato
-        **{k: v for k, v in datos_bodega.items() if v is not None},
+        **{
+            k: v
+            for k, v in datos_bodega.items()
+            if v is not None and k != "provincia"
+        },
     }
     nueva = sb.table("bodegas").insert(payload).execute().data[0]
     return (nueva, True)
