@@ -227,7 +227,31 @@ class BodegasImportConfirm(ReauthMixin):
     rows: list[dict[str, Any]] = Field(..., min_length=1)
 
 
-class DimaxBodegaConfirm(ReauthMixin):
+class BodegasRevalidateRows(BaseModel):
+    rows: list[dict[str, Any]] = Field(..., min_length=1)
+    filename: Optional[str] = None
+
+
+class DimaxBodegaRevalidate(BaseModel):
+    fila: Optional[int] = None
+    codigo_dimax: Optional[str] = None
+    ruc: str = Field(..., min_length=8, max_length=11)
+    solo_dni_sin_ruc: bool = False
+    razon_social: str = Field(..., min_length=2, max_length=200)
+    nombre_comercial: Optional[str] = None
+    telefono_whatsapp: str
+    representante_legal: Optional[str] = None
+    dni_representante: Optional[str] = None
+    direccion_fiscal: Optional[str] = None
+    distrito: Optional[str] = None
+    provincia: Optional[str] = None
+    vendedor_codigo: Optional[str] = None
+    vendedor_nombre: Optional[str] = None
+    filename: Optional[str] = None
+
+
+class DimaxBodegaConfirm(BaseModel):
+    comentario: str = Field(..., min_length=8, max_length=500)
     ruc: str = Field(..., min_length=8, max_length=11)
     razon_social: str = Field(..., min_length=2, max_length=200)
     nombre_comercial: Optional[str] = None
@@ -717,6 +741,35 @@ async def preview_bodegas_excel(
     return {"ok": True, "preview": preview}
 
 
+@router.post("/import/bodegas/revalidate")
+async def revalidate_bodegas_rows(
+    body: BodegasRevalidateRows,
+    user: dict = Depends(get_backoffice_user),
+):
+    import_rows: list[dict[str, Any]] = []
+    for r in body.rows:
+        import_rows.append({
+            "_fila": r.get("fila", r.get("_fila")),
+            "ruc": r.get("ruc"),
+            "razon_social": r.get("razon_social"),
+            "nombre_comercial": r.get("nombre_comercial"),
+            "telefono_whatsapp": r.get("telefono_whatsapp"),
+            "representante_legal": r.get("representante_legal"),
+            "dni_representante": r.get("dni_representante"),
+            "linea_aprobada": r.get("linea_aprobada"),
+            "estado": r.get("estado"),
+            "es_test": r.get("es_test"),
+            "solo_dni_sin_ruc": r.get("solo_dni_sin_ruc"),
+            "direccion_fiscal": r.get("direccion_fiscal"),
+            "distrito": r.get("distrito"),
+            "provincia": r.get("provincia"),
+        })
+    preview = xls.preview_bodegas_rows(import_rows)
+    if body.filename:
+        preview["filename"] = body.filename
+    return {"ok": True, "preview": preview}
+
+
 @router.post("/import/bodegas/confirm")
 async def confirm_bodegas_import(
     body: BodegasImportConfirm,
@@ -822,15 +875,44 @@ async def preview_dimax_bodega_excel(
     return {"ok": True, "preview": preview}
 
 
+@router.post("/import/dimax-bodega/revalidate")
+async def revalidate_dimax_bodega_preview(
+    body: DimaxBodegaRevalidate,
+    user: dict = Depends(get_backoffice_user),
+):
+    tel = _normalizar_telefono(body.telefono_whatsapp)
+    payload = {
+        "formato": "dimax_clientes",
+        "fila": body.fila,
+        "codigo_dimax": body.codigo_dimax,
+        "ruc": body.ruc.strip(),
+        "solo_dni_sin_ruc": body.solo_dni_sin_ruc,
+        "razon_social": body.razon_social.strip(),
+        "nombre_comercial": (body.nombre_comercial or body.razon_social).strip(),
+        "representante_legal": body.representante_legal,
+        "dni_representante": body.dni_representante,
+        "telefono_whatsapp": tel,
+        "direccion_fiscal": body.direccion_fiscal,
+        "distrito": body.distrito,
+        "provincia": body.provincia or "Lima",
+        "vendedor_codigo": body.vendedor_codigo,
+        "vendedor_nombre": body.vendedor_nombre,
+        "estado": "preaprobada",
+        "linea_aprobada": 500.0,
+        "linea_disponible": 0.0,
+        "es_test": False,
+    }
+    preview = dimax_bod.enrich_preview(payload)
+    if body.filename:
+        preview["filename"] = body.filename
+    return {"ok": True, "preview": preview}
+
+
 @router.post("/import/dimax-bodega/confirm")
 async def confirm_dimax_bodega_excel(
     body: DimaxBodegaConfirm,
     user: dict = Depends(get_backoffice_user),
 ):
-    verify_reauth_password(body.password)
-    if len(body.comentario.strip()) < 8:
-        raise HTTPException(status_code=400, detail="Comentario mínimo 8 caracteres")
-
     tel = _normalizar_telefono(body.telefono_whatsapp)
     ruc = body.ruc.strip()
 

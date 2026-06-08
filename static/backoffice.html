@@ -196,6 +196,13 @@ tr:hover td{background:var(--card-hover)}
 .import-badge.warn{background:rgba(234,179,8,.15);color:var(--yellow)}
 .import-badge.err{background:rgba(239,68,68,.15);color:var(--red)}
 .import-issue{font-size:11px;color:var(--muted);margin-top:4px;line-height:1.35}
+.import-preview-toolbar{display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap}
+.import-preview-toolbar .hint{font-size:12px;color:var(--muted);margin-left:auto}
+.import-edit-input{width:100%;min-width:68px;padding:5px 7px;font-size:12px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text)}
+.import-edit-input:focus{outline:none;border-color:var(--blue)}
+.import-edit-panel{background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:14px}
+.import-edit-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media(max-width:720px){.import-edit-grid{grid-template-columns:1fr}}
 
 /* Modal bodega detalle */
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.65);backdrop-filter:blur(4px);z-index:1000;display:none;align-items:flex-start;justify-content:center;padding:40px 20px;overflow-y:auto}
@@ -503,6 +510,8 @@ var bodegasSearchSnapshot = '';
 var tabLoadSeq = 0;
 var dimaxBodegaPreview = null;
 var circaBodegaPreview = null;
+var circaImportEditMode = false;
+var dimaxImportEditMode = false;
 
 function onBodegasSearchInput(){
   if(bodegaModalId) return;
@@ -1703,12 +1712,14 @@ function switchImportBodegaMode(mode){
 function openImportBodegas(mode){
   dimaxBodegaPreview = null;
   circaBodegaPreview = null;
+  circaImportEditMode = false;
+  dimaxImportEditMode = false;
   mode = mode || 'circa';
   document.getElementById('modalContainer').innerHTML =
     '<div class="modal-overlay open" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:520px"><h3>Importar bodegas</h3>'+
     '<div class="perfil-tabs" style="margin-bottom:14px">'+
       '<button type="button" class="perfil-tab import-bod-tab" data-mode="circa" onclick="switchImportBodegaMode(\'circa\')">Plantilla Circa</button>'+
-      '<button type="button" class="perfil-tab import-bod-tab" data-mode="dimax" onclick="switchImportBodegaMode(\'dimax\')">Excel DIMAX</button>'+
+      '<button type="button" class="perfil-tab import-bod-tab" data-mode="dimax" onclick="switchImportBodegaMode(\'dimax\')">🆕 Nueva Plantilla</button>'+
     '</div>'+
     '<div id="importBodPanelCirca">'+
       '<p style="color:var(--muted);font-size:13px;margin-bottom:12px">Carga masiva con la <strong>plantilla Circa</strong>. Revisa la tabla antes de confirmar.</p>'+
@@ -1717,7 +1728,7 @@ function openImportBodegas(mode){
       '<button class="btn btn-green" onclick="analyzeCircaBodegas()">Analizar Excel</button></div>'+
     '</div>'+
     '<div id="importBodPanelDimax" style="display:none">'+
-      '<p style="color:var(--muted);font-size:13px;margin-bottom:12px">Excel con hoja <strong>clientes</strong> (export DIMAX). Una bodega por archivo, con vista previa.</p>'+
+      '<p style="color:var(--muted);font-size:13px;margin-bottom:12px">Plantilla nueva de alta de cliente (hoja <strong>clientes</strong>). Una bodega por archivo, con vista previa.</p>'+
       '<div class="modal-field"><label>Archivo .xlsx</label><input type="file" id="dimaxBodFile" accept=".xlsx,.xls"></div>'+
       '<div class="modal-actions"><button class="btn btn-outline" onclick="closeModal()">Cancelar</button>'+
       '<button class="btn btn-green" onclick="analyzeDimaxBodega()">Analizar Excel</button></div>'+
@@ -1756,11 +1767,109 @@ function renderImportSummary(summary){
   '</div>';
 }
 
-function renderCircaBodegaPreview(p){
+function renderImportPreviewToolbar(editMode, onEditFn, onRevalidateFn){
+  return '<div class="import-preview-toolbar">'+
+    '<button type="button" class="btn btn-outline btn-small" onclick="'+onEditFn+'()">'+(editMode?'✓ Terminar edición':'✏️ Editar campos')+'</button>'+
+    '<button type="button" class="btn btn-secondary btn-small" onclick="'+onRevalidateFn+'()">🔄 Revalidar</button>'+
+    '<span class="hint">Ajusta los datos y revalida antes de confirmar</span></div>';
+}
+
+function _stashImportFields(ids){
+  var stash = {};
+  ids.forEach(function(id){
+    var el = document.getElementById(id);
+    if(!el) return;
+    stash[id] = el.type === 'checkbox' ? el.checked : el.value;
+  });
+  return stash;
+}
+
+function _applyImportFields(stash){
+  if(!stash) return;
+  Object.keys(stash).forEach(function(id){
+    var el = document.getElementById(id);
+    if(!el) return;
+    if(el.type === 'checkbox') el.checked = !!stash[id];
+    else el.value = stash[id];
+  });
+}
+
+function _importEditInput(field, value, extra){
+  return '<input class="import-edit-input" data-field="'+field+'" value="'+escAttr(value)+'"'+((extra||'') )+'>';
+}
+
+function collectCircaPreviewRows(){
+  if(!circaBodegaPreview) return [];
+  if(!circaImportEditMode) return circaBodegaPreview.rows || [];
+  var rows = [];
+  document.querySelectorAll('#importCircaPreviewBody tr').forEach(function(tr, idx){
+    var base = (circaBodegaPreview.rows || [])[idx] || {};
+    function val(field){ var el = tr.querySelector('[data-field="'+field+'"]'); return el ? el.value.trim() : ''; }
+    function chk(field){ var el = tr.querySelector('[data-field="'+field+'"]'); return el ? el.checked : false; }
+    rows.push({
+      fila: base.fila,
+      ruc: val('ruc'),
+      razon_social: val('razon_social'),
+      nombre_comercial: val('nombre_comercial'),
+      telefono_whatsapp: val('telefono_whatsapp'),
+      linea_aprobada: parseFloat(val('linea_aprobada')) || 500,
+      es_test: chk('es_test'),
+      estado: base.estado || 'preaprobada',
+      representante_legal: base.representante_legal,
+      dni_representante: base.dni_representante,
+      solo_dni_sin_ruc: base.solo_dni_sin_ruc,
+      direccion_fiscal: base.direccion_fiscal,
+      distrito: base.distrito,
+      provincia: base.provincia
+    });
+  });
+  return rows;
+}
+
+function toggleCircaImportEdit(){
+  if(circaImportEditMode){
+    circaBodegaPreview.rows = collectCircaPreviewRows();
+  }
+  circaImportEditMode = !circaImportEditMode;
+  var stash = _stashImportFields(['impBodComentario','impBodPass']);
+  renderCircaBodegaPreview(circaBodegaPreview, stash);
+}
+
+function revalidateCircaBodegas(){
+  if(!circaBodegaPreview) return;
+  var rows = collectCircaPreviewRows();
+  var stash = _stashImportFields(['impBodComentario','impBodPass']);
+  showPanelLoader('Revalidando filas…', true);
+  apiPost('/api/backoffice/import/bodegas/revalidate', {
+    rows: rows,
+    filename: circaBodegaPreview.filename
+  }).then(function(x){
+    if(!x.ok) throw new Error(x.d.detail || 'No se pudo revalidar');
+    circaImportEditMode = false;
+    var p = x.d.preview || {};
+    p.filename = circaBodegaPreview.filename;
+    renderCircaBodegaPreview(p, stash);
+    showToast('Validación actualizada','success');
+  }).catch(function(e){ showToast(String(e.message).slice(0,200),'error'); })
+  .finally(function(){ hidePanelLoader(); });
+}
+
+function renderCircaBodegaPreview(p, fieldStash){
   circaBodegaPreview = p;
   var rows = p.rows || [];
   var summary = p.summary || {};
-  var tableRows = rows.map(function(r){
+  var tableRows = rows.map(function(r, idx){
+    if(circaImportEditMode){
+      return '<tr class="'+importRowClass(r)+'" data-row-idx="'+idx+'">'+
+        '<td>'+escAttr(r.fila)+'</td>'+
+        '<td>'+_importEditInput('ruc', r.ruc)+'</td>'+
+        '<td>'+_importEditInput('razon_social', r.razon_social)+'</td>'+
+        '<td>'+_importEditInput('nombre_comercial', r.nombre_comercial)+'</td>'+
+        '<td>'+_importEditInput('telefono_whatsapp', r.telefono_whatsapp)+'</td>'+
+        '<td>'+_importEditInput('linea_aprobada', Number(r.linea_aprobada||500).toFixed(0), ' inputmode="numeric"')+'</td>'+
+        '<td><label style="font-size:12px;display:flex;align-items:center;gap:6px"><input type="checkbox" data-field="es_test" '+(r.es_test?'checked':'')+'> Test</label></td>'+
+        '<td>'+importStatusCell(r)+'</td></tr>';
+    }
     return '<tr class="'+importRowClass(r)+'">'+
       '<td>'+escAttr(r.fila)+'</td>'+
       '<td class="mono">'+escAttr(r.ruc)+'</td>'+
@@ -1769,22 +1878,23 @@ function renderCircaBodegaPreview(p){
       '<td class="mono">'+escAttr(r.telefono_whatsapp)+'</td>'+
       '<td>S/ '+Number(r.linea_aprobada||500).toFixed(0)+'</td>'+
       '<td>'+(r.es_test ? 'Test' : 'Real')+'</td>'+
-      '<td>'+importStatusCell(r)+'</td>'+
-    '</tr>';
+      '<td>'+importStatusCell(r)+'</td></tr>';
   }).join('');
 
   document.getElementById('modalContainer').innerHTML =
     '<div class="modal-overlay open" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:980px;max-height:92vh;overflow:auto"><h3>Vista previa — plantilla Circa</h3>'+
     '<p style="color:var(--muted);font-size:12px;margin-bottom:12px">Archivo: '+escAttr(p.filename||'—')+'</p>'+
     renderImportSummary(summary)+
+    renderImportPreviewToolbar(circaImportEditMode, 'toggleCircaImportEdit', 'revalidateCircaBodegas')+
     '<div class="import-preview-wrap"><table class="import-preview-table"><thead><tr>'+
       '<th>Fila</th><th>RUC</th><th>Razón social</th><th>Comercial</th><th>Teléfono</th><th>Línea</th><th>Tipo</th><th>Validación</th>'+
-    '</tr></thead><tbody>'+(tableRows || '<tr><td colspan="8" class="empty">Sin filas</td></tr>')+'</tbody></table></div>'+
+    '</tr></thead><tbody id="importCircaPreviewBody">'+(tableRows || '<tr><td colspan="8" class="empty">Sin filas</td></tr>')+'</tbody></table></div>'+
     '<div class="modal-field"><label>Comentario (mín. 8 caracteres)</label><input id="impBodComentario" class="input" placeholder="Import plantilla Circa"></div>'+
     '<div class="modal-field"><label>Contraseña</label><input type="password" id="impBodPass" class="input"></div>'+
     '<div class="modal-actions"><button class="btn btn-outline" onclick="openImportBodegas(\'circa\')">← Otro archivo</button>'+
     '<button class="btn btn-outline" onclick="closeModal()">Cancelar</button>'+
     '<button class="btn btn-green" onclick="confirmCircaBodegas()" '+(summary.can_import===false?'disabled title="Sin filas válidas"':'')+'>Confirmar importación</button></div></div></div>';
+  _applyImportFields(fieldStash);
 }
 
 function analyzeCircaBodegas(){
@@ -1792,6 +1902,7 @@ function analyzeCircaBodegas(){
   if(!f){ showToast('Selecciona un archivo','error'); return; }
   var fd = new FormData();
   fd.append('file', f);
+  circaImportEditMode = false;
   showPanelLoader('Analizando plantilla Circa…', true);
   fetch('/api/backoffice/import/bodegas/preview', {method:'POST', headers: authHeaders(), body: fd})
     .then(function(r){ return r.json().then(function(d){ return {ok:r.ok,d:d}; }); })
@@ -1812,9 +1923,10 @@ function confirmCircaBodegas(){
   if(comentario.length < 8){
     showToast('El comentario debe tener al menos 8 caracteres','error'); return;
   }
+  var rows = collectCircaPreviewRows();
   showPanelLoader('Importando bodegas…', true);
   apiPost('/api/backoffice/import/bodegas/confirm', {
-    rows: circaBodegaPreview.rows,
+    rows: rows,
     comentario: comentario,
     password: document.getElementById('impBodPass').value || USER_PASSWORD
   }).then(function(x){
@@ -1829,9 +1941,81 @@ function confirmCircaBodegas(){
   .finally(function(){ hidePanelLoader(); });
 }
 
-function renderDimaxBodegaPreview(p){
+function collectDimaxPreviewData(){
+  if(!dimaxBodegaPreview) return null;
+  if(!dimaxImportEditMode){
+    return {
+      fila: dimaxBodegaPreview.fila,
+      codigo_dimax: dimaxBodegaPreview.codigo_dimax,
+      ruc: dimaxBodegaPreview.ruc,
+      solo_dni_sin_ruc: !!dimaxBodegaPreview.solo_dni_sin_ruc,
+      razon_social: dimaxBodegaPreview.razon_social,
+      nombre_comercial: dimaxBodegaPreview.nombre_comercial || dimaxBodegaPreview.razon_social,
+      telefono_whatsapp: dimaxBodegaPreview.telefono_whatsapp,
+      representante_legal: dimaxBodegaPreview.representante_legal,
+      dni_representante: dimaxBodegaPreview.dni_representante,
+      direccion_fiscal: dimaxBodegaPreview.direccion_fiscal,
+      distrito: dimaxBodegaPreview.distrito,
+      provincia: dimaxBodegaPreview.provincia || 'Lima',
+      vendedor_codigo: dimaxBodegaPreview.vendedor_codigo,
+      vendedor_nombre: dimaxBodegaPreview.vendedor_nombre,
+      filename: dimaxBodegaPreview.filename
+    };
+  }
+  function v(id){ var el = document.getElementById(id); return el ? el.value.trim() : ''; }
+  return {
+    fila: dimaxBodegaPreview.fila,
+    codigo_dimax: dimaxBodegaPreview.codigo_dimax,
+    ruc: v('dmxEditRuc'),
+    solo_dni_sin_ruc: !!(document.getElementById('dmxEditSoloDni') && document.getElementById('dmxEditSoloDni').checked),
+    razon_social: v('dmxEditRazon'),
+    nombre_comercial: v('dmxEditComercial') || v('dmxEditRazon'),
+    telefono_whatsapp: v('dmxEditTel'),
+    representante_legal: v('dmxEditRep') || null,
+    dni_representante: v('dmxEditDniRep') || null,
+    direccion_fiscal: v('dmxEditDir') || null,
+    distrito: v('dmxEditDist') || null,
+    provincia: v('dmxEditProv') || 'Lima',
+    vendedor_codigo: dimaxBodegaPreview.vendedor_codigo,
+    vendedor_nombre: dimaxBodegaPreview.vendedor_nombre,
+    filename: dimaxBodegaPreview.filename
+  };
+}
+
+function toggleDimaxImportEdit(){
+  if(dimaxImportEditMode){
+    var data = collectDimaxPreviewData();
+    if(data){
+      dimaxBodegaPreview = Object.assign({}, dimaxBodegaPreview, data);
+    }
+  }
+  dimaxImportEditMode = !dimaxImportEditMode;
+  var stash = _stashImportFields(['dmxComentario','dmxTest']);
+  renderDimaxBodegaPreview(dimaxBodegaPreview, stash);
+}
+
+function revalidateDimaxBodega(){
+  if(!dimaxBodegaPreview) return;
+  var data = collectDimaxPreviewData();
+  if(!data) return;
+  var stash = _stashImportFields(['dmxComentario','dmxTest']);
+  showPanelLoader('Revalidando datos…', true);
+  apiPost('/api/backoffice/import/dimax-bodega/revalidate', data).then(function(x){
+    if(!x.ok) throw new Error(x.d.detail || 'No se pudo revalidar');
+    dimaxImportEditMode = false;
+    var p = x.d.preview || {};
+    p.filename = dimaxBodegaPreview.filename;
+    renderDimaxBodegaPreview(p, stash);
+    showToast('Validación actualizada','success');
+  }).catch(function(e){ showToast(String(e.message).slice(0,200),'error'); })
+  .finally(function(){ hidePanelLoader(); });
+}
+
+function renderDimaxBodegaPreview(p, fieldStash){
   dimaxBodegaPreview = p;
-  var esTest = (window.MODE_FILTER||'real')==='test';
+  var esTest = fieldStash && fieldStash.dmxTest != null
+    ? fieldStash.dmxTest
+    : ((window.MODE_FILTER||'real')==='test');
   var row = {
     fila: p.fila,
     codigo_dimax: p.codigo_dimax,
@@ -1851,13 +2035,29 @@ function renderDimaxBodegaPreview(p){
     errores: p.can_create ? 0 : 1,
     can_import: p.can_create
   };
+  var editPanel = dimaxImportEditMode
+    ? '<div class="import-edit-panel"><div class="import-edit-grid">'+
+        '<div class="modal-field"><label>DNI / RUC</label><input id="dmxEditRuc" class="input" value="'+escAttr(p.ruc)+'"></div>'+
+        '<div class="modal-field"><label>Teléfono WhatsApp</label><input id="dmxEditTel" class="input" value="'+escAttr(p.telefono_whatsapp)+'"></div>'+
+        '<div class="modal-field" style="grid-column:1/-1"><label>Razón social</label><input id="dmxEditRazon" class="input" value="'+escAttr(p.razon_social)+'"></div>'+
+        '<div class="modal-field"><label>Nombre comercial</label><input id="dmxEditComercial" class="input" value="'+escAttr(p.nombre_comercial||p.razon_social)+'"></div>'+
+        '<div class="modal-field"><label>Representante legal</label><input id="dmxEditRep" class="input" value="'+escAttr(p.representante_legal||'')+'"></div>'+
+        '<div class="modal-field"><label>DNI representante</label><input id="dmxEditDniRep" class="input" value="'+escAttr(p.dni_representante||'')+'"></div>'+
+        '<div class="modal-field"><label>Distrito</label><input id="dmxEditDist" class="input" value="'+escAttr(p.distrito||'')+'"></div>'+
+        '<div class="modal-field"><label>Provincia</label><input id="dmxEditProv" class="input" value="'+escAttr(p.provincia||'Lima')+'"></div>'+
+        '<div class="modal-field" style="grid-column:1/-1"><label>Dirección</label><input id="dmxEditDir" class="input" value="'+escAttr(p.direccion_fiscal||'')+'"></div>'+
+        '<label style="grid-column:1/-1;font-size:12px;color:var(--muted)"><input type="checkbox" id="dmxEditSoloDni" '+(p.solo_dni_sin_ruc?'checked':'')+'> Solo DNI (sin RUC de empresa)</label>'+
+      '</div></div>'
+    : '';
 
   document.getElementById('modalContainer').innerHTML =
-    '<div class="modal-overlay open" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:980px;max-height:92vh;overflow:auto"><h3>Vista previa — bodega DIMAX</h3>'+
+    '<div class="modal-overlay open" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:980px;max-height:92vh;overflow:auto"><h3>Vista previa — nueva plantilla</h3>'+
     '<p style="color:var(--muted);font-size:12px;margin-bottom:12px">Archivo: '+escAttr(p.filename||'—')+' · fila '+escAttr(p.fila)+'</p>'+
     renderImportSummary(summary)+
+    renderImportPreviewToolbar(dimaxImportEditMode, 'toggleDimaxImportEdit', 'revalidateDimaxBodega')+
+    editPanel+
     '<div class="import-preview-wrap"><table class="import-preview-table"><thead><tr>'+
-      '<th>Fila</th><th>Cód. DIMAX</th><th>DNI/RUC</th><th>Razón social</th><th>Teléfono</th><th>Distrito</th><th>Vendedor</th><th>Validación</th>'+
+      '<th>Fila</th><th>Cód. cliente</th><th>DNI/RUC</th><th>Razón social</th><th>Teléfono</th><th>Distrito</th><th>Vendedor</th><th>Validación</th>'+
     '</tr></thead><tbody><tr class="'+importRowClass(row)+'">'+
       '<td>'+escAttr(row.fila)+'</td>'+
       '<td class="mono">'+escAttr(row.codigo_dimax)+'</td>'+
@@ -1868,12 +2068,12 @@ function renderDimaxBodegaPreview(p){
       '<td style="font-size:11px">'+escAttr(row.vendedor)+'</td>'+
       '<td>'+importStatusCell(row)+'</td>'+
     '</tr></tbody></table></div>'+
-    '<div class="modal-field"><label>Comentario (mín. 8 caracteres)</label><input id="dmxComentario" class="input" placeholder="Import DIMAX fila '+escAttr(p.fila)+'"></div>'+
-    '<div class="modal-field"><label>Contraseña</label><input type="password" id="dmxPass" class="input"></div>'+
+    '<div class="modal-field"><label>Comentario (mín. 8 caracteres)</label><input id="dmxComentario" class="input" placeholder="Nueva plantilla, fila '+escAttr(p.fila)+'"></div>'+
     '<label style="display:block;margin:8px 0;color:var(--muted);font-size:12px"><input type="checkbox" id="dmxTest" '+(esTest?'checked':'')+'> Bodega de prueba</label>'+
     '<div class="modal-actions"><button class="btn btn-outline" onclick="openImportBodegas(\'dimax\')">← Otro archivo</button>'+
     '<button class="btn btn-outline" onclick="closeModal()">Cancelar</button>'+
     '<button class="btn btn-green" id="dmxConfirmBtn" onclick="confirmDimaxBodega()" '+(p.can_create===false?'disabled title="Corrige duplicados"':'')+'>Confirmar y crear</button></div></div></div>';
+  _applyImportFields(fieldStash);
 }
 
 function analyzeDimaxBodega(){
@@ -1881,7 +2081,8 @@ function analyzeDimaxBodega(){
   if(!f){ showToast('Selecciona un archivo','error'); return; }
   var fd = new FormData();
   fd.append('file', f);
-  showPanelLoader('Analizando Excel DIMAX…', true);
+  dimaxImportEditMode = false;
+  showPanelLoader('Analizando nueva plantilla…', true);
   fetch('/api/backoffice/import/dimax-bodega/preview', {method:'POST', headers: authHeaders(), body: fd})
     .then(function(r){ return r.json().then(function(d){ return {ok:r.ok,d:d}; }); })
     .then(function(x){
@@ -1895,33 +2096,36 @@ function analyzeDimaxBodega(){
 
 function confirmDimaxBodega(){
   if(!dimaxBodegaPreview){ showToast('Sin vista previa','error'); return; }
-  var p = dimaxBodegaPreview;
+  var data = collectDimaxPreviewData();
+  if(!data){ showToast('Sin datos','error'); return; }
   var body = {
-    ruc: p.ruc,
-    solo_dni_sin_ruc: !!p.solo_dni_sin_ruc,
-    razon_social: p.razon_social,
-    nombre_comercial: p.nombre_comercial || p.razon_social,
-    representante_legal: p.representante_legal || null,
-    dni_representante: p.dni_representante || null,
-    telefono_whatsapp: p.telefono_whatsapp,
-    direccion_fiscal: p.direccion_fiscal || null,
-    distrito: p.distrito || null,
-    provincia: p.provincia || null,
+    ruc: data.ruc,
+    solo_dni_sin_ruc: !!data.solo_dni_sin_ruc,
+    razon_social: data.razon_social,
+    nombre_comercial: data.nombre_comercial || data.razon_social,
+    representante_legal: data.representante_legal || null,
+    dni_representante: data.dni_representante || null,
+    telefono_whatsapp: data.telefono_whatsapp,
+    direccion_fiscal: data.direccion_fiscal || null,
+    distrito: data.distrito || null,
+    provincia: data.provincia || null,
     estado: 'preaprobada',
     es_test: document.getElementById('dmxTest').checked,
-    codigo_dimax: p.codigo_dimax,
-    vendedor_codigo: p.vendedor_codigo,
-    vendedor_nombre: p.vendedor_nombre,
-    fila_excel: p.fila,
-    comentario: document.getElementById('dmxComentario').value.trim(),
-    password: document.getElementById('dmxPass').value || USER_PASSWORD
+    codigo_dimax: data.codigo_dimax,
+    vendedor_codigo: data.vendedor_codigo,
+    vendedor_nombre: data.vendedor_nombre,
+    fila_excel: data.fila,
+    comentario: document.getElementById('dmxComentario').value.trim()
   };
+  if(body.comentario.length < 8){
+    showToast('El comentario debe tener al menos 8 caracteres','error'); return;
+  }
   showPanelLoader('Creando bodega…', true);
   apiPost('/api/backoffice/import/dimax-bodega/confirm', body).then(function(x){
     if(!x.ok) throw new Error(x.d.detail || 'Error al crear');
     closeModal();
     dimaxBodegaPreview = null;
-    showToast('Bodega DIMAX creada','success');
+    showToast('Bodega creada','success');
     loadBodegas();
   }).catch(function(e){ showToast(String(e.message).slice(0,200),'error'); })
   .finally(function(){ hidePanelLoader(); });
