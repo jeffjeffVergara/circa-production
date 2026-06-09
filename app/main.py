@@ -134,6 +134,10 @@ def dispatch_signal(telefono: str, signal: dict):
             f"Abre aquí: {base}/flyer\n\n"
             "Cuando termines, escribe *MENU* para volver.",
         )
+    elif sig == "VEND_NOTIFY_BODEGA":
+        dest = signal.get("to") or ""
+        if dest:
+            send_whatsapp(dest, signal.get("body") or "")
     elif sig == "CONTACT_CIRCA":
         # Twilio (legacy): texto plano. Si SUPPORT_INBOX_DISABLED, fallback wa.me (CIRCA_SOPORTE_WHATSAPP).
         link = signal.get("wa_link") or ""
@@ -1236,6 +1240,10 @@ async def meta_webhook_incoming(request: Request):
                         await _send_payment_options(
                             telefono, resp["pedido_id"], resp["total"], items_text, resp["bodega_id"]
                         )
+                    elif signal == "VEND_NOTIFY_BODEGA":
+                        dest = resp.get("to") or ""
+                        if dest:
+                            await meta_client.send_text(dest, resp.get("body") or "")
                     else:
                         logger.warning(f"Unknown signal: {signal}")
                 

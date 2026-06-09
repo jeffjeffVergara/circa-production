@@ -593,12 +593,14 @@ async def enviar_recordatorio(pedido_id: str, user: dict = Depends(get_backoffic
 class VendedorCreate(ReauthMixin):
     codigo: str
     nombre: str
+    telefono_whatsapp: Optional[str] = None
     distribuidor_id: Optional[str] = None
     es_admin: bool = False
 
 
 class VendedorUpdate(ReauthMixin):
     nombre: Optional[str] = None
+    telefono_whatsapp: Optional[str] = None
     activo: Optional[bool] = None
     es_admin: Optional[bool] = None
 
@@ -611,7 +613,7 @@ class CarteraAssign(ReauthMixin):
 @router.get("/vendedores")
 async def list_vendedores(user: dict = Depends(get_backoffice_user)):
     rows = _sb_get("vendedores", {
-        "select": "id,codigo,nombre,distribuidor_id,activo,es_admin,ultimo_acceso,access_token",
+        "select": "id,codigo,nombre,telefono_whatsapp,distribuidor_id,activo,es_admin,ultimo_acceso,access_token",
         "order": "nombre.asc",
         "limit": "500",
     })
@@ -635,6 +637,8 @@ async def create_vendedor(body: VendedorCreate, user: dict = Depends(get_backoff
         "es_admin": body.es_admin,
         "access_token": token,
     }
+    if body.telefono_whatsapp:
+        payload["telefono_whatsapp"] = _normalizar_telefono(body.telefono_whatsapp)
     r = httpx.post(
         f"{dist.SUPABASE_URL}/rest/v1/vendedores",
         headers=dist._sb_headers(),
@@ -657,6 +661,8 @@ async def update_vendedor(
     updates = {k: v for k, v in body.model_dump(exclude={"comentario", "password"}).items() if v is not None}
     if not updates:
         raise HTTPException(status_code=400, detail="Sin campos para actualizar")
+    if "telefono_whatsapp" in updates:
+        updates["telefono_whatsapp"] = _normalizar_telefono(updates["telefono_whatsapp"])
     _sb_patch("vendedores", updates, {"id": f"eq.{vendedor_id}"})
     log_action(user=user, action="vendedor_update", entity_type="vendedor", entity_id=vendedor_id, comment=body.comentario, after=updates)
     return {"ok": True, "vendedor_id": vendedor_id}

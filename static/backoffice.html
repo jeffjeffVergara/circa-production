@@ -468,8 +468,8 @@ tr:hover td{background:var(--card-hover)}
 <button class="btn btn-green btn-small" style="float:right;margin-top:-4px" onclick="openCreateVendedor()">+ Nuevo vendedor</button>
 </h2>
 <div class="table-wrap">
-<table><thead><tr><th>Código</th><th>Nombre</th><th>Estado</th><th>Último acceso</th><th>App</th><th></th></tr></thead>
-<tbody id="vendedoresBody"><tr><td colspan="6" class="empty">Cargando...</td></tr></tbody>
+<table><thead><tr><th>Código</th><th>Nombre</th><th>WhatsApp</th><th>Estado</th><th>Último acceso</th><th>App</th><th></th></tr></thead>
+<tbody id="vendedoresBody"><tr><td colspan="7" class="empty">Cargando...</td></tr></tbody>
 </table>
 </div>
 </div>
@@ -1539,11 +1539,12 @@ function loadVendedores(){
       var acc = v.ultimo_acceso ? new Date(v.ultimo_acceso).toLocaleDateString('es-PE') : '—';
       var st = v.activo ? '<span class="badge badge-al_dia">activo</span>' : '<span class="badge badge-vencido">inactivo</span>';
       var link = v.url_app ? '<a href="'+v.url_app+'" target="_blank" rel="noopener">Abrir app</a>' : '—';
-      return '<tr><td class="mono">'+v.codigo+'</td><td>'+v.nombre+'</td><td>'+st+'</td><td>'+acc+'</td><td>'+link+'</td>'+
+      var wa = v.telefono_whatsapp || '—';
+      return '<tr><td class="mono">'+v.codigo+'</td><td>'+v.nombre+'</td><td class="mono">'+wa+'</td><td>'+st+'</td><td>'+acc+'</td><td>'+link+'</td>'+
         '<td><button class="btn btn-outline btn-small" onclick="viewVendedorPreventas(\''+v.id+'\')">Preventas</button></td></tr>';
-    }).join('') : '<tr><td colspan="6" class="empty">Sin vendedores</td></tr>';
+    }).join('') : '<tr><td colspan="7" class="empty">Sin vendedores</td></tr>';
   }).catch(function(e){
-    document.getElementById('vendedoresBody').innerHTML = '<tr><td colspan="6" class="empty">'+e.message+'</td></tr>';
+    document.getElementById('vendedoresBody').innerHTML = '<tr><td colspan="7" class="empty">'+e.message+'</td></tr>';
   });
 }
 
@@ -1552,6 +1553,7 @@ function openCreateVendedor(){
     '<div class="modal-overlay open" onclick="if(event.target===this)closeModal()"><div class="modal"><h3>Nuevo vendedor</h3>'+
     '<div class="modal-field"><label>Código</label><input id="nvCodigo" class="input"></div>'+
     '<div class="modal-field"><label>Nombre</label><input id="nvNombre" class="input"></div>'+
+    '<div class="modal-field"><label>WhatsApp vendedor (opcional)</label><input id="nvWa" class="input" placeholder="987654321 o +51987654321"></div>'+
     '<div class="modal-field"><label>Comentario</label><input id="nvComentario" class="input" placeholder="Motivo del alta"></div>'+
     '<div class="modal-field"><label>Contraseña</label><input type="password" id="nvPass" class="input"></div>'+
     '<div class="modal-actions"><button class="btn btn-outline" onclick="closeModal()">Cancelar</button>'+
@@ -1560,9 +1562,11 @@ function openCreateVendedor(){
 
 function submitCreateVendedor(){
   var pass = document.getElementById('nvPass').value || USER_PASSWORD;
+  var wa = (document.getElementById('nvWa').value || '').trim();
   apiPost('/api/backoffice/vendedores', {
     codigo: document.getElementById('nvCodigo').value,
     nombre: document.getElementById('nvNombre').value,
+    telefono_whatsapp: wa || null,
     comentario: document.getElementById('nvComentario').value,
     password: pass
   }).then(function(x){

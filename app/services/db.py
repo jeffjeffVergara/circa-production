@@ -38,6 +38,29 @@ def get_bodega_by_ruc(ruc: str):
     r = sb.table("bodegas").select("*").eq("ruc", ruc).limit(1).execute()
     return r.data[0] if r.data else None
 
+def get_vendedor_by_phone(telefono: str):
+    """Vendedor activo por WhatsApp (+51... o variantes)."""
+    tel = (telefono or "").strip()
+    if not tel:
+        return None
+    variants = {tel}
+    if tel.startswith("+"):
+        variants.add(tel[1:])
+    else:
+        variants.add(f"+{tel}")
+    for candidate in variants:
+        r = (
+            sb.table("vendedores")
+            .select("id,codigo,nombre,distribuidor_id,activo,es_admin,access_token,telefono_whatsapp")
+            .eq("telefono_whatsapp", candidate)
+            .eq("activo", True)
+            .limit(1)
+            .execute()
+        )
+        if r.data:
+            return r.data[0]
+    return None
+
 def update_bodega(bodega_id: str, data: dict):
     sb.table("bodegas").update(data).eq("id", bodega_id).execute()
 
@@ -648,6 +671,7 @@ def crear_pedido_preventa(
         "distribuidor_id": distribuidor_id,
         "vendedor_id": vendedor_id,
         "estado": "preventa_confirmada",
+        "tipo_operacion": "preventa",
         "origen": "preventa_dimax",
         "monto_productos": monto_productos,
         "descuento_prorrateado": descuento_prorrateado,

@@ -29,6 +29,7 @@ from app.services.pin_reset_flow import (
     after_pin_created_responses,
 )
 from app.services.identity import consultar_ruc_sync, consultar_dni_sync, validate_ruc_format, validate_dni_format, is_ruc_eligible
+from app.services import vendedor_wa as vend_wa
 
 # Test phones — bypass SUNAT/RENIEC/Vision validation
 TEST_PHONES = {"+51954712581", "+51977652871", "+56991291415", "+51955755308", "+51981254477", "+51961276835", "51954712581", "51977652871", "56991291415", "51955755308", "51981254477", "51961276835"}
@@ -279,9 +280,25 @@ def handle_message(telefono: str, body: str, media_url: str = None) -> list:
 
     session = db.get_session(telefono)
     bodega = db.get_bodega_by_phone(telefono)
+    vendedor = db.get_vendedor_by_phone(telefono)
 
     if body_n and body_n in _TEXTO_PIDE_CONTACTO_CIRCA:
         return _desvio_contacto_circa_responses()
+
+    # ── VENDEDOR POR WHATSAPP ──
+    if vendedor and body_n in ("VENDEDOR", "VEND"):
+        return vend_wa.handle_vendedor_message(
+            telefono, body_raw, body_n, vendedor, session, force_entry=True,
+        )
+    if vend_wa.should_show_actor_chooser(vendedor, bodega, session):
+        if body_n in ("1", "VENDEDOR", "VEND"):
+            return vend_wa.handle_vendedor_message(
+                telefono, body_raw, body_n, vendedor, session, force_entry=True,
+            )
+        if body_n not in ("2", "BODEGA", "CLIENTE", "SOY BODEGA"):
+            return vend_wa.actor_chooser_responses()
+    if vend_wa.should_route_to_vendedor(vendedor, bodega, session):
+        return vend_wa.handle_vendedor_message(telefono, body_raw, body_n, vendedor, session)
 
     # ── PREVENTA PROPUESTA POR VENDEDOR ──
     # Si el mensaje contiene "Pedido <link_token>" y la bodega esta activa,
