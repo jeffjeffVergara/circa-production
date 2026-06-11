@@ -836,6 +836,9 @@ async def admin_cobranzas(
         recordatorios_map = {}
 
     for p in pedidos:
+        if float(p.get("monto_financiado") or 0) <= 0:
+            continue
+
         plazo = p.get("plazo_dias") or 0
         fecha_entregado = p.get("fecha_entregado") or p.get("created_at")
         venc = resolver_fecha_vencimiento_pedido(p, hoy)
@@ -857,6 +860,9 @@ async def admin_cobranzas(
             status_cobranza = "por_vencer"
         else:
             status_cobranza = "al_dia"
+
+        if status_cobranza == "pagado":
+            dias_restantes = None
         
         tp = total_pagar_desde_pedido(p, hoy=hoy)
         item = {
@@ -1257,9 +1263,36 @@ async def admin_bodega_detalle(
         except Exception:
             pass
 
+    # 6. Cartera comercial activa (vendedor de campo + supervisor DIMAX)
+    cartera_comercial = {}
+    try:
+        bv_rows = _sb_get("bodega_vendedores", {
+            "select": "supervisor,dia_visita,dia_entrega,grupo,vendedores(codigo,nombre)",
+            "bodega_id": f"eq.{bodega_id}",
+            "activo": "eq.true",
+            "order": "created_at.desc",
+            "limit": "1",
+        })
+        if bv_rows:
+            row = bv_rows[0]
+            vend = row.get("vendedores") or {}
+            if isinstance(vend, list):
+                vend = vend[0] if vend else {}
+            cartera_comercial = {
+                "vendedor_codigo": vend.get("codigo"),
+                "vendedor_nombre": vend.get("nombre"),
+                "supervisor": row.get("supervisor"),
+                "dia_visita": row.get("dia_visita"),
+                "dia_entrega": row.get("dia_entrega"),
+                "grupo": row.get("grupo"),
+            }
+    except Exception:
+        pass
+
     return {
         "bodega": bodega,
         "distribuidor": distribuidor,
+        "cartera_comercial": cartera_comercial,
         "eventos": eventos,
         "pedidos": pedidos,
         "stats": {

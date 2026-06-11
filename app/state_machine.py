@@ -30,6 +30,11 @@ from app.services.pin_reset_flow import (
 )
 from app.services.identity import consultar_ruc_sync, consultar_dni_sync, validate_ruc_format, validate_dni_format, is_ruc_eligible
 from app.services import vendedor_wa as vend_wa
+from app.services.preventa_propuesta import (
+    nombre_corto_vendedor as _nombre_corto_vendedor,
+    parse_items_json,
+    preparar_aprobar_preventa,
+)
 
 # Test phones — bypass SUNAT/RENIEC/Vision validation
 TEST_PHONES = {"+51954712581", "+51977652871", "+56991291415", "+51955755308", "+51981254477", "+51961276835", "51954712581", "51977652871", "56991291415", "51955755308", "51981254477", "51961276835"}
@@ -138,31 +143,6 @@ def _detect_preventa_propuesta(body: str):
     return m.group(1).lower() if m else None
 
 
-def _nombre_corto_vendedor(nombre_completo: str) -> str:
-    """De 'APELLIDO_P APELLIDO_M NOMBRE1 NOMBRE2' devuelve 'Nombre1' (formato BDD vendedores)."""
-    if not nombre_completo:
-        return "tu vendedor"
-    tokens = nombre_completo.strip().split()
-    if len(tokens) >= 3:
-        return tokens[2].capitalize()
-    if tokens:
-        return tokens[0].capitalize()
-    return "tu vendedor"
-
-
-def _resumen_items_text(items: list, max_lineas: int = 10) -> str:
-    """Convierte items_json en texto plano para el mensaje WhatsApp."""
-    out = []
-    for i in items[:max_lineas]:
-        qty = i.get("cantidad", 1)
-        nom = (i.get("nombre") or "")[:45]
-        sub = float(i.get("subtotal") or 0)
-        out.append(f"{qty}x {nom} — S/{sub:.2f}")
-    if len(items) > max_lineas:
-        out.append(f"... y {len(items) - max_lineas} productos más")
-    return "\n".join(out)
-
-
 def _handler_preventa_propuesta(telefono: str, link_token: str, bodega: dict) -> list:
     """Procesa cuando el bodeguero abre el link/QR de una preventa armada por un vendedor."""
     # Levantar pedido por link_token
@@ -196,7 +176,6 @@ def _handler_preventa_propuesta(telefono: str, link_token: str, bodega: dict) ->
     if bodega["id"] != pedido["bodega_id"]:
         return ["⚠️ Esta preventa no está asociada a tu número de WhatsApp.\n\nSi crees que es un error, contacta a tu vendedor."]
 
-    # Levantar nombre del vendedor
     vendedor_nombre = "tu vendedor"
     if pedido.get("vendedor_id"):
         try:
@@ -212,66 +191,16 @@ def _handler_preventa_propuesta(telefono: str, link_token: str, bodega: dict) ->
         except Exception:
             pass
 
-    # Parsear items
-    items = []
-    try:
-        raw = pedido.get("items_json")
-        items = json.loads(raw) if isinstance(raw, str) else (raw or [])
-    except Exception:
-        items = []
+    if not parse_items_json(pedido):
+        return ["⚠️ No pudimos cargar los productos de la preventa. Pídele a tu vendedor que la rehaga."]
 
-    items_text = _resumen_items_text(items)
-    total = float(pedido.get("total_pedido") or 0)
-    linea = float(bodega.get("linea_disponible") or 0)
-
-    # Pago mixto: si total > linea, financiamos lo que entra en la linea y el resto va en efectivo
-    financiable = round(min(total, linea), 2)
-    efectivo = round(max(0.0, total - linea), 2)
-
-    # Nombre para el saludo (representante)
-    saludo = nombre_para_comunicar_representante(bodega) or (bodega.get("nombre_comercial") or "Hola")
-
-    # Bloque desglose (solo si hay parte en efectivo)
-    if efectivo > 0:
-        desglose = (
-            f"💰 *TOTAL: S/ {total:.2f}*\n"
-            f"📊 Tu línea: S/ {linea:.2f}\n\n"
-            f"💳 Financias con Circa: *S/ {financiable:.2f}*\n"
-            f"💵 Pagas en efectivo al vendedor: *S/ {efectivo:.2f}*"
-        )
-    else:
-        desglose = (
-            f"💰 *TOTAL: S/ {total:.2f}*\n"
-            f"📊 Línea disponible: S/ {linea:.2f}"
-        )
-
-    # Guardar en sesión y pedir confirmacion
-    db.upsert_session(
+    mensaje = preparar_aprobar_preventa(
         telefono,
-        "aprobar_preventa",
-        {
-            "pedido_id": pedido["id"],
-            "pedido_numero": pedido.get("numero") or "",
-            "link_token": link_token,
-            "total": total,
-            "financiable": financiable,
-            "efectivo": efectivo,
-            "vendedor_nombre": vendedor_nombre,
-            "intentos_pin": 0,
-        },
-        bodega["id"],
+        bodega=bodega,
+        pedido=pedido,
+        vendedor_nombre=vendedor_nombre,
     )
-
-    return [
-        f"🛒 *{saludo}, tu preventa está lista*\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"{items_text}\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"{desglose}\n"
-        f"👤 Preventa armada por *{vendedor_nombre}*\n\n"
-        f"Si todo está bien, escribe *APROBAR* para confirmar y financiar con tu línea Circa.\n"
-        f"Si no quieres aprobarla, escribe *RECHAZAR*."
-    ]
+    return [mensaje]
 
 
 def handle_message(telefono: str, body: str, media_url: str = None) -> list:

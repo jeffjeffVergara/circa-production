@@ -1254,6 +1254,11 @@ function renderBodegaPerfil(d){
   var bd = sc.breakdown || {};
   var mx = sc.metrics || {};
   var dist = d.distribuidor || {};
+  var com = d.cartera_comercial || {};
+  var distNombre = dist.nombre_comercial || dist.razon_social || dist.nombre || '-';
+  var vendedorLabel = com.vendedor_nombre
+    ? (com.vendedor_nombre + (com.vendedor_codigo ? ' (' + com.vendedor_codigo + ')' : ''))
+    : '-';
   var accent = scoreAccent(sc.grade || 'C');
 
   var scoreHero =
@@ -1305,8 +1310,14 @@ function renderBodegaPerfil(d){
     '<div class="info-grid">'+
       '<div class="info-card"><div class="info-label">Razón social</div><div class="info-value" style="font-size:13px">'+(b.razon_social||'-')+'</div></div>'+
       '<div class="info-card"><div class="info-label">Nombre comercial</div><div class="info-value" style="font-size:13px">'+(b.nombre_comercial||'-')+'</div></div>'+
-      '<div class="info-card"><div class="info-label">Distribuidor</div><div class="info-value" style="font-size:13px">'+(dist.nombre||dist.codigo||'-')+'</div></div>'+
+      '<div class="info-card"><div class="info-label">Distribuidora</div><div class="info-value" style="font-size:13px">'+distNombre+'</div></div>'+
       '<div class="info-card"><div class="info-label">Tipo</div><div class="info-value" style="font-size:13px">'+(b.es_test ? '🧪 Test' : 'Real')+' · '+(b.created_at ? new Date(b.created_at).toLocaleDateString('es-PE') : '—')+'</div></div>'+
+    '</div>'+
+    '<div class="info-grid">'+
+      '<div class="info-card"><div class="info-label">Vendedor</div><div class="info-value" style="font-size:13px">'+vendedorLabel+'</div></div>'+
+      '<div class="info-card"><div class="info-label">Supervisor</div><div class="info-value" style="font-size:13px">'+(com.supervisor||'-')+'</div></div>'+
+      '<div class="info-card"><div class="info-label">Día visita</div><div class="info-value" style="font-size:13px">'+(com.dia_visita||'-')+'</div></div>'+
+      '<div class="info-card"><div class="info-label">Día entrega</div><div class="info-value" style="font-size:13px">'+(com.dia_entrega||'-')+'</div></div>'+
     '</div>';
 
   var pedidosHtml = '';

@@ -16,6 +16,11 @@ import re
 from typing import Any
 
 from app.services import db
+from app.services.preventa_propuesta import (
+    nombre_corto_vendedor,
+    parse_items_json,
+    preparar_aprobar_preventa,
+)
 
 CIRCA_WA_NUMBER = os.getenv("CIRCA_WA_NUMBER", "51986311567").lstrip("+")
 
@@ -252,7 +257,7 @@ def _avisar_bodeguero(vendedor: dict, datos: dict, body_raw: str) -> list:
 
     q = (
         db.sb.table("pedidos")
-        .select("id,link_token,total_pedido,estado,bodega_id")
+        .select("id,numero,link_token,total_pedido,estado,bodega_id,items_json,vendedor_id")
         .eq("vendedor_id", vendedor["id"])
         .eq("tipo_operacion", "preventa")
         .eq("estado", "preventa_confirmada")
@@ -275,7 +280,10 @@ def _avisar_bodeguero(vendedor: dict, datos: dict, body_raw: str) -> list:
 
     bodega_rows = (
         db.sb.table("bodegas")
-        .select("id,nombre_comercial,razon_social,telefono_whatsapp")
+        .select(
+            "id,nombre_comercial,razon_social,telefono_whatsapp,linea_disponible,"
+            "representante_legal,representante_nombre_corto"
+        )
         .eq("id", pedido["bodega_id"])
         .limit(1)
         .execute()
@@ -288,16 +296,21 @@ def _avisar_bodeguero(vendedor: dict, datos: dict, body_raw: str) -> list:
     if not tel_bg:
         return ["La bodega no tiene WhatsApp registrado. Actualízalo en backoffice."]
 
+    if not parse_items_json(pedido):
+        return [
+            "⚠️ La preventa no tiene ítems cargados.\n\n"
+            "Vuelve a armar el pedido en el catálogo y escribe *AVISAR* de nuevo."
+        ]
+
     lt = pedido.get("link_token") or ""
-    total = float(pedido.get("total_pedido") or 0)
-    vnombre = _primer_nombre(vendedor.get("nombre") or "")
+    vnombre = nombre_corto_vendedor(vendedor.get("nombre") or "")
     bnombre = bodega.get("nombre_comercial") or bodega.get("razon_social") or "tu negocio"
 
-    msg_bodeguero = (
-        f"🛒 *Hola! {vnombre} armó una preventa para {bnombre}*\n\n"
-        f"Total: *S/ {total:.2f}*\n\n"
-        f"Para revisar y aprobar, escribe:\n*Pedido {lt}*\n\n"
-        f"O abre: {_wa_pedido_link(lt)}"
+    msg_bodeguero = preparar_aprobar_preventa(
+        tel_bg,
+        bodega=bodega,
+        pedido=pedido,
+        vendedor_nombre=vnombre,
     )
 
     return [
@@ -306,9 +319,9 @@ def _avisar_bodeguero(vendedor: dict, datos: dict, body_raw: str) -> list:
             "to": tel_bg,
             "body": msg_bodeguero,
         },
-        f"✅ Le avisamos a *{bnombre}* por WhatsApp.\n\n"
-        f"Código del pedido: `{lt}`\n"
-        "Cuando el cliente apruebe, lo verás en *2 — Mis preventas*.",
+        f"✅ Le enviamos el resumen completo a *{bnombre}*.\n\n"
+        f"Código: `{lt}` · puede responder *APROBAR* o *RECHAZAR*.\n"
+        "Lo verás en *2 — Mis preventas*.",
     ]
 
 
