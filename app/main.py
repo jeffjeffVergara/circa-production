@@ -1345,19 +1345,21 @@ async def get_bodega(bodega_id: str):
 async def list_catalogo(distribuidor_id: str = None, bodega_id: str = None, marca: str = None, categoria: str = None):
     from app.services.distribuidor_routing import DIMAX_DISTRIBUIDOR_ID
 
-    # Catálogo web: siempre DIMAX (ignora FK legacy Zoom en bodegas y ?distribuidor_id=Zoom).
+    # Catálogo multi-distribuidor (12-jun-2026): una bodega puede tener
+    # varios distribuidores activos (tabla bodega_distribuidores).
+    # Sin bodega_id: default legacy DIMAX.
     try:
         if bodega_id:
-            distribuidor_id = db.get_distribuidor_de_bodega(bodega_id)
+            dist_ids = db.get_distribuidores_de_bodega(bodega_id)
         else:
-            distribuidor_id = DIMAX_DISTRIBUIDOR_ID
+            dist_ids = [DIMAX_DISTRIBUIDOR_ID]
     except Exception:
-        distribuidor_id = DIMAX_DISTRIBUIDOR_ID
+        dist_ids = [DIMAX_DISTRIBUIDOR_ID]
     q = (
         db.sb.table("catalogo_distribuidor")
         .select("*, productos_circa(*)")
         .eq("activo", True)
-        .eq("distribuidor_id", distribuidor_id)
+        .in_("distribuidor_id", dist_ids)
     )
     rows = q.execute().data
     result = []
@@ -1369,6 +1371,7 @@ async def list_catalogo(distribuidor_id: str = None, bodega_id: str = None, marc
             "id": pc.get("id"), "nombre": pc.get("nombre", ""), "marca": pc.get("marca", ""),
             "categoria": pc.get("categoria", ""), "unidades": row.get("unidades") or {},
             "sku": row.get("sku_distribuidor", ""), "activo": row.get("activo", True),
+            "distribuidor_id": row.get("distribuidor_id"),
         })
     return result
 
@@ -1621,9 +1624,40 @@ async def submit_cart(data: CartSubmission):
     else:
         estado_inicial = "preventa_borrador" if tipo == "preventa" else "borrador"
 
-    dist_pedido = db.get_distribuidor_pedido_de_bodega(data.bodega_id)
-    if not dist_pedido:
+    # Validación de bodega + fallback legacy (ítems sin catalogo_id).
+    dist_fallback = db.get_distribuidor_pedido_de_bodega(data.bodega_id)
+    if not dist_fallback:
         return {"ok": False, "error": "Bodega no encontrada"}
+
+    # 12-jun-2026: el distribuidor del pedido se resuelve desde los productos
+    # del carrito. OJO: el frontend manda en 'catalogo_id' el UUID de
+    # productos_circa (no el de catalogo_distribuidor); se resuelve contra los
+    # distribuidores activos de la bodega. Si un producto lo venden varios,
+    # gana DIMAX como principal (determinístico) — el fix real es que el
+    # frontend mande el UUID de catalogo_distribuidor (Paquete 2).
+    # Guardia temporal: carritos que mezclan distribuidores se rechazan hasta
+    # que exista el split por grupo de compra (pedidos.grupo_compra_id).
+    from app.services.distribuidor_routing import DIMAX_DISTRIBUIDOR_ID as _DIMAX_ID
+    dist_bodega = db.get_distribuidores_de_bodega(data.bodega_id)
+    producto_ids = [i.get("catalogo_id") for i in items_list if i.get("catalogo_id")]
+    prod_map = db.get_distribuidores_de_productos(producto_ids, dist_bodega)
+
+    dist_set = set()
+    for pid in producto_ids:
+        candidatos = sorted(prod_map.get(pid) or [])
+        if not candidatos:
+            continue
+        if _DIMAX_ID in candidatos:
+            dist_set.add(_DIMAX_ID)
+        else:
+            dist_set.add(candidatos[0])
+
+    if len(dist_set) > 1:
+        return {
+            "ok": False,
+            "error": "Tu pedido mezcla productos de dos proveedores. Por ahora confírmalos como pedidos separados.",
+        }
+    dist_pedido = dist_set.pop() if dist_set else dist_fallback
 
     # Create order in pedidos
     pedido_payload = {

@@ -149,14 +149,12 @@ def get_catalogo(distribuidor_id: str, marca: str = None, categoria: str = None)
     return result
 
 def get_catalogo_all_for_bodega(bodega_id: str):
-    """Get catalog from DIMAX (regla piloto; ver distribuidor_routing)."""
-    dist_id = get_distribuidor_de_bodega(bodega_id)
-    if not dist_id:
-        return []
+    """Catálogo combinado de todos los distribuidores activos de la bodega."""
+    dist_ids = get_distribuidores_de_bodega(bodega_id)
     return (
         sb.table("catalogo_distribuidor")
         .select("*, productos_circa(*)")
-        .eq("distribuidor_id", dist_id)
+        .in_("distribuidor_id", dist_ids)
         .eq("activo", True)
         .execute()
         .data
@@ -548,6 +546,54 @@ def get_distribuidor_pedido_de_bodega(bodega_id: str) -> str | None:
     if not b:
         return None
     return distribuidor_id_para_pedido(b)
+
+
+def get_distribuidores_de_bodega(bodega_id: str) -> list:
+    """
+    Distribuidores activos de la bodega según bodega_distribuidores (N:M).
+    Fallback: [DIMAX] si la bodega no tiene mappings (no debería pasar:
+    el backfill del 12-jun-2026 cubrió toda bodega con distribuidor_id).
+    """
+    from app.services.distribuidor_routing import DIMAX_DISTRIBUIDOR_ID
+
+    if not bodega_id:
+        return [DIMAX_DISTRIBUIDOR_ID]
+    try:
+        r = sb.table("bodega_distribuidores").select("distribuidor_id").eq(
+            "bodega_id", bodega_id
+        ).eq("activo", True).execute()
+        ids = [row["distribuidor_id"] for row in (r.data or [])]
+        return ids or [DIMAX_DISTRIBUIDOR_ID]
+    except Exception as e:
+        logger_db.error("get_distribuidores_de_bodega: %s", e)
+        return [DIMAX_DISTRIBUIDOR_ID]
+
+
+def get_distribuidores_de_productos(producto_ids: list, distribuidor_ids: list) -> dict:
+    """
+    Mapea producto_circa_id -> lista de distribuidor_id que lo venden (activo),
+    restringido a los distribuidores dados.
+
+    Nota: el frontend del catálogo manda en 'catalogo_id' el UUID de
+    productos_circa, NO el de catalogo_distribuidor (mismo patrón que
+    get_skus_for_catalogo_ids). Como el maestro es cross-distribuidor, un
+    producto puede mapear a más de un distribuidor.
+    """
+    if not producto_ids or not distribuidor_ids:
+        return {}
+    try:
+        r = sb.table("catalogo_distribuidor").select(
+            "producto_circa_id, distribuidor_id"
+        ).in_("producto_circa_id", producto_ids).in_(
+            "distribuidor_id", distribuidor_ids
+        ).eq("activo", True).execute()
+        out = {}
+        for row in r.data or []:
+            out.setdefault(row["producto_circa_id"], []).append(row["distribuidor_id"])
+        return out
+    except Exception as e:
+        logger_db.error("get_distribuidores_de_productos: %s", e)
+        return {}
 
 
 def get_catalogo_info_for_skus(distribuidor_id: str, skus: list) -> dict:
