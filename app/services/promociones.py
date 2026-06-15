@@ -59,40 +59,56 @@ def cantidad_en_unidad_base(cantidad: int, formato: str, unidad_objetivo: str,
                              contenido_pack: Optional[int] = None) -> int:
     """
     Convierte una cantidad en un formato dado a la unidad base objetivo.
-    
+
+    Los formatos se clasifican por ROL, no por nombre, para soportar el
+    vocabulario de cualquier distribuidor sin tocar esta función:
+      - MAYOR (caja/empaque mayorista): CJA, BOLSA, BOL, PLANCHA, PLCH, MALETA,
+        FARDO, GALONERA — se convierte a UND con contenido_caja.
+      - INTERMEDIO (sub-empaque): TIRA, DSP, DISPLAY, PACK — se convierte a UND
+        con contenido_pack.
+      - BASE: UND.
+    Para agregar un distribuidor con vocabulario nuevo, basta sumar su palabra
+    al set del rol que le corresponde.
+
     Ej: 1 "CJA x 24" UND → 24 UND
+    Ej: 1 "PLANCHA x 24" UND con contenido_caja=24 → 24 UND
+    Ej: 1 "PACK x 4" UND con contenido_pack=4 → 4 UND
     Ej: 2 "CJA x 8" TIRA → 16 TIRA
-    Ej: 5 "UND x 1" UND → 5 UND
-    Ej: 1 "CJA x 8" UND con contenido_caja=80, contenido_pack=10 → 80 UND
-        (porque 1 CJA = 8 TIRA = 80 UND)
     """
     tipo_formato, mult = parse_formato(formato)
     if tipo_formato is None:
         return cantidad
-    
+
+    FORMATOS_MAYOR = {"CJA", "BOLSA", "BOL", "PLANCHA", "PLCH", "MALETA", "FARDO", "GALONERA"}
+    FORMATOS_INTERMEDIO = {"TIRA", "DSP", "DISPLAY", "PACK"}
+
+    es_mayor = tipo_formato in FORMATOS_MAYOR
+    es_intermedio = tipo_formato in FORMATOS_INTERMEDIO
+
     # Misma unidad: 1 pack del formato YA ES 1 unidad objetivo.
-    # El "x N" del formato es el contenido (sobres por tira), no un conteo.
     # Ej: comprar 1 "TIRA x 10" = 1 TIRA (no 10).
     if tipo_formato == unidad_objetivo:
         return cantidad
-    
-    # CJA → TIRA: multiplicador es directo (CJA x 8 TIRA = 8 TIRAS)
-    if tipo_formato == "CJA" and unidad_objetivo == "TIRA":
+
+    # MAYOR → INTERMEDIO: el multiplicador del formato es directo
+    # (CJA x 8 TIRA = 8 TIRAS). Aplica cuando el objetivo es un intermedio.
+    if es_mayor and unidad_objetivo in FORMATOS_INTERMEDIO:
         return cantidad * mult
-    
-    # CJA → UND: usar contenido_caja
-    if tipo_formato == "CJA" and unidad_objetivo == "UND":
+
+    # MAYOR → UND: usar contenido_caja
+    if es_mayor and unidad_objetivo == "UND":
         return cantidad * (contenido_caja or mult)
-    
-    # TIRA → UND: usar contenido_pack
-    if tipo_formato == "TIRA" and unidad_objetivo == "UND":
+
+    # INTERMEDIO → UND: usar contenido_pack
+    if es_intermedio and unidad_objetivo == "UND":
         return cantidad * (contenido_pack or mult)
-    
-    # UND → CJA o UND → TIRA: no tiene sentido, devolver 0 (no aplica)
-    if tipo_formato == "UND" and unidad_objetivo in ("CJA", "TIRA"):
+
+    # BASE → MAYOR/INTERMEDIO: no tiene sentido, no aplica
+    if tipo_formato == "UND" and (unidad_objetivo in FORMATOS_MAYOR or unidad_objetivo in FORMATOS_INTERMEDIO):
         return 0
-    
+
     # Fallback conservador
+    return cantidad * mult
     return cantidad * mult
 
 
