@@ -29,14 +29,25 @@ def _sb_patch(path, data, params=None):
     r.raise_for_status()
     return r.json()
 
+
+def _sb_map_by_ids(table: str, select: str, ids: list[str], id_col: str = "id") -> dict:
+    """Batch fetch rows by id (evita N+1)."""
+    uniq = list({i for i in ids if i})
+    if not uniq:
+        return {}
+    rows = _sb_get(table, {"select": select, id_col: f"in.({','.join(uniq)})"})
+    return {row[id_col]: row for row in rows}
+
+
 async def verify_distribuidor(x_api_token: str = Header(..., alias="X-API-Token")):
     rows = _sb_get("distribuidores", {"select": "*", "api_token": f"eq.{x_api_token}"})
     if not rows:
         raise HTTPException(status_code=401, detail="Token invalido")
     return rows[0]
 
-STATUS_FLOW = {"confirmado":"recibido","recibido":"en_preparacion","en_preparacion":"despachado","despachado":"en_camino","en_camino":"entregado"}
-STATUS_LABELS = {"confirmado":"Nuevo","recibido":"Recibido","en_preparacion":"En Preparacion","despachado":"Despachado","en_camino":"En Camino","entregado":"Entregado","pagado":"Pagado"}
+from app.services.order_status import STATUS_FLOW, STATUS_LABELS as _STATUS_LABELS
+
+STATUS_LABELS = {**_STATUS_LABELS, "pagado": "Pagado"}
 
 WA_MESSAGES = {
     "recibido": "✅ *Pedido {numero} recibido*\n{distribuidor} confirmo que recibio tu pedido.",
@@ -187,14 +198,12 @@ async def list_pedidos(estado: Optional[str] = None, dist: dict = Depends(verify
     params = {"select":"*","distribuidor_id":f"eq.{dist['id']}","order":"created_at.desc"}
     if estado: params["estado"] = f"eq.{estado}"
     pedidos = _sb_get("pedidos", params)
-    # Fetch bodega data separately
-    bodega_ids = list(set(p.get("bodega_id","") for p in pedidos if p.get("bodega_id")))
-    bodegas_map = {}
-    for bid in bodega_ids:
-        try:
-            rows = _sb_get("bodegas", {"select":"id,nombre_comercial,telefono_whatsapp,ruc,direccion_fiscal","id":f"eq.{bid}"})
-            if rows: bodegas_map[bid] = rows[0]
-        except: pass
+    bodega_ids = list(set(p.get("bodega_id", "") for p in pedidos if p.get("bodega_id")))
+    bodegas_map = _sb_map_by_ids(
+        "bodegas",
+        "id,nombre_comercial,telefono_whatsapp,ruc,direccion_fiscal",
+        bodega_ids,
+    )
     for p in pedidos:
         p["bodegas"] = bodegas_map.get(p.get("bodega_id"), {})
         if "items_json" in p and "items" not in p:
@@ -407,17 +416,21 @@ async def upload_sustento(pedido_id: str, file: UploadFile = File(...), dist: di
 
 # ===================== CIRCA ADMIN =====================
 
-ADMIN_TOKEN = os.getenv("CIRCA_ADMIN_TOKEN", "circa-admin-2026")
+from app.config import admin_token_or_raise
+
 
 async def verify_admin(x_admin_token: str = Header(..., alias="X-Admin-Token")):
-    if x_admin_token != ADMIN_TOKEN:
+    import hmac
+
+    expected = admin_token_or_raise()
+    if not x_admin_token or not hmac.compare_digest(x_admin_token.strip(), expected):
         raise HTTPException(status_code=401, detail="Token admin invalido")
     return True
 
 
 def _verify_admin_action(autorizacion: str) -> None:
     """Segunda confirmación: token escrito en el formulario de soporte."""
-    if (autorizacion or "").strip() != ADMIN_TOKEN:
+    if (autorizacion or "").strip() != admin_token_or_raise():
         raise HTTPException(status_code=403, detail="Autorización inválida")
 
 
@@ -792,22 +805,15 @@ async def admin_cobranzas(
         pedidos = [p for p in pedidos if p.get("bodega_id") in ids_filter]
     
     # Bodegas
-    bodega_ids = list(set(p.get("bodega_id","") for p in pedidos if p.get("bodega_id")))
-    bodegas_map = {}
-    for bid in bodega_ids:
-        try:
-            rows = _sb_get("bodegas", {"select":"id,nombre_comercial,telefono_whatsapp,ruc,direccion_fiscal","id":f"eq.{bid}"})
-            if rows: bodegas_map[bid] = rows[0]
-        except: pass
-    
-    # Distribuidores
-    dist_ids = list(set(p.get("distribuidor_id","") for p in pedidos if p.get("distribuidor_id")))
-    dist_map = {}
-    for did in dist_ids:
-        try:
-            rows = _sb_get("distribuidores", {"select":"id,nombre_comercial,ruc","id":f"eq.{did}"})
-            if rows: dist_map[did] = rows[0]
-        except: pass
+    bodega_ids = list(set(p.get("bodega_id", "") for p in pedidos if p.get("bodega_id")))
+    bodegas_map = _sb_map_by_ids(
+        "bodegas",
+        "id,nombre_comercial,telefono_whatsapp,ruc,direccion_fiscal",
+        bodega_ids,
+    )
+
+    dist_ids = list(set(p.get("distribuidor_id", "") for p in pedidos if p.get("distribuidor_id")))
+    dist_map = _sb_map_by_ids("distribuidores", "id,nombre_comercial,ruc", dist_ids)
     
     from app.services.fees import total_pagar_desde_pedido, resolver_fecha_vencimiento_pedido
 

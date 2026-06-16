@@ -94,3 +94,51 @@ TWILIO_TEMPLATE_LINEA = os.getenv("TWILIO_TEMPLATE_LINEA", "")
 
 # ── Distribuidor notifications ──
 DISTRIBUIDOR_WA_NUMERO = os.getenv("DISTRIBUIDOR_WA_NUMERO", "")  # Para notificar pedidos
+
+# ── Environment / secrets policy ──
+CIRCA_ENV = os.getenv("CIRCA_ENV", os.getenv("RAILWAY_ENVIRONMENT", "development")).strip().lower()
+
+
+def is_production() -> bool:
+    return CIRCA_ENV in ("production", "prod")
+
+
+def admin_token_or_raise() -> str:
+    """Token admin; en producción es obligatorio vía env."""
+    token = (os.getenv("CIRCA_ADMIN_TOKEN") or "").strip()
+    if token:
+        return token
+    if is_production():
+        raise HTTPExceptionProductionConfig("CIRCA_ADMIN_TOKEN no configurado")
+    return "circa-admin-dev-only"
+
+
+def backoffice_jwt_secret_or_raise() -> str:
+    secret = (os.getenv("BACKOFFICE_JWT_SECRET") or os.getenv("CIRCA_ADMIN_TOKEN") or "").strip()
+    if secret:
+        return secret
+    if is_production():
+        raise HTTPExceptionProductionConfig("BACKOFFICE_JWT_SECRET no configurado")
+    return "circa-backoffice-dev-only"
+
+
+def backoffice_password_or_raise() -> str:
+    password = (os.getenv("BACKOFFICE_PASSWORD") or "").strip()
+    if password:
+        return password
+    if is_production():
+        raise HTTPExceptionProductionConfig("BACKOFFICE_PASSWORD no configurado")
+    return "circa-soporte-dev-only"
+
+
+def meta_verify_token_or_raise() -> str:
+    token = (os.getenv("META_VERIFY_TOKEN") or "").strip()
+    if token:
+        return token
+    if is_production():
+        raise HTTPExceptionProductionConfig("META_VERIFY_TOKEN no configurado")
+    return "circa-webhook-verify-dev"
+
+
+class HTTPExceptionProductionConfig(RuntimeError):
+    """Config obligatoria ausente en producción."""

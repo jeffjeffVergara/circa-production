@@ -30,6 +30,7 @@ from app.services.distribuidor_routing import DIMAX_DISTRIBUIDOR_ID, ZOOM_DISTRI
 from app.services import dimax_bodega_excel as dimax_bod
 from app.services import excel_import as xls
 from app.services.preventa_excel import match_bodega_por_nombre, parse_preventa_excel
+from app.services.pedido_flow import build_pedido_flow_progress, flujo_resumen
 
 logger = logging.getLogger("circa.backoffice")
 router = APIRouter(prefix="/api/backoffice", tags=["backoffice"])
@@ -45,6 +46,11 @@ VENTA_CANCEL_STATES = frozenset({
     "borrador", "confirmado", "recibido", "en_preparacion", "despachado", "en_camino",
 })
 DEFAULT_LINEA_APROBADA = 500.0
+
+
+def _enrich_pedidos_flujo(pedidos: list[dict]) -> None:
+    for p in pedidos:
+        p["flujo"] = flujo_resumen(build_pedido_flow_progress(p))
 
 
 class LoginRequest(BaseModel):
@@ -131,6 +137,7 @@ async def bodega_perfil(bodega_id: str, user: dict = Depends(get_backoffice_user
     from app.services.bodega_score import compute_bodega_score
 
     detalle = await dist.admin_bodega_detalle(bodega_id, admin=True)
+    _enrich_pedidos_flujo(detalle.get("pedidos") or [])
     features = get_bodega_features(bodega_id)
     score = compute_bodega_score(
         bodega=detalle.get("bodega") or {},
@@ -154,9 +161,20 @@ async def list_pedidos(
     test: Optional[str] = None,
     user: dict = Depends(get_backoffice_user),
 ):
-    return await dist.admin_list_pedidos(
+    data = await dist.admin_list_pedidos(
         bodega=bodega, distribuidor=distribuidor, estado=estado, tipo=tipo, test=test, admin=True,
     )
+    _enrich_pedidos_flujo(data.get("pedidos") or [])
+    return data
+
+
+@router.get("/pedido/{pedido_id}/flujo")
+async def pedido_flujo(pedido_id: str, user: dict = Depends(get_backoffice_user)):
+    """Pipeline BPMN del pedido (paso actual, restantes, fases)."""
+    rows = _sb_get("pedidos", {"select": "*", "id": f"eq.{pedido_id}"})
+    if not rows:
+        raise HTTPException(status_code=404, detail="Pedido no encontrado")
+    return build_pedido_flow_progress(rows[0])
 
 
 @router.get("/cobranzas")

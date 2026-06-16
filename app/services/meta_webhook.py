@@ -36,7 +36,9 @@ def verify_webhook(mode: str, token: str, challenge: str) -> str | None:
     Meta sends: hub.mode, hub.verify_token, hub.challenge
     We return the challenge if the token matches.
     """
-    verify_token = os.getenv("META_VERIFY_TOKEN", "circa-webhook-verify-2026")
+    from app.config import meta_verify_token_or_raise
+
+    verify_token = meta_verify_token_or_raise()
     
     if mode == "subscribe" and token == verify_token:
         logger.info("Webhook verified successfully")
@@ -50,9 +52,14 @@ def verify_signature(payload: bytes, signature: str) -> bool:
     """
     Verify the X-Hub-Signature-256 header from Meta.
     """
+    from app.config import is_production
+
     app_secret = os.getenv("META_APP_SECRET", "")
     if not app_secret:
-        logger.warning("META_APP_SECRET not set, skipping signature verification")
+        if is_production():
+            logger.error("META_APP_SECRET not set in production — rejecting webhook")
+            return False
+        logger.warning("META_APP_SECRET not set, skipping signature verification (dev only)")
         return True
     
     expected = "sha256=" + hmac.new(

@@ -748,10 +748,13 @@ async def send_order_confirmation(to: str, order_number: str, total_credito: flo
 async def send_tracking_update(to: str, order_number: str, estado: str, detalle: str = ""):
     """Send order tracking update (T10 - mensajes humanos por estado)."""
     estados_msg = {
-        "confirmado": "📦 *Pedido recibido* — DIMAX está preparando todo",
-        "preparando": "🔧 *Preparando tu pedido* — alistando los productos",
+        "confirmado": "📦 *Pedido recibido* — preparando todo",
+        "recibido": "✅ *Pedido recibido* por el distribuidor",
+        "en_preparacion": "🔧 *Preparando tu pedido* — alistando los productos",
+        "despachado": "📦 *Despachado* — salió del almacén",
         "en_camino": "🚚 *En camino a tu bodega*",
         "entregado": "✅ *Entregado* — ¡gracias!",
+        "preparando": "🔧 *Preparando tu pedido* — alistando los productos",
     }
     titulo = estados_msg.get(estado, f"📦 *{estado.replace('_', ' ').title()}*")
     

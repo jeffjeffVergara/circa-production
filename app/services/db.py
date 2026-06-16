@@ -524,18 +524,17 @@ def get_bodega_routing(bodega_id: str) -> dict | None:
 
 
 def get_distribuidor_de_bodega(bodega_id: str) -> str:
-    """Distribuidor para catálogo/promos (siempre DIMAX en piloto)."""
-    from app.services.distribuidor_routing import (
-        DIMAX_DISTRIBUIDOR_ID,
-        distribuidor_id_para_catalogo,
-    )
+    """Distribuidor principal para promos/catálogo legacy (multi-distribuidor)."""
+    from app.services.distribuidor_routing import DIMAX_DISTRIBUIDOR_ID
 
-    # Catálogo piloto = DIMAX aunque la bodega no exista o el FK legacy sea otro.
     if not bodega_id:
         return DIMAX_DISTRIBUIDOR_ID
-    if not get_bodega_routing(bodega_id):
-        logger_db.warning("get_distribuidor_de_bodega: bodega %s no encontrada, uso DIMAX", bodega_id)
-    return distribuidor_id_para_catalogo()
+    ids = get_distribuidores_de_bodega(bodega_id)
+    if len(ids) == 1:
+        return ids[0]
+    if DIMAX_DISTRIBUIDOR_ID in ids:
+        return DIMAX_DISTRIBUIDOR_ID
+    return sorted(ids)[0] if ids else DIMAX_DISTRIBUIDOR_ID
 
 
 def get_distribuidor_pedido_de_bodega(bodega_id: str) -> str | None:

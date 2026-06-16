@@ -18,16 +18,16 @@ _bearer = HTTPBearer(auto_error=False)
 
 
 def _jwt_secret() -> str:
-    return (
-        os.getenv("BACKOFFICE_JWT_SECRET")
-        or os.getenv("CIRCA_ADMIN_TOKEN")
-        or "circa-backoffice-dev-secret"
-    )
+    from app.config import backoffice_jwt_secret_or_raise
+
+    return backoffice_jwt_secret_or_raise()
 
 
 def bootstrap_credentials() -> tuple[str, str]:
+    from app.config import backoffice_password_or_raise
+
     email = (os.getenv("BACKOFFICE_EMAIL") or "soporte@circa.pe").strip().lower()
-    password = os.getenv("BACKOFFICE_PASSWORD") or "circa-soporte-2026"
+    password = backoffice_password_or_raise()
     return email, password
 
 

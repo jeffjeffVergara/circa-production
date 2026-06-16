@@ -246,7 +246,46 @@ tr:hover td{background:var(--card-hover)}
 .confirm-overlay{z-index:1100}
 .confirm-modal h3{margin:0 0 4px;font-size:17px;color:var(--text)}
 .confirm-modal .confirm-body{color:var(--muted);margin:12px 0 20px;line-height:1.55;font-size:14px}
-@media(max-width:640px){.pin-admin-grid{grid-template-columns:1fr}.pin-admin-collapsed{flex-direction:column;align-items:flex-start}}
+
+/* Flujo pedido (BPMN / stepper) */
+.pedido-flow-modal{max-width:960px}
+.pedido-flow-overlay{align-items:flex-start;padding-top:32px}
+.pedido-flow-hero{display:flex;gap:20px;align-items:center;flex-wrap:wrap;background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:16px 18px;margin-bottom:18px}
+.pedido-flow-ring{width:72px;height:72px;border-radius:50%;border:4px solid var(--blue);display:flex;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0;background:var(--card)}
+.pedido-flow-ring span{font-size:20px;font-weight:800;color:var(--blue-light);line-height:1}
+.pedido-flow-ring small{font-size:9px;color:var(--muted);text-transform:uppercase;margin-top:2px}
+.pedido-flow-stats{display:flex;flex-wrap:wrap;gap:16px 28px;flex:1}
+.pfs-label{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:2px}
+.pedido-flow-banner{padding:10px 14px;border-radius:8px;font-size:13px;font-weight:600;margin-bottom:14px}
+.pedido-flow-banner.ok{background:rgba(16,185,129,.12);border:1px solid var(--green);color:var(--green)}
+.pedido-flow-banner.fail{background:rgba(239,68,68,.12);border:1px solid var(--red);color:var(--red)}
+.pedido-flow-phase{margin-bottom:20px}
+.pedido-flow-phase-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:10px;padding-left:4px}
+.pedido-flow-track{display:flex;align-items:center;gap:0;overflow-x:auto;padding:8px 4px 12px;-webkit-overflow-scrolling:touch}
+.pedido-flow-node{flex:0 0 auto;min-width:76px;max-width:88px;text-align:center;padding:10px 6px;border-radius:10px;border:2px solid var(--border);background:var(--bg);transition:all .2s}
+.pedido-flow-node .pfn-icon{display:block;font-size:20px;line-height:1;margin-bottom:6px}
+.pedido-flow-node .pfn-label{display:block;font-size:10px;font-weight:600;color:var(--muted);line-height:1.25}
+.pedido-flow-node.done{border-color:var(--green);background:rgba(16,185,129,.08)}
+.pedido-flow-node.done .pfn-label{color:var(--green)}
+.pedido-flow-node.current{border-color:var(--blue-light);background:rgba(37,99,235,.15);box-shadow:0 0 0 3px rgba(37,99,235,.2)}
+.pedido-flow-node.current .pfn-label{color:var(--blue-light)}
+.pedido-flow-node.pending{opacity:.55}
+.pedido-flow-node.skipped{opacity:.35;border-style:dashed}
+.pedido-flow-edge{flex:0 0 24px;height:3px;background:var(--border);border-radius:2px;position:relative}
+.pedido-flow-edge.done{background:var(--green)}
+.pedido-flow-edge.current{background:linear-gradient(90deg,var(--green),var(--blue-light))}
+.pedido-flow-edge::after{content:'';position:absolute;right:-1px;top:-4px;border:5px solid transparent;border-left-color:inherit;border-left-width:6px}
+.pedido-flow-edge.done::after,.pedido-flow-edge.current::after{border-left-color:var(--green)}
+.pedido-flow-edge.current::after{border-left-color:var(--blue-light)}
+.flow-mini{display:flex;align-items:center;gap:8px;min-width:100px}
+.flow-mini-track{flex:1;height:6px;background:var(--bg);border-radius:4px;overflow:hidden;border:1px solid var(--border)}
+.flow-mini-bar{height:100%;background:linear-gradient(90deg,var(--blue),var(--blue-light));border-radius:3px;transition:width .3s}
+.flow-mini.done .flow-mini-bar{background:var(--green)}
+.flow-mini.fail .flow-mini-bar{background:var(--red)}
+.flow-mini-txt{font-size:11px;color:var(--muted);white-space:nowrap;font-weight:600}
+.pedido-link{background:none;border:none;padding:0;color:var(--blue-light);font-weight:600;cursor:pointer;font-family:inherit;font-size:inherit;text-decoration:underline;text-underline-offset:2px}
+.pedido-link:hover{color:#93c5fd}
+@media(max-width:640px){.pin-admin-grid{grid-template-columns:1fr}.pin-admin-collapsed{flex-direction:column;align-items:flex-start}.pedido-flow-node{min-width:64px}}
 
 /* Loader global al cambiar Real/Test */
 .panel-loader{position:fixed;inset:0;background:rgba(15,23,42,.58);backdrop-filter:blur(3px);z-index:900;display:none;align-items:center;justify-content:center;flex-direction:column;gap:14px}
@@ -406,7 +445,7 @@ tr:hover td{background:var(--card-hover)}
 </div>
 <div class="table-wrap">
 <table class="table-pedidos">
-<thead><tr><th>Fecha</th><th>Pedido</th><th>Tipo</th><th>Bodega</th><th>Distribuidor</th><th>Total</th><th>Circa paga</th><th>Estado</th><th>Acciones</th></tr></thead>
+<thead><tr><th>Fecha</th><th>Pedido</th><th>Tipo</th><th>Bodega</th><th>Distribuidor</th><th>Total</th><th>Circa paga</th><th>Estado</th><th>Progreso</th><th>Acciones</th></tr></thead>
 <tbody id="pedidosBody"></tbody>
 </table>
 </div>
@@ -827,6 +866,65 @@ function loadCobranzas(){
   });
 }
 
+function flowMiniHtml(flujo){
+  if(!flujo || !flujo.total_steps) return '<span style="color:var(--muted)">—</span>';
+  var cls = flujo.is_failure ? 'fail' : (flujo.is_terminal ? 'done' : '');
+  var step = Math.min(flujo.completed_steps + 1, flujo.total_steps);
+  return '<div class="flow-mini '+cls+'" title="'+(flujo.current_label||'')+'">'+
+    '<div class="flow-mini-track"><div class="flow-mini-bar" style="width:'+(flujo.percent||0)+'%"></div></div>'+
+    '<span class="flow-mini-txt">'+step+'/'+flujo.total_steps+'</span></div>';
+}
+
+function renderPedidoFlowDiagram(flow){
+  var h = '';
+  h += '<div class="pedido-flow-hero">';
+  h += '<div class="pedido-flow-ring"><span>'+(flow.percent||0)+'%</span><small>avance</small></div>';
+  h += '<div class="pedido-flow-stats">';
+  var cur = flow.current_step || {};
+  h += '<div><span class="pfs-label">Paso actual</span><strong>'+(cur.icon||'•')+' '+(cur.label||flow.estado_actual||'-')+'</strong></div>';
+  if(flow.next_step && !flow.is_terminal){
+    h += '<div><span class="pfs-label">Siguiente paso</span><strong>'+flow.next_step.icon+' '+flow.next_step.label+'</strong></div>';
+  }
+  h += '<div><span class="pfs-label">Pasos restantes</span><strong>'+(flow.remaining_steps||0)+'</strong></div>';
+  h += '</div></div>';
+  if(flow.is_failure) h += '<div class="pedido-flow-banner fail">⛔ Pedido cancelado o rechazado — el flujo se detuvo aquí.</div>';
+  else if(flow.is_success) h += '<div class="pedido-flow-banner ok">✅ Flujo completado correctamente.</div>';
+  var phases = flow.phases || [];
+  if(phases.length){
+    phases.forEach(function(ph){
+      h += '<div class="pedido-flow-phase"><div class="pedido-flow-phase-title">'+ph.label+'</div><div class="pedido-flow-track">';
+      (ph.steps||[]).forEach(function(s, i){
+        if(i>0) h += '<div class="pedido-flow-edge '+s.status+'"></div>';
+        h += '<div class="pedido-flow-node '+s.status+'"><span class="pfn-icon">'+s.icon+'</span><span class="pfn-label">'+s.label+'</span></div>';
+      });
+      h += '</div></div>';
+    });
+  }
+  h += '<div class="pedido-flow-phase"><div class="pedido-flow-phase-title">Recorrido completo</div><div class="pedido-flow-track pedido-flow-track-full">';
+  (flow.steps||[]).forEach(function(s, i){
+    if(i>0) h += '<div class="pedido-flow-edge '+s.status+'"></div>';
+    h += '<div class="pedido-flow-node '+s.status+'"><span class="pfn-icon">'+s.icon+'</span><span class="pfn-label">'+s.label+'</span></div>';
+  });
+  h += '</div></div>';
+  return h;
+}
+
+function openPedidoFlujo(pid, pedidoHint){
+  api('/api/backoffice/pedido/'+encodeURIComponent(pid)+'/flujo').then(function(flow){
+    var p = pedidoHint || (allPedidos||[]).find(function(x){return x.id===pid}) || {};
+    var b = p.bodega || {};
+    var title = flow.numero || p.numero || String(pid).slice(0,8);
+    var tipoLbl = flow.tipo_operacion==='preventa' ? 'Pre-venta' : 'Venta';
+    document.getElementById('modalContainer').innerHTML =
+      '<div class="modal-overlay open pedido-flow-overlay" onclick="if(event.target===this)closeModal()">'+
+      '<div class="modal-box pedido-flow-modal">'+
+      '<div class="modal-head"><div><h2>📍 '+title+'</h2>'+
+      '<div class="sub">'+tipoLbl+(b.nombre_comercial?' · '+b.nombre_comercial:'')+' · '+flow.pipeline_label+'</div></div>'+
+      '<button type="button" class="modal-close" onclick="closeModal()" aria-label="Cerrar">×</button></div>'+
+      '<div class="modal-body">'+renderPedidoFlowDiagram(flow)+'</div></div></div>';
+  }).catch(function(e){showToast('No se pudo cargar el flujo: '+e.message,'error');});
+}
+
 function loadPedidos(){
   var bodega = document.getElementById('pedFiltroBodega').value;
   var dist = document.getElementById('pedFiltroDist').value;
@@ -851,8 +949,10 @@ function loadPedidos(){
       } else {
         acciones = '<span style="color:var(--muted);font-size:12px">-</span>';
       }
-      return '<tr><td>'+fecha+'</td><td class="pedido-num mono">'+(p.numero||'-')+'</td><td>'+tipoBadge+'</td><td>'+nombreBodega(b)+'</td><td style="color:var(--muted)">'+(dt.nombre_comercial||'?')+'</td><td class="mono">S/'+Number(p.monto_productos||0).toFixed(2)+'</td><td class="mono" style="color:var(--blue-light)">S/'+Number(p.monto_financiado||0).toFixed(2)+'</td><td><span class="badge badge-'+(p.estado||'').replace(' ','_')+'">'+(p.estado||'-')+'</span></td><td>'+acciones+'</td></tr>';
-    }).join('') : '<tr><td colspan="9" class="empty">Sin pedidos</td></tr>';
+      var flujo = p.flujo || {};
+      var numCell = '<button type="button" class="pedido-link mono" onclick="openPedidoFlujo(\''+p.id+'\')">'+(p.numero||'—')+'</button>';
+      return '<tr><td>'+fecha+'</td><td class="pedido-num">'+numCell+'</td><td>'+tipoBadge+'</td><td>'+nombreBodega(b)+'</td><td style="color:var(--muted)">'+(dt.nombre_comercial||'?')+'</td><td class="mono">S/'+Number(p.monto_productos||0).toFixed(2)+'</td><td class="mono" style="color:var(--blue-light)">S/'+Number(p.monto_financiado||0).toFixed(2)+'</td><td><span class="badge badge-'+(p.estado||'').replace(' ','_')+'">'+(p.estado||'-')+'</span></td><td>'+flowMiniHtml(flujo)+'</td><td>'+acciones+'</td></tr>';
+    }).join('') : '<tr><td colspan="10" class="empty">Sin pedidos</td></tr>';
   });
 }
 
@@ -1324,9 +1424,11 @@ function renderBodegaPerfil(d){
   if(!pedidos.length){
     pedidosHtml = '<div class="empty" style="padding:20px">Sin pedidos</div>';
   } else {
-    pedidosHtml = '<div class="table-wrap"><table style="width:100%;font-size:12px"><thead><tr><th>Número</th><th>Estado</th><th>Origen</th><th>Total</th><th>Financiado</th><th>Vence</th><th>Creado</th></tr></thead><tbody>';
+    pedidosHtml = '<div class="table-wrap"><table style="width:100%;font-size:12px"><thead><tr><th>Número</th><th>Progreso</th><th>Estado</th><th>Origen</th><th>Total</th><th>Financiado</th><th>Vence</th><th>Creado</th></tr></thead><tbody>';
     pedidosHtml += pedidos.map(function(p){
-      return '<tr><td class="mono">'+(p.numero||'—')+'</td>'+
+      var flujo = p.flujo || {};
+      return '<tr><td><button type="button" class="pedido-link mono" onclick="openPedidoFlujo(\''+p.id+'\')">'+(p.numero||'—')+'</button></td>'+
+        '<td>'+flowMiniHtml(flujo)+'</td>'+
         '<td>'+(p.estado||'-')+'</td>'+
         '<td style="color:var(--muted);font-size:11px">'+(p.origen||'-')+'</td>'+
         '<td class="mono">S/ '+(p.monto_productos||0).toFixed(2)+'</td>'+
