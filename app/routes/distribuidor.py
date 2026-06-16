@@ -194,16 +194,19 @@ class StatusUpdate(BaseModel):
     nuevo_estado: str
 
 @router.get("/pedidos")
-async def list_pedidos(estado: Optional[str] = None, dist: dict = Depends(verify_distribuidor)):
+async def list_pedidos(estado: Optional[str] = None, incluir_test: bool = False, dist: dict = Depends(verify_distribuidor)):
     params = {"select":"*","distribuidor_id":f"eq.{dist['id']}","order":"created_at.desc"}
     if estado: params["estado"] = f"eq.{estado}"
     pedidos = _sb_get("pedidos", params)
     bodega_ids = list(set(p.get("bodega_id", "") for p in pedidos if p.get("bodega_id")))
     bodegas_map = _sb_map_by_ids(
         "bodegas",
-        "id,nombre_comercial,telefono_whatsapp,ruc,direccion_fiscal",
+        "id,nombre_comercial,telefono_whatsapp,ruc,direccion_fiscal,es_test",
         bodega_ids,
     )
+    # El distribuidor ve solo pedidos reales por defecto; ?incluir_test=true muestra los de prueba.
+    if not incluir_test:
+        pedidos = [p for p in pedidos if not bodegas_map.get(p.get("bodega_id"), {}).get("es_test", False)]
     for p in pedidos:
         p["bodegas"] = bodegas_map.get(p.get("bodega_id"), {})
         if "items_json" in p and "items" not in p:
