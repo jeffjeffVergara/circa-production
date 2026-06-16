@@ -731,12 +731,20 @@ def crear_pedido_preventa(
     }).execute().data[0]
     pedido_id = pedido["id"]
     
-    # Resolver SKUs DIMAX → catalogo_id (normalizar quitando ceros a la izquierda)
+    # Resolver SKUs -> catalogo_id contra TODOS los distribuidores activos de la bodega
+    # (multidistribuidor: DIMAX + ZOOM hermanas). Fix preventa con productos no-DIMAX.
     skus_normalizados = list({str(it["sku_distribuidor"]).lstrip("0") or "0" for it in items_dimax})
-    catalogo = sb.table("catalogo_distribuidor").select("id, sku_distribuidor").eq(
-        "distribuidor_id", distribuidor_id
+    dist_ids = get_distribuidores_de_bodega(bodega_id) or [distribuidor_id]
+    if distribuidor_id not in dist_ids:
+        dist_ids = dist_ids + [distribuidor_id]
+    catalogo = sb.table("catalogo_distribuidor").select("id, sku_distribuidor, distribuidor_id").in_(
+        "distribuidor_id", dist_ids
     ).in_("sku_distribuidor", skus_normalizados).execute().data
-    sku_to_cat = {c["sku_distribuidor"]: c["id"] for c in catalogo}
+    sku_to_cat = {}
+    for c in catalogo:
+        _sku = c["sku_distribuidor"]
+        if _sku not in sku_to_cat or c.get("distribuidor_id") == distribuidor_id:
+            sku_to_cat[_sku] = c["id"]
     
     items_creados = 0
     items_no_match = []
