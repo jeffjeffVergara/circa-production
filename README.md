@@ -45,6 +45,7 @@ Para exponer el webhook (desarrollo): túnel tipo `ngrok http 8000` y configurar
 
 | Documento | Contenido |
 |-----------|-----------|
+| [**Estados por journey**](docs/JOURNEY_ESTADOS.md) | **Guía de estados:** onboarding, venta, preventa, cobranza, vendedor WA, diagramas |
 | [`docs/flows/README.md`](docs/flows/README.md) | **Mapa de flujos**, matriz de escenarios (~50), smoke P0 |
 | [`docs/flows/figma/README.md`](docs/flows/figma/README.md) | **Guía Figma:** wireframes, diagramas, componentes, journeys funcional + técnico |
 | [`arquitectura.md`](arquitectura.md) | Arquitectura técnica, diagramas Mermaid |

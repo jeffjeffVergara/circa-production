@@ -15,7 +15,7 @@
 | [`figma/`](./figma/README.md) | **Guía maestra Figma:** wireframes, diagramas, componentes, journeys funcional + técnico, file keys MCP |
 
 **Wireframes visuales (Figma):** ver [`figma/README.md`](./figma/README.md) — onboarding wireframeado; catálogo/pago/preventa/postventa con spec listo para diseñar.  
-**Regla de PR:** si cambia UX o un camino de usuario, actualizar la fila del escenario, el `.md` del journey y el spec en `figma/` si aplica.
+**Regla de PR:** si cambia UX o un camino de usuario, actualizar la fila del escenario, el `.md` del journey, [`JOURNEY_ESTADOS.md`](../JOURNEY_ESTADOS.md) si cambian estados, y el spec en `figma/` si aplica.
 
 ### Leyenda de estado
 

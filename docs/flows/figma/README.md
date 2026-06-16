@@ -15,6 +15,7 @@ Documento **único de entrada** para diseñadores, agentes Figma MCP y stakehold
 |-----------|-------------------|------------|------------------|
 | **Wireframes chat WhatsApp** | Design file | [Wireframes Onboarding](https://www.figma.com/design/8uXIOxgppRe67aNbThSyv6) | Specs `0X-*-whatsapp.md` + YAML onboarding |
 | **Flowcharts de journey** | FigJam | [Circa - Bodeguero](https://www.figma.com/board/S3d80RJeYAIuuyGz9V9Qk0) | `docs/flows/0X-*.md` (funcional) |
+| **Estados por journey (BD)** | FigJam | [Circa - Journey Estados](https://www.figma.com/board/i2qYZinZfLtkmZmLC8Lx7K) | [`docs/JOURNEY_ESTADOS.md`](../../JOURNEY_ESTADOS.md) |
 | **Arquitectura / contexto** | FigJam | [Overview Diagramas](https://www.figma.com/board/FNDF15XL6aElJkAv9d7iIs) | `arquitectura.md` · [URLs por actor](./DIAGRAMA-urls-por-actor.md) |
 | **Componentes reutilizables** | Design file (library) | Mismo design file o librería team | Convenciones §5 de este doc |
 | **Pantallas web** (catálogo, backoffice, distribuidor) | Design file | Por crear páginas `07+` | `static/*.html` + journey `06–08` |
@@ -25,6 +26,7 @@ Documento **único de entrada** para diseñadores, agentes Figma MCP y stakehold
 |---------|------|----------|
 | Wireframes WhatsApp | Design | `8uXIOxgppRe67aNbThSyv6` |
 | Flowcharts bodeguero | FigJam | `S3d80RJeYAIuuyGz9V9Qk0` |
+| Journey estados (pipelines BD) | FigJam | `i2qYZinZfLtkmZmLC8Lx7K` |
 | Overview arquitectura | FigJam | `FNDF15XL6aElJkAv9d7iIs` |
 
 ### 1.3 Workflow recomendado (MCP)
@@ -132,6 +134,7 @@ Detalle pantalla a pantalla: [`onboarding-screens.yaml`](./onboarding-screens.ya
 | Archivo | Uso |
 |---------|-----|
 | [Circa - Bodeguero](https://www.figma.com/board/S3d80RJeYAIuuyGz9V9Qk0) | **Un diagrama por journey** (onboarding, catálogo, pago, preventa, postventa). Sin flechas entre journeys. |
+| [Circa - Journey Estados](https://www.figma.com/board/i2qYZinZfLtkmZmLC8Lx7K) | **Pipelines `pedidos.estado` y `sesiones.fase`** por journey (onboarding, venta, cobranza, preventa, vendedor, distribuidor, routing). Fuente: `JOURNEY_ESTADOS.md`. |
 | [Circa - Overview Diagramas](https://www.figma.com/board/FNDF15XL6aElJkAv9d7iIs) | Arquitectura: Meta webhook → FastAPI → Supabase → distribuidor. **Sin Twilio** en diagramas nuevos. |
 
 ---
