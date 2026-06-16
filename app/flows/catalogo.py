@@ -624,6 +624,11 @@ async def _send_payment_options(phone, pedido_id, total, items_text, bodega_id=N
             sections=[{"title": "Opciones de pago", "rows": rows}])
     elif linea <= 0:
         tel_fmt = f"+{phone}" if not phone.startswith("+") else phone
+        # Preventa cash: bajar a draft para que el handler de PIN (texto) la acepte.
+        # Guard por estado: solo afecta preventas; una venta ya esta en 'borrador'.
+        db.sb.table("pedidos").update({"estado": "preventa_borrador"}).eq(
+            "id", str(pedido_id)
+        ).eq("estado", "preventa_confirmada").execute()
         db.sb.table("sesiones").delete().eq("telefono", tel_fmt).execute()
         db.sb.table("sesiones").insert({
             "telefono": tel_fmt, "fase": "pin_pago",
