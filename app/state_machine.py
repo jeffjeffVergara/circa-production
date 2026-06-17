@@ -38,6 +38,7 @@ from app.services.preventa_propuesta import (
 
 # Test phones — bypass SUNAT/RENIEC/Vision validation
 TEST_PHONES = {"+51954712581", "+51977652871", "+56991291415", "+51955755308", "+51981254477", "+51961276835", "51954712581", "51977652871", "56991291415", "51955755308", "51981254477", "51961276835"}
+from app.services.biometria_policy import skip_biometria_checks
 from app.config import TWILIO_FROM, BIOMETRIA_MODE, circa_soporte_wa_link
 
 
@@ -386,8 +387,8 @@ En menos de 24 horas validamos tu solicitud y activamos tu línea. Empiezas comp
                     from app.services.vision import download_whatsapp_media_sync, verify_dni_photo
                     image_bytes = download_whatsapp_media_sync(media_url)
                     if image_bytes:
-                        if telefono in TEST_PHONES:
-                            check = {"valid": True, "matches_expected": True}  # Bypass for test
+                        if skip_biometria_checks(telefono, bodega_data, test_phones=TEST_PHONES):
+                            check = {"valid": True, "matches_expected": True, "reason_code": "demo_bypass"}
                         else:
                             check = verify_dni_photo(
                                 image_bytes,
@@ -493,17 +494,26 @@ En menos de 24 horas validamos tu solicitud y activamos tu línea. Empiezas comp
                 return ["Escribe el DNI del representante legal (8 d\u00edgitos):"]
             return [{"signal": "DNI_ASK"}]
 
-        # Verify with RENIEC via ApiInti (bypass for test phones)
-        if telefono in TEST_PHONES:
-            # Skip RENIEC — auto-approve for test
+        # Verify with RENIEC via ApiInti (bypass QA phones o bodega es_test demo)
+        if skip_biometria_checks(telefono, bodega_data, test_phones=TEST_PHONES):
             db.update_bodega(bodega_id, {"dni_representante": dni})
             datos["dni_verified"] = True
             datos["dni_number"] = dni
-            datos["dni_nombre"] = bodega_data.get("nombre_comercial", "Test User")
+            datos["dni_nombre"] = (
+                bodega_data.get("representante_legal")
+                or bodega_data.get("nombre_comercial")
+                or "Usuario demo"
+            )
             db.upsert_session(telefono, "reg_dni", datos, bodega_id)
+            if datos.get("is_reset"):
+                db.upsert_session(telefono, "reg_pin", datos, bodega_id)
+                return [
+                    f"\u2705 Listo, *{datos['dni_nombre']}*. Identidad verificada.",
+                    {"signal": "PIN_ASK", "mode": "create", "bodega_id": bodega_id},
+                ]
             return [
                 f"\u2705 Listo, *{datos['dni_nombre']}*. Identidad verificada.\n\n"
-                f"\U0001f4f8 Ahora env\u00edame una foto (cualquier imagen sirve para test).\n"
+                f"\U0001f4f8 Ahora env\u00edame una foto (cualquier imagen sirve en modo demo).\n"
             ]
         reniec = consultar_dni_sync(dni)
         if reniec:
@@ -582,8 +592,8 @@ En menos de 24 horas validamos tu solicitud y activamos tu línea. Empiezas comp
                 image_bytes = download_whatsapp_media_sync(media_url)
                 if image_bytes:
                     face_cmp = {}
-                    if telefono in TEST_PHONES:
-                        check = {"valid": True, "reason_code": "test_bypass"}  # Bypass for test
+                    if skip_biometria_checks(telefono, bodega_bio, test_phones=TEST_PHONES):
+                        check = {"valid": True, "reason_code": "demo_bypass"}
                     else:
                         check = verify_selfie(image_bytes, strict=(BIOMETRIA_MODE == "strict"))
                     if not check.get("valid", False):
@@ -605,7 +615,9 @@ En menos de 24 horas validamos tu solicitud y activamos tu línea. Empiezas comp
                         return [f"\u274c {reason}\n\nPor favor, toma una *selfie mirando a la camara*."]
 
                     # 1:1 face comparison (strict mode only): selfie vs DNI front image
-                    if BIOMETRIA_MODE == "strict" and telefono not in TEST_PHONES:
+                    if BIOMETRIA_MODE == "strict" and not skip_biometria_checks(
+                        telefono, bodega_bio, test_phones=TEST_PHONES,
+                    ):
                         dni_media_id = datos.get("dni_photo_media_id")
                         if not dni_media_id:
                             db.log_biometria_auditoria(

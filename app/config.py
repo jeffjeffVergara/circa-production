@@ -67,6 +67,13 @@ CART_TTL_HOURS = 24
 # - strict: selfie valida + face match selfie vs DNI (v2)
 # - legacy: comportamiento anterior (sin face match y fallbacks permisivos)
 BIOMETRIA_MODE = os.getenv("BIOMETRIA_MODE", "strict").strip().lower()
+# Bodegas es_test=true: aceptar cualquier DNI (8 dígitos) y cualquier foto como DNI/selfie (demos).
+BIOMETRIA_RELAX_FOR_TEST_BODEGAS = os.getenv("BIOMETRIA_RELAX_FOR_TEST_BODEGAS", "true").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+    "on",
+)
 # Umbral selfie vs foto DNI (0–1). Más bajo = menos falsos negativos, más riesgo de falso positivo.
 FACE_MATCH_MIN_SCORE = float(os.getenv("FACE_MATCH_MIN_SCORE", "0.56"))
 # Si el modelo marca face_match=false pero el score es alto, aceptar (mitiga mismos rechazos por lentes/edad).
