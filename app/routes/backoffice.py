@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field
 from app.routes import distribuidor as dist
 from app.services import db
 from app.services.backoffice_audit import log_action
+from app.config import backoffice_viewer_accounts
 from app.services.backoffice_auth import (
     _bearer,
     authenticate,
@@ -80,6 +81,24 @@ async def login(body: LoginRequest):
 @router.get("/auth/me")
 async def me(user: dict = Depends(get_backoffice_user)):
     return {"user": user}
+
+
+@router.get("/auth/setup-status")
+async def auth_setup_status():
+    """Diagnóstico: ¿el servidor tiene cuentas viewer en variables de entorno?"""
+    accounts = backoffice_viewer_accounts()
+    return {
+        "viewer_configured": bool(accounts),
+        "viewer_count": len(accounts),
+        "viewer_emails": [email for email, _ in accounts],
+        "hint": (
+            "OK: cuentas viewer cargadas desde Railway/env."
+            if accounts
+            else "Falta configurar en Railway (no en la pantalla de login): "
+            "BACKOFFICE_VIEWER_CREDENTIALS=lectura@circa.pe:tu-clave "
+            "o BACKOFFICE_VIEWER_EMAIL + BACKOFFICE_VIEWER_PASSWORD. Luego redeploy."
+        ),
+    }
 
 
 @router.get("/support-bridge")
