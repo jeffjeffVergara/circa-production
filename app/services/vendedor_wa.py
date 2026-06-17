@@ -27,9 +27,9 @@ CIRCA_WA_NUMBER = os.getenv("CIRCA_WA_NUMBER", "51986311567").lstrip("+")
 _VEND_MENU_CMDS = frozenset({
     "MENU", "INICIO", "HOLA", "HI", "VENDEDOR", "VEND",
 })
-_VEND_PREVENTA_CMDS = frozenset({"1", "PREVENTA", "NUEVA", "NUEVA PREVENTA", "PEDIDO"})
-_VEND_LISTA_CMDS = frozenset({"2", "MIS PREVENTAS", "MIS PEDIDOS", "PREVENTAS", "PEDIDOS"})
-_VEND_CARTERA_CMDS = frozenset({"3", "BODEGAS", "CARTERA", "CLIENTES"})
+_VEND_PREVENTA_CMDS = frozenset({"2", "PREVENTA", "NUEVA", "NUEVA PREVENTA", "PEDIDO"})
+_VEND_LISTA_CMDS = frozenset({"3", "MIS PREVENTAS", "MIS PEDIDOS", "PREVENTAS", "PEDIDOS"})
+_VEND_CARTERA_CMDS = frozenset({"1", "BODEGAS", "CARTERA", "CLIENTES"})
 _VEND_AYUDA_CMDS = frozenset({"4", "AYUDA", "HELP"})
 _VEND_BODEGA_CMDS = frozenset({"2", "BODEGA", "CLIENTE", "SOY BODEGA"})
 _LINK_TOKEN_RE = re.compile(r"\b([a-f0-9]{12})\b", re.IGNORECASE)
@@ -56,6 +56,31 @@ def _parse_session_datos(session: dict | None) -> dict[str, Any]:
         return json.loads(raw or "{}")
     except Exception:
         return {}
+
+
+def _bodega_identificacion(bodega: dict) -> str:
+    """Etiqueta legible: RUC y/o DNI (muchas bodegas piloto solo tienen DNI)."""
+    ruc = (bodega.get("ruc") or "").strip()
+    dni = (bodega.get("dni_representante") or "").strip()
+    parts: list[str] = []
+    if ruc:
+        parts.append(f"RUC {ruc}")
+    if dni:
+        parts.append(f"DNI {dni}")
+    if not parts:
+        return "Sin RUC/DNI registrado"
+    return " · ".join(parts)
+
+
+_BODEGA_SELECT = (
+    "id,razon_social,nombre_comercial,distrito,ruc,dni_representante,solo_dni_sin_ruc,"
+    "linea_aprobada,linea_disponible,distribuidor_id,estado,telefono_whatsapp"
+)
+
+_CARTERA_SELECT = (
+    "id,nombre_comercial,razon_social,distrito,ruc,dni_representante,solo_dni_sin_ruc,"
+    "linea_disponible,estado"
+)
 
 
 def _catalog_url_vendedor(access_token: str, bodega_id: str) -> str:
@@ -107,11 +132,11 @@ def _vend_menu_text(vendedor: dict) -> str:
     return (
         f"🧑‍💼 *Hola {nombre}* · código {codigo}\n\n"
         "¿Qué quieres hacer?\n"
-        "• *1* — Nueva preventa (buscar bodega)\n"
-        "• *2* — Mis preventas recientes\n"
-        "• *3* — Ver mi cartera de bodegas\n"
+        "• *1* — Ver mi cartera de bodegas\n"
+        "• *2* — Nueva preventa (buscar bodega)\n"
+        "• *3* — Mis preventas recientes\n"
         "• *4* — Ayuda\n\n"
-        "También puedes enviar directo el *DNI* o *RUC* de una bodega."
+        "También puedes enviar directo el *DNI*, *RUC* o parte del *nombre* de una bodega."
     )
 
 
@@ -120,14 +145,10 @@ def _buscar_bodega(vendedor: dict, q: str) -> tuple[dict | None, str | None]:
     if len(q_clean) not in (8, 11):
         return None, "Envía un DNI (8 dígitos) o RUC (11 dígitos)."
 
-    select_fields = (
-        "id,razon_social,nombre_comercial,distrito,ruc,dni_representante,"
-        "linea_aprobada,linea_disponible,distribuidor_id,estado,telefono_whatsapp"
-    )
     if len(q_clean) == 8:
         rows = (
             db.sb.table("bodegas")
-            .select(select_fields)
+            .select(_BODEGA_SELECT)
             .eq("dni_representante", q_clean)
             .limit(1)
             .execute()
@@ -136,7 +157,7 @@ def _buscar_bodega(vendedor: dict, q: str) -> tuple[dict | None, str | None]:
     else:
         rows = (
             db.sb.table("bodegas")
-            .select(select_fields)
+            .select(_BODEGA_SELECT)
             .eq("ruc", q_clean)
             .limit(1)
             .execute()
@@ -144,9 +165,19 @@ def _buscar_bodega(vendedor: dict, q: str) -> tuple[dict | None, str | None]:
         )
     if not rows:
         tipo = "DNI" if len(q_clean) == 8 else "RUC"
-        return None, f"No encontramos una bodega con ese {tipo}."
+        hint = ""
+        if len(q_clean) == 11:
+            hint = " Si la bodega se registró solo con DNI, prueba con el DNI del representante."
+        return None, f"No encontramos una bodega con ese {tipo}.{hint}"
 
     bodega = rows[0]
+    err = _validar_bodega_para_vendedor(vendedor, bodega)
+    if err:
+        return None, err
+    return bodega, None
+
+
+def _validar_bodega_para_vendedor(vendedor: dict, bodega: dict) -> str | None:
     if not vendedor.get("es_admin"):
         cartera = (
             db.sb.table("bodega_vendedores")
@@ -159,23 +190,45 @@ def _buscar_bodega(vendedor: dict, q: str) -> tuple[dict | None, str | None]:
             .data
         )
         if not cartera:
-            return None, "Esa bodega no está en tu cartera. Pide al admin que te la asigne."
+            return "Esa bodega no está en tu cartera. Pide al admin que te la asigne."
 
     estado = (bodega.get("estado") or "").lower()
     if estado in ("rechazada", "suspendida", "bloqueada"):
-        return None, f"La bodega está {estado} y no puede recibir preventas."
+        return f"La bodega está {estado} y no puede recibir preventas."
 
     if bodega.get("distribuidor_id") != vendedor.get("distribuidor_id") and not vendedor.get("es_admin"):
-        return None, "La bodega pertenece a otro distribuidor."
+        return "La bodega pertenece a otro distribuidor."
+    return None
 
-    return bodega, None
+
+def _buscar_bodega_por_nombre(vendedor: dict, q: str) -> tuple[dict | None, str | None, list[dict]]:
+    """Busca en la cartera del vendedor por nombre comercial o razón social."""
+    needle = (q or "").strip().lower()
+    if len(needle) < 3:
+        return None, "Escribe al menos 3 letras del nombre, o un DNI/RUC de 8/11 dígitos.", []
+
+    matches: list[dict] = []
+    for b in _list_cartera(vendedor, limit=100):
+        nombre = (b.get("nombre_comercial") or "").lower()
+        razon = (b.get("razon_social") or "").lower()
+        if needle in nombre or needle in razon:
+            matches.append(b)
+
+    if not matches:
+        return None, f"No hay bodegas en tu cartera que coincidan con «{q.strip()}».", []
+    if len(matches) == 1:
+        err = _validar_bodega_para_vendedor(vendedor, matches[0])
+        if err:
+            return None, err, []
+        return matches[0], None, []
+    return None, None, matches
 
 
 def _list_cartera(vendedor: dict, limit: int = 8) -> list[dict]:
     if vendedor.get("es_admin"):
         rows = (
             db.sb.table("bodegas")
-            .select("id,nombre_comercial,razon_social,distrito,linea_disponible,estado")
+            .select(_CARTERA_SELECT)
             .eq("distribuidor_id", vendedor["distribuidor_id"])
             .in_("estado", ["activo", "preaprobada"])
             .order("nombre_comercial")
@@ -187,7 +240,7 @@ def _list_cartera(vendedor: dict, limit: int = 8) -> list[dict]:
 
     rows = (
         db.sb.table("bodega_vendedores")
-        .select("bodegas(id,nombre_comercial,razon_social,distrito,linea_disponible,estado)")
+        .select(f"bodegas({_CARTERA_SELECT})")
         .eq("vendedor_id", vendedor["id"])
         .eq("activo", True)
         .limit(limit)
@@ -239,6 +292,7 @@ def _bodega_seleccionada_responses(telefono: str, vendedor: dict, bodega: dict) 
 
     parts = [
         f"✅ *{nombre}*\n"
+        f"🪪 {_bodega_identificacion(bodega)}\n"
         f"📍 {bodega.get('distrito') or '—'}\n"
         f"💳 Línea disponible: *S/ {linea:.2f}*{warn}\n\n"
         f"👉 Arma el pedido aquí:\n{cat_url}\n\n"
@@ -321,7 +375,7 @@ def _avisar_bodeguero(vendedor: dict, datos: dict, body_raw: str) -> list:
         },
         f"✅ Le enviamos el resumen completo a *{bnombre}*.\n\n"
         f"Código: `{lt}` · puede responder *APROBAR* o *RECHAZAR*.\n"
-        "Lo verás en *2 — Mis preventas*.",
+        "Lo verás en *3 — Mis preventas*.",
     ]
 
 
@@ -352,14 +406,22 @@ def handle_vendedor_message(
         if err:
             return [f"⚠️ {err}\n\nEscribe *MENU* para ver opciones."]
         return _bodega_seleccionada_responses(telefono, vendedor, bodega)
+    if fase == "vend_menu" and body_raw.strip() and not body_raw.strip().isdigit():
+        bodega, err, matches = _buscar_bodega_por_nombre(vendedor, body_raw)
+        if bodega:
+            return _bodega_seleccionada_responses(telefono, vendedor, bodega)
+        if matches:
+            return _cartera_match_responses(vendedor, matches, telefono)
+        if err:
+            return [f"⚠️ {err}\n\nEscribe *MENU* para ver opciones."]
 
     if fase == "vend_menu":
         if body_n in _VEND_PREVENTA_CMDS:
             db.upsert_session(telefono, "vend_preventa_buscar", {"vendedor_id": vendedor["id"]}, None)
             return [
                 "🔍 *Nueva preventa*\n\n"
-                "Envía el *DNI* (8 dígitos) o *RUC* (11 dígitos) de la bodega.\n"
-                "O escribe *3* para elegir de tu cartera."
+                "Envía el *DNI* (8 dígitos), *RUC* (11) o parte del *nombre* de la bodega.\n"
+                "O escribe *1* para elegir de tu cartera."
             ]
         if body_n in _VEND_LISTA_CMDS:
             return _mis_preventas_text(vendedor)
@@ -372,10 +434,24 @@ def handle_vendedor_message(
     if fase == "vend_preventa_buscar":
         if body_n in _VEND_CARTERA_CMDS:
             return _cartera_text(vendedor, selectable=True, telefono=telefono)
-        bodega, err = _buscar_bodega(vendedor, body_raw)
-        if err:
-            return [f"⚠️ {err}\n\nIntenta otro documento o *MENU*."]
-        return _bodega_seleccionada_responses(telefono, vendedor, bodega)
+        digits = "".join(c for c in body_raw if c.isdigit())
+        if len(digits) in (8, 11):
+            bodega, err = _buscar_bodega(vendedor, body_raw)
+            if err:
+                return [f"⚠️ {err}\n\nIntenta otro documento o *MENU*."]
+            return _bodega_seleccionada_responses(telefono, vendedor, bodega)
+        if body_raw.strip() and not body_raw.strip().isdigit():
+            bodega, err, matches = _buscar_bodega_por_nombre(vendedor, body_raw)
+            if bodega:
+                return _bodega_seleccionada_responses(telefono, vendedor, bodega)
+            if matches:
+                return _cartera_match_responses(vendedor, matches, telefono)
+            if err:
+                return [f"⚠️ {err}\n\nIntenta otro nombre, DNI/RUC o *MENU*."]
+        return [
+            "🔍 Envía el *DNI* (8 dígitos), *RUC* (11) o al menos 3 letras del nombre.\n"
+            "O escribe *1* para elegir de tu cartera."
+        ]
 
     if fase == "vend_preventa_bodega":
         if body_n in ("AVISAR", "NOTIFICAR", "AVISA", "5"):
@@ -403,7 +479,7 @@ def handle_vendedor_message(
             if 0 <= idx < len(ids):
                 rows = (
                     db.sb.table("bodegas")
-                    .select("id,razon_social,nombre_comercial,distrito,linea_disponible,estado,telefono_whatsapp")
+                    .select(_BODEGA_SELECT)
                     .eq("id", ids[idx])
                     .limit(1)
                     .execute()
@@ -422,7 +498,7 @@ def handle_vendedor_message(
 def _mis_preventas_text(vendedor: dict) -> list[str]:
     rows = _list_preventas_vendedor(vendedor["id"])
     if not rows:
-        return ["📋 Aún no tienes preventas registradas.\n\nEscribe *1* para armar una nueva."]
+        return ["📋 Aún no tienes preventas registradas.\n\nEscribe *2* para armar una nueva."]
     lines = ["📋 *Tus preventas recientes:*\n"]
     for i, p in enumerate(rows, 1):
         b = p.get("bodegas") or {}
@@ -434,6 +510,29 @@ def _mis_preventas_text(vendedor: dict) -> list[str]:
         if lt and estado == "preventa_confirmada":
             lines.append(f"   Código: `{lt}`")
     lines.append("\nPara avisar al cliente de la última: *AVISAR* (desde la bodega seleccionada).")
+    return ["\n".join(lines)]
+
+
+def _cartera_match_responses(
+    vendedor: dict,
+    matches: list[dict],
+    telefono: str,
+) -> list[str]:
+    lines = ["🔍 *Varias bodegas coinciden:*\n"]
+    ids: list[str] = []
+    for i, b in enumerate(matches, 1):
+        nombre = b.get("nombre_comercial") or b.get("razon_social") or "—"
+        distrito = b.get("distrito") or ""
+        iden = _bodega_identificacion(b)
+        lines.append(f"{i}. {nombre} ({distrito})\n   🪪 {iden}")
+        ids.append(b["id"])
+    db.upsert_session(
+        telefono,
+        "vend_cartera_pick",
+        {"vendedor_id": vendedor["id"], "cartera_ids": ids},
+        None,
+    )
+    lines.append("\nResponde con el *número* de la bodega correcta.")
     return ["\n".join(lines)]
 
 
@@ -452,7 +551,8 @@ def _cartera_text(
         nombre = b.get("nombre_comercial") or b.get("razon_social") or "—"
         distrito = b.get("distrito") or ""
         linea = float(b.get("linea_disponible") or 0)
-        lines.append(f"{i}. {nombre} ({distrito}) · línea S/ {linea:.2f}")
+        iden = _bodega_identificacion(b)
+        lines.append(f"{i}. {nombre} ({distrito})\n   🪪 {iden} · línea S/ {linea:.2f}")
         ids.append(b["id"])
     if selectable and telefono:
         db.upsert_session(
@@ -463,7 +563,7 @@ def _cartera_text(
         )
         lines.append("\nResponde con el *número* de la bodega para armar su preventa.")
     else:
-        lines.append("\nEnvía el DNI/RUC de una bodega o escribe *1* para nueva preventa.")
+        lines.append("\nEnvía el DNI/RUC de una bodega o escribe *2* para nueva preventa.")
     return ["\n".join(lines)]
 
 

@@ -54,21 +54,34 @@ def verify_signature(payload: bytes, signature: str) -> bool:
     """
     from app.config import is_production
 
-    app_secret = os.getenv("META_APP_SECRET", "")
+    app_secret = (os.getenv("META_APP_SECRET") or "").strip()
     if not app_secret:
         if is_production():
-            logger.error("META_APP_SECRET not set in production — rejecting webhook")
+            logger.error(
+                "META_APP_SECRET not set in production — rejecting webhook. "
+                "Set it in Railway from Meta Developer Console → App settings → Basic → App secret."
+            )
             return False
         logger.warning("META_APP_SECRET not set, skipping signature verification (dev only)")
         return True
-    
+
+    if not signature:
+        logger.warning("X-Hub-Signature-256 header missing on webhook POST")
+        return False
+
     expected = "sha256=" + hmac.new(
         app_secret.encode(),
         payload,
         hashlib.sha256
     ).hexdigest()
-    
-    return hmac.compare_digest(expected, signature or "")
+
+    if not hmac.compare_digest(expected, signature):
+        logger.warning(
+            "Webhook signature mismatch — check META_APP_SECRET matches the Meta app "
+            "that owns this WhatsApp number (not the verify token or access token)."
+        )
+        return False
+    return True
 
 
 def parse_incoming(body: dict) -> list[dict]:

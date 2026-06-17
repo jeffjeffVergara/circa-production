@@ -20,10 +20,10 @@ from app.services import db
 from app.services.backoffice_audit import log_action
 from app.services.backoffice_auth import (
     _bearer,
-    bootstrap_credentials,
+    authenticate,
     create_token,
     get_backoffice_user,
-    verify_password,
+    get_backoffice_writer,
     verify_reauth_password,
 )
 from app.services.distribuidor_routing import DIMAX_DISTRIBUIDOR_ID, ZOOM_DISTRIBUIDOR_ID
@@ -65,24 +65,21 @@ class ReauthMixin(BaseModel):
 
 @router.post("/auth/login")
 async def login(body: LoginRequest):
-    email = body.email.strip().lower()
-    boot_email, _ = bootstrap_credentials()
-    if email != boot_email:
+    user = authenticate(body.email, body.password)
+    if not user:
         raise HTTPException(status_code=401, detail="Credenciales inválidas")
-    if not verify_password(body.password):
-        raise HTTPException(status_code=401, detail="Credenciales inválidas")
-    token = create_token("bootstrap-support", email)
+    token = create_token(user["id"], user["email"], user["role"])
     return {
         "ok": True,
         "token": token,
-        "user": {"id": "bootstrap-support", "email": email, "role": "support"},
+        "user": user,
         "expires_in": int(os.getenv("BACKOFFICE_TOKEN_TTL_SEC", str(8 * 3600))),
     }
 
 
 @router.get("/auth/me")
 async def me(user: dict = Depends(get_backoffice_user)):
-    return {"user": {**user, "role": "support"}}
+    return {"user": user}
 
 
 @router.get("/support-bridge")
@@ -381,7 +378,7 @@ def _insert_bodega_record(
 
 
 @router.post("/bodegas")
-async def create_bodega(body: BodegaCreate, user: dict = Depends(get_backoffice_user)):
+async def create_bodega(body: BodegaCreate, user: dict = Depends(get_backoffice_writer)):
     verify_reauth_password(body.password)
     tel = _normalizar_telefono(body.telefono_whatsapp)
     ruc = body.ruc.strip()
@@ -418,7 +415,7 @@ async def create_bodega(body: BodegaCreate, user: dict = Depends(get_backoffice_
 
 
 @router.patch("/bodega/{bodega_id}")
-async def update_bodega(bodega_id: str, body: BodegaUpdate, user: dict = Depends(get_backoffice_user)):
+async def update_bodega(bodega_id: str, body: BodegaUpdate, user: dict = Depends(get_backoffice_writer)):
     verify_reauth_password(body.password)
     rows = _sb_get("bodegas", {"select": "*", "id": f"eq.{bodega_id}"})
     if not rows:
@@ -444,7 +441,7 @@ async def update_bodega(bodega_id: str, body: BodegaUpdate, user: dict = Depends
 
 
 @router.post("/bodega/{bodega_id}/sesion/reset")
-async def reset_sesion(bodega_id: str, body: SessionReset, user: dict = Depends(get_backoffice_user)):
+async def reset_sesion(bodega_id: str, body: SessionReset, user: dict = Depends(get_backoffice_writer)):
     verify_reauth_password(body.password)
     rows = _sb_get("bodegas", {"select": "id,telefono_whatsapp", "id": f"eq.{bodega_id}"})
     if not rows:
@@ -485,7 +482,7 @@ class BackofficePinSet(ReauthMixin):
 
 
 @router.post("/bodega/{bodega_id}/pin/set")
-async def pin_set(bodega_id: str, body: BackofficePinSet, user: dict = Depends(get_backoffice_user)):
+async def pin_set(bodega_id: str, body: BackofficePinSet, user: dict = Depends(get_backoffice_writer)):
     verify_reauth_password(body.password)
     payload = dist.AdminPinSet(
         comentario=body.comentario,
@@ -499,7 +496,7 @@ async def pin_set(bodega_id: str, body: BackofficePinSet, user: dict = Depends(g
 
 
 @router.post("/bodega/{bodega_id}/pin/reset")
-async def pin_reset(bodega_id: str, body: ReauthMixin, user: dict = Depends(get_backoffice_user)):
+async def pin_reset(bodega_id: str, body: ReauthMixin, user: dict = Depends(get_backoffice_writer)):
     verify_reauth_password(body.password)
     payload = dist.AdminPinAction(comentario=body.comentario, autorizacion=dist.ADMIN_TOKEN)
     result = await dist.admin_reset_pin(bodega_id, payload, admin=True)
@@ -514,7 +511,7 @@ class PedidoEstadoUpdate(ReauthMixin):
 
 @router.post("/pedido/{pedido_id}/estado")
 async def update_pedido_estado(
-    pedido_id: str, body: PedidoEstadoUpdate, user: dict = Depends(get_backoffice_user),
+    pedido_id: str, body: PedidoEstadoUpdate, user: dict = Depends(get_backoffice_writer),
 ):
     verify_reauth_password(body.password)
     rows = _sb_get("pedidos", {"select": "*", "id": f"eq.{pedido_id}"})
@@ -561,7 +558,7 @@ async def update_pedido_estado(
 
 
 @router.post("/pedido/{pedido_id}/cancelar")
-async def cancelar_pedido(pedido_id: str, body: ReauthMixin, user: dict = Depends(get_backoffice_user)):
+async def cancelar_pedido(pedido_id: str, body: ReauthMixin, user: dict = Depends(get_backoffice_writer)):
     verify_reauth_password(body.password)
     rows = _sb_get("pedidos", {"select": "*", "id": f"eq.{pedido_id}"})
     if not rows:
@@ -592,19 +589,19 @@ async def cancelar_pedido(pedido_id: str, body: ReauthMixin, user: dict = Depend
 
 
 @router.post("/preventa/{pedido_id}/aceptar")
-async def aceptar_preventa(pedido_id: str, user: dict = Depends(get_backoffice_user)):
+async def aceptar_preventa(pedido_id: str, user: dict = Depends(get_backoffice_writer)):
     return await dist.admin_aceptar_preventa(pedido_id, admin=True)
 
 
 @router.post("/cobranza/{pedido_id}/verificar-pago")
-async def verificar_pago(pedido_id: str, payload: dict, user: dict = Depends(get_backoffice_user)):
+async def verificar_pago(pedido_id: str, payload: dict, user: dict = Depends(get_backoffice_writer)):
     result = await dist.admin_verificar_pago(pedido_id, payload, admin=True)
     log_action(user=user, action="verificar_pago", entity_type="pedido", entity_id=pedido_id, pedido_id=pedido_id)
     return result
 
 
 @router.post("/cobranza/{pedido_id}/recordatorio")
-async def enviar_recordatorio(pedido_id: str, user: dict = Depends(get_backoffice_user)):
+async def enviar_recordatorio(pedido_id: str, user: dict = Depends(get_backoffice_writer)):
     return await dist.admin_send_cobranza(pedido_id, admin=True)
 
 
@@ -643,7 +640,7 @@ async def list_vendedores(user: dict = Depends(get_backoffice_user)):
 
 
 @router.post("/vendedores")
-async def create_vendedor(body: VendedorCreate, user: dict = Depends(get_backoffice_user)):
+async def create_vendedor(body: VendedorCreate, user: dict = Depends(get_backoffice_writer)):
     verify_reauth_password(body.password)
     dist_id = body.distribuidor_id or DIMAX_DISTRIBUIDOR_ID
     token = secrets.token_urlsafe(24)[:32]
@@ -673,7 +670,7 @@ async def create_vendedor(body: VendedorCreate, user: dict = Depends(get_backoff
 
 @router.patch("/vendedor/{vendedor_id}")
 async def update_vendedor(
-    vendedor_id: str, body: VendedorUpdate, user: dict = Depends(get_backoffice_user),
+    vendedor_id: str, body: VendedorUpdate, user: dict = Depends(get_backoffice_writer),
 ):
     verify_reauth_password(body.password)
     updates = {k: v for k, v in body.model_dump(exclude={"comentario", "password"}).items() if v is not None}
@@ -715,7 +712,7 @@ async def vendedor_cartera(vendedor_id: str, user: dict = Depends(get_backoffice
 
 @router.post("/vendedor/{vendedor_id}/cartera")
 async def assign_cartera(
-    vendedor_id: str, body: CarteraAssign, user: dict = Depends(get_backoffice_user),
+    vendedor_id: str, body: CarteraAssign, user: dict = Depends(get_backoffice_writer),
 ):
     verify_reauth_password(body.password)
     existing = _sb_get("bodega_vendedores", {
@@ -818,7 +815,7 @@ async def revalidate_bodegas_rows(
 @router.post("/import/bodegas/confirm")
 async def confirm_bodegas_import(
     body: BodegasImportConfirm,
-    user: dict = Depends(get_backoffice_user),
+    user: dict = Depends(get_backoffice_writer),
 ):
     verify_reauth_password(body.password)
     import_rows: list[dict[str, Any]] = []
@@ -866,7 +863,7 @@ async def import_bodegas_excel(
     password: str = Form(...),
     comentario: str = Form(...),
     respetar_modo: bool = Form(True),
-    user: dict = Depends(get_backoffice_user),
+    user: dict = Depends(get_backoffice_writer),
 ):
     verify_reauth_password(password)
     if len(comentario.strip()) < 8:
@@ -956,7 +953,7 @@ async def revalidate_dimax_bodega_preview(
 @router.post("/import/dimax-bodega/confirm")
 async def confirm_dimax_bodega_excel(
     body: DimaxBodegaConfirm,
-    user: dict = Depends(get_backoffice_user),
+    user: dict = Depends(get_backoffice_writer),
 ):
     tel = _normalizar_telefono(body.telefono_whatsapp)
     ruc = body.ruc.strip()
@@ -1010,7 +1007,7 @@ async def import_pedidos_excel(
     password: str = Form(...),
     comentario: str = Form(...),
     crear_bodega_si_falta: bool = Form(False),
-    user: dict = Depends(get_backoffice_user),
+    user: dict = Depends(get_backoffice_writer),
 ):
     verify_reauth_password(password)
     if len(comentario.strip()) < 8:
@@ -1109,7 +1106,7 @@ async def revalidate_preventa_import(
 @router.post("/import/preventa/confirm")
 async def confirm_preventa_import(
     body: PreventaImportConfirm,
-    user: dict = Depends(get_backoffice_user),
+    user: dict = Depends(get_backoffice_writer),
 ):
     if not body.bodega_id:
         raise HTTPException(status_code=400, detail="Selecciona una bodega")

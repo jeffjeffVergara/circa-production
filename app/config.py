@@ -131,6 +131,15 @@ def backoffice_password_or_raise() -> str:
     return "circa-soporte-dev-only"
 
 
+def backoffice_viewer_password_or_raise() -> str:
+    password = (os.getenv("BACKOFFICE_VIEWER_PASSWORD") or "").strip()
+    if password:
+        return password
+    if is_production():
+        raise HTTPExceptionProductionConfig("BACKOFFICE_VIEWER_PASSWORD no configurado")
+    return "circa-viewer-dev-only"
+
+
 def meta_verify_token_or_raise() -> str:
     token = (os.getenv("META_VERIFY_TOKEN") or "").strip()
     if token:

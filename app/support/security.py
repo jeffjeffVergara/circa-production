@@ -121,6 +121,21 @@ def _load_console_agent() -> dict[str, Any]:
     return r.data[0]
 
 
+def _reject_viewer_backoffice_jwt(raw_token: str) -> None:
+    if not raw_token or "." not in raw_token:
+        return
+    try:
+        from app.services.backoffice_auth import ROLE_VIEWER, decode_token
+
+        payload = decode_token(raw_token)
+        if payload.get("role") == ROLE_VIEWER:
+            raise HTTPException(status_code=403, detail="Acceso de solo lectura")
+    except HTTPException as exc:
+        if exc.status_code == 403:
+            raise
+        return
+
+
 def _try_backoffice_jwt(raw_token: str) -> dict[str, Any] | None:
     """JWT del backoffice unificado → mismo agente consola que bootstrap secret."""
     if not raw_token or "." not in raw_token:
@@ -141,6 +156,7 @@ def resolve_support_agent_from_token(raw_token: str) -> dict[str, Any]:
     3) Token legacy por agente (SHA-256 + bcrypt).
     """
     phrase = raw_token.strip()
+    _reject_viewer_backoffice_jwt(phrase)
     bo = _try_backoffice_jwt(phrase)
     if bo:
         return bo

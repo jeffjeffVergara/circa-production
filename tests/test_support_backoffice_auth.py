@@ -7,6 +7,7 @@ os.environ["BACKOFFICE_JWT_SECRET"] = "test-jwt-secret-unified"
 os.environ["SUPPORT_CONSOLE_AGENT_ID"] = "a0000000-0000-4000-8000-000000000001"
 
 import pytest
+from fastapi import HTTPException
 
 from app.services.backoffice_auth import create_token
 from app.support import security
@@ -25,9 +26,16 @@ def _fake_db(monkeypatch):
 
 
 def test_backoffice_jwt_resolves_console_agent():
-    tok = create_token("bootstrap-support", "soporte@test.pe")
+    tok = create_token("bootstrap-support", "soporte@test.pe", "admin")
     agent = security.resolve_support_agent_from_token(tok)
     assert agent["id"] == _CONSOLE_AGENT["id"]
+
+
+def test_viewer_backoffice_jwt_rejected_by_support():
+    tok = create_token("bootstrap-viewer", "lectura@test.pe", "viewer")
+    with pytest.raises(HTTPException) as exc:
+        security.resolve_support_agent_from_token(tok)
+    assert exc.value.status_code == 403
 
 
 def test_bootstrap_secret_still_works(monkeypatch):

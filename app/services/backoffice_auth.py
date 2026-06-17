@@ -14,6 +14,8 @@ from fastapi import Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 TOKEN_TTL_SEC = int(os.getenv("BACKOFFICE_TOKEN_TTL_SEC", str(8 * 3600)))
+ROLE_ADMIN = "admin"
+ROLE_VIEWER = "viewer"
 _bearer = HTTPBearer(auto_error=False)
 
 
@@ -31,6 +33,15 @@ def bootstrap_credentials() -> tuple[str, str]:
     return email, password
 
 
+def viewer_credentials() -> tuple[str, str] | None:
+    from app.config import backoffice_viewer_password_or_raise
+
+    email = (os.getenv("BACKOFFICE_VIEWER_EMAIL") or "").strip().lower()
+    if not email:
+        return None
+    return email, backoffice_viewer_password_or_raise()
+
+
 def verify_password(plain: str, hashed: str | None = None) -> bool:
     """Verifica contra hash en BD o contra password de entorno (bootstrap)."""
     if hashed:
@@ -46,10 +57,23 @@ def hash_password(plain: str) -> str:
     return bcrypt.hashpw(plain.encode(), bcrypt.gensalt()).decode()
 
 
-def create_token(user_id: str, email: str) -> str:
+def authenticate(email: str, password: str) -> dict[str, Any] | None:
+    """Valida credenciales admin o viewer (solo lectura)."""
+    normalized = email.strip().lower()
+    boot_email, _ = bootstrap_credentials()
+    if normalized == boot_email and verify_password(password):
+        return {"id": "bootstrap-admin", "email": normalized, "role": ROLE_ADMIN}
+    viewer = viewer_credentials()
+    if viewer and normalized == viewer[0] and hmac.compare_digest(password, viewer[1]):
+        return {"id": "bootstrap-viewer", "email": normalized, "role": ROLE_VIEWER}
+    return None
+
+
+def create_token(user_id: str, email: str, role: str = ROLE_ADMIN) -> str:
     payload = {
         "sub": user_id,
         "email": email,
+        "role": role,
         "exp": int(time.time()) + TOKEN_TTL_SEC,
     }
     body = base64.urlsafe_b64encode(json.dumps(payload, separators=(",", ":")).encode()).decode().rstrip("=")
@@ -83,7 +107,19 @@ async def get_backoffice_user(
     return {
         "id": payload.get("sub") or "bootstrap",
         "email": payload.get("email") or bootstrap_credentials()[0],
+        "role": payload.get("role") or ROLE_ADMIN,
     }
+
+
+async def get_backoffice_writer(
+    user: dict[str, Any] = Depends(get_backoffice_user),
+) -> dict[str, Any]:
+    if user.get("role") == ROLE_VIEWER:
+        raise HTTPException(
+            status_code=403,
+            detail="Acceso de solo lectura: no puedes modificar datos",
+        )
+    return user
 
 
 def verify_reauth_password(password: str) -> None:

@@ -24,7 +24,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:var(--bg
 .header{background:var(--card);border-bottom:1px solid var(--border);padding:14px 24px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:10}
 .header-left{display:flex;align-items:center;gap:20px}
 .logo{color:var(--blue-light);font-weight:900;letter-spacing:4px;font-size:20px}
-.header-sub{color:var(--muted);font-size:12px}
+.header-sub.readonly-badge{color:var(--yellow);font-weight:600}
+body.bo-readonly .bo-write{display:none!important}
 .header-right{display:flex;gap:10px;align-items:center}
 .container{padding:24px;max-width:1600px;margin:0 auto}
 .tabs{display:flex;gap:4px;background:var(--card);padding:4px;border-radius:10px;margin-bottom:20px;border:1px solid var(--border)}
@@ -341,7 +342,7 @@ tr:hover td{background:var(--card-hover)}
 <button class="tab" onclick="showTab('cobranzas')" id="tab-cobranzas">💰 Cobranzas</button>
 <button class="tab" onclick="showTab('pedidos')" id="tab-pedidos">📋 Pedidos</button>
 <button class="tab" onclick="showTab('vendedores')" id="tab-vendedores">🧑‍💼 Vendedores</button>
-<button class="tab" onclick="showTab('soporte')" id="tab-soporte">💬 Soporte WA</button>
+<button class="tab bo-write" onclick="showTab('soporte')" id="tab-soporte">💬 Soporte WA</button>
 </div>
 
 <!-- DASHBOARD TAB -->
@@ -460,8 +461,8 @@ tr:hover td{background:var(--card-hover)}
 <h2>🏪 Bodegas <span style="font-size:12px;color:var(--muted);font-weight:400" id="bodegasInfoLine">cargando...</span>
 <span style="float:right;display:flex;gap:8px;margin-top:-4px">
 <button class="btn btn-outline btn-small" onclick="downloadPlantillaBodegas()">📥 Descarga Plantilla</button>
-<button class="btn btn-outline btn-small" onclick="openImportBodegas()">📤 Importar Bodegas</button>
-<button class="btn btn-green btn-small" onclick="openCreateBodega()">+ Nueva bodega</button>
+<button class="btn btn-outline btn-small bo-write" onclick="openImportBodegas()">📤 Importar Bodegas</button>
+<button class="btn btn-green btn-small bo-write" onclick="openCreateBodega()">+ Nueva bodega</button>
 </span>
 </h2>
 <div class="search-bar">
@@ -490,7 +491,7 @@ tr:hover td{background:var(--card-hover)}
 <h2 id="bodegaPerfilTitle">Bodega</h2>
 <div class="sub" id="bodegaPerfilSubtitle">—</div>
 </div>
-<div class="pin-admin-actions" style="margin:0">
+<div class="pin-admin-actions bo-write" style="margin:0">
 <button type="button" class="btn btn-outline btn-small" onclick="openEditBodega()">✏️ Editar</button>
 <button type="button" class="btn btn-secondary btn-small" onclick="openResetSesion()">🔄 Reset sesión</button>
 <button type="button" class="btn btn-outline btn-small" onclick="showTab('soporte')">💬 Inbox WA</button>
@@ -504,7 +505,7 @@ tr:hover td{background:var(--card-hover)}
 <div id="view-vendedores" style="display:none">
 <div class="section">
 <h2>🧑‍💼 Vendedores de campo
-<button class="btn btn-green btn-small" style="float:right;margin-top:-4px" onclick="openCreateVendedor()">+ Nuevo vendedor</button>
+<button class="btn btn-green btn-small bo-write" style="float:right;margin-top:-4px" onclick="openCreateVendedor()">+ Nuevo vendedor</button>
 </h2>
 <div class="table-wrap">
 <table><thead><tr><th>Código</th><th>Nombre</th><th>WhatsApp</th><th>Estado</th><th>Último acceso</th><th>App</th><th></th></tr></thead>
@@ -538,6 +539,7 @@ tr:hover td{background:var(--card-hover)}
 <script>
 var AUTH_TOKEN = "";
 var USER_EMAIL = "";
+var USER_ROLE = "admin";
 var USER_PASSWORD = "";
 var allCobranzas = [];
 var allPedidos = [];
@@ -560,6 +562,26 @@ function onBodegasSearchInput(){
   bodegasSearchTimer = setTimeout(loadBodegas, 250);
 }
 
+function isReadOnly(){ return USER_ROLE === 'viewer'; }
+
+function applyReadOnlyUi(){
+  document.body.classList.toggle('bo-readonly', isReadOnly());
+  var hdr = document.getElementById('userHeader');
+  if(hdr){
+    hdr.textContent = USER_EMAIL + (isReadOnly() ? ' · Solo lectura' : '');
+    hdr.classList.toggle('readonly-badge', isReadOnly());
+  }
+}
+
+function readOnlyBlocked(){
+  showToast('Acceso solo lectura: no puedes modificar datos','error');
+  return Promise.reject(new Error('solo lectura'));
+}
+
+function isReadOnlyAllowedPost(path){
+  return /\/(preview|revalidate)$/.test(path);
+}
+
 function login(){
   var email = document.getElementById('emailInput').value.trim();
   var pass = document.getElementById('passwordInput').value;
@@ -573,14 +595,16 @@ function login(){
       if(!x.ok) throw new Error(x.d.detail || 'Credenciales inválidas');
       AUTH_TOKEN = x.d.token;
       USER_EMAIL = x.d.user.email;
+      USER_ROLE = (x.d.user && x.d.user.role) || 'admin';
       USER_PASSWORD = pass;
       sessionStorage.setItem('circa_bo_token', AUTH_TOKEN);
       sessionStorage.setItem('circa_bo_email', USER_EMAIL);
+      sessionStorage.setItem('circa_bo_role', USER_ROLE);
       localStorage.setItem('circa_bo_token', AUTH_TOKEN);
       document.getElementById('loginScreen').style.display='none';
       document.getElementById('app').style.display='block';
       document.getElementById('fechaHeader').textContent = new Date().toLocaleDateString('es-PE',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
-      document.getElementById('userHeader').textContent = USER_EMAIL;
+      applyReadOnlyUi();
       refreshAll();
       if(location.hash === '#soporte') showTab('soporte');
     })
@@ -590,9 +614,11 @@ function login(){
 function logout(){
   AUTH_TOKEN = "";
   USER_EMAIL = "";
+  USER_ROLE = "admin";
   USER_PASSWORD = "";
   sessionStorage.removeItem('circa_bo_token');
   sessionStorage.removeItem('circa_bo_email');
+  sessionStorage.removeItem('circa_bo_role');
   localStorage.removeItem('circa_bo_token');
   location.reload();
 }
@@ -604,6 +630,7 @@ function authHeaders(extra){
 }
 
 function apiPost(path, body){
+  if(isReadOnly() && !isReadOnlyAllowedPost(path)) return readOnlyBlocked();
   return fetch(path, {
     method:'POST',
     headers: authHeaders({'Content-Type':'application/json'}),
@@ -612,6 +639,7 @@ function apiPost(path, body){
 }
 
 function apiPatch(path, body){
+  if(isReadOnly()) return readOnlyBlocked();
   return fetch(path, {
     method:'PATCH',
     headers: authHeaders({'Content-Type':'application/json'}),
@@ -848,7 +876,8 @@ function loadCobranzas(){
       var entr = fmtFechaCorta(c.fecha_entregado);
       var actions = c.status_cobranza==='pagado' 
         ? '<span style="color:var(--purple);font-size:11px">✓ Pagado</span>'
-        : '<button type="button" class="btn btn-green btn-small" onclick="openVerificarPago(\''+c.pedido_id+'\')">💵 Verificar pago</button> <button type="button" class="btn btn-outline btn-small" onclick="enviarRecordatorio(\''+c.pedido_id+'\')">📨 Recordatorio</button>';
+        : (isReadOnly() ? '<span style="color:var(--muted);font-size:11px">—</span>'
+          : '<button type="button" class="btn btn-green btn-small" onclick="openVerificarPago(\''+c.pedido_id+'\')">💵 Verificar pago</button> <button type="button" class="btn btn-outline btn-small" onclick="enviarRecordatorio(\''+c.pedido_id+'\')">📨 Recordatorio</button>');
       var ultRec = c.ultimo_recordatorio
         ? '<div style="font-size:10px;color:var(--muted);margin-top:6px">📨 Último: '+fmtFechaCorta(c.ultimo_recordatorio.fecha)+' · '+String(c.ultimo_recordatorio.dia||'').replace('dia','día ')+'</div>'
         : '';
@@ -944,7 +973,7 @@ function loadPedidos(){
       var tipo = p.tipo_operacion || 'venta';
       var tipoBadge = tipo==='preventa' ? '<span class="badge" style="background:rgba(249,115,22,.2);color:#fb923c">pre-venta</span>' : '<span class="badge" style="background:rgba(96,165,250,.2);color:#93c5fd">venta</span>';
       var acciones = '';
-      if(tipo==='preventa' && p.estado==='preventa_confirmada'){
+      if(tipo==='preventa' && p.estado==='preventa_confirmada' && !isReadOnly()){
         acciones = '<button class="btn btn-small btn-green" onclick="aceptarPreventa(\''+p.id+'\')">Aceptar</button>';
       } else {
         acciones = '<span style="color:var(--muted);font-size:12px">-</span>';
@@ -957,6 +986,7 @@ function loadPedidos(){
 }
 
 function aceptarPreventa(pid){
+  if(isReadOnly()) return readOnlyBlocked();
   if(!confirm('¿Aceptar esta pre-venta?')) return;
   fetch('/api/backoffice/preventa/'+pid+'/aceptar', {
     method:'POST', headers: authHeaders()
@@ -993,6 +1023,7 @@ function closeModal(){
 }
 
 function confirmarPago(pid){
+  if(isReadOnly()) return readOnlyBlocked();
   var metodo = document.getElementById('vpMetodo').value;
   var nroOp = document.getElementById('vpNroOp').value;
   fetch('/api/backoffice/cobranza/'+pid+'/verificar-pago', {
@@ -1007,6 +1038,7 @@ function confirmarPago(pid){
 }
 
 function enviarRecordatorio(pid){
+  if(isReadOnly()) return readOnlyBlocked();
   if(!confirm('¿Enviar recordatorio de pago por WhatsApp?')) return;
   fetch('/api/backoffice/cobranza/'+pid+'/recordatorio', {
     method:'POST', headers: authHeaders()
@@ -1088,17 +1120,23 @@ function notifyPinResult(msg, type){
 (function autoLogin(){
   var saved = sessionStorage.getItem('circa_bo_token');
   var savedEmail = sessionStorage.getItem('circa_bo_email');
+  var savedRole = sessionStorage.getItem('circa_bo_role');
   if(saved && savedEmail){
     AUTH_TOKEN = saved;
     USER_EMAIL = savedEmail;
+    USER_ROLE = savedRole || 'admin';
     localStorage.setItem('circa_bo_token', AUTH_TOKEN);
     document.getElementById('emailInput').value = savedEmail;
     fetch('/api/backoffice/auth/me', {headers: authHeaders()}).then(function(r){
       if(!r.ok) throw new Error('expired');
+      return r.json();
+    }).then(function(d){
+      if(d && d.user && d.user.role) USER_ROLE = d.user.role;
+      sessionStorage.setItem('circa_bo_role', USER_ROLE);
       document.getElementById('loginScreen').style.display='none';
       document.getElementById('app').style.display='block';
       document.getElementById('fechaHeader').textContent = new Date().toLocaleDateString('es-PE',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
-      document.getElementById('userHeader').textContent = USER_EMAIL;
+      applyReadOnlyUi();
       refreshAll();
       if(location.hash === '#soporte') showTab('soporte');
     }).catch(function(){ sessionStorage.clear(); localStorage.removeItem('circa_bo_token'); });
@@ -1317,14 +1355,14 @@ function renderBodegaPinAdmin(b){
   if(b.pin_intentos > 0 && !bloqueada){
     pinStatus += ' · '+b.pin_intentos+' intento(s) fallidos';
   }
-  return '<div class="pin-admin-collapsed">'+
+  return '<div class="pin-admin-collapsed bo-write">'+
       '<div class="pin-admin-summary">'+
         '<span class="pin-admin-summary-label">Clave Circa</span>'+
         '<span class="pin-admin-summary-status">'+pinStatus+'</span>'+
       '</div>'+
       '<button type="button" class="btn btn-outline btn-small pin-admin-toggle" onclick="togglePinAdminPanel()">Gestión de clave (soporte)</button>'+
     '</div>'+
-    '<div class="pin-admin pin-admin-hidden" id="pinAdminPanel">'+
+    '<div class="pin-admin pin-admin-hidden bo-write" id="pinAdminPanel">'+
       '<h3>Acciones de soporte</h3>'+
       '<p class="hint">Indica el motivo y reingresa tu contraseña de backoffice.</p>'+
       '<div class="pin-admin-grid">'+

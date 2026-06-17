@@ -16,6 +16,8 @@ from fastapi import UploadFile, File, Request
 from datetime import datetime, timezone
 import os, httpx, logging
 
+from app.services.vendedor_wa import _bodega_identificacion
+
 router = APIRouter(prefix="/v", tags=["vendedor"])
 logger = logging.getLogger("circa")
 
@@ -266,7 +268,7 @@ def preventa_buscar(token: str = Path(..., min_length=16, max_length=64)):
 
         const b = data.bodega;
         const nombre = b.nombre_comercial || b.razon_social;
-        const meta = [b.razon_social, b.distrito].filter(Boolean).join(' · ');
+        const meta = [b.identificacion, b.distrito].filter(Boolean).join(' · ');
         const lineaFmt = `S/ ${{b.linea_disponible.toFixed(2)}}`;
         const continuarHref = `/v/${{TOKEN}}/catalogo/${{b.id}}`;
 
@@ -349,7 +351,10 @@ def api_buscar_bodega(
 
     if not rows:
         tipo = "DNI" if len(q_clean) == 8 else "RUC"
-        return {"found": False, "error": f"No encontramos una bodega con ese {tipo}"}
+        hint = ""
+        if len(q_clean) == 11:
+            hint = " Si la bodega se registró solo con DNI, prueba con el DNI del representante."
+        return {"found": False, "error": f"No encontramos una bodega con ese {tipo}{hint}"}
 
     bodega = rows[0]
 
@@ -381,6 +386,10 @@ def api_buscar_bodega(
             "nombre_comercial": bodega.get("nombre_comercial"),
             "distrito": bodega.get("distrito"),
             "linea_disponible": linea,
+            "ruc": bodega.get("ruc"),
+            "dni_representante": bodega.get("dni_representante"),
+            "identificacion": _bodega_identificacion(bodega),
+            "solo_dni_sin_ruc": bool(bodega.get("solo_dni_sin_ruc")),
         },
     }
 
@@ -818,8 +827,10 @@ function pickBodega(id,name,el){
 function bodCard(b){
   var d=document.createElement("div"); d.className="bod";
   var ln = (b.linea_disponible!=null)? '<div class="ln">L&iacute;nea disp. '+money(b.linea_disponible)+'</div>':'';
-  d.innerHTML='<div class="nm">'+(b.razon_social||"(sin nombre)")+'</div><div class="mt">'+(b.distrito||"")+'</div>'+ln;
-  d.addEventListener("click",function(){pickBodega(b.id,b.razon_social,d)});
+  var iden = b.identificacion || b.dni_representante || b.ruc || "";
+  var idenHtml = iden ? '<div class="mt">'+iden+'</div>' : '';
+  d.innerHTML='<div class="nm">'+(b.razon_social||b.nombre_comercial||"(sin nombre)")+'</div>'+idenHtml+'<div class="mt">'+(b.distrito||"")+'</div>'+ln;
+  d.addEventListener("click",function(){pickBodega(b.id,b.razon_social||b.nombre_comercial,d)});
   return d;
 }
 
