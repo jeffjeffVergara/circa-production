@@ -39,7 +39,7 @@ from app.services.preventa_propuesta import (
 # Test phones — bypass SUNAT/RENIEC/Vision validation
 TEST_PHONES = {"+51954712581", "+51977652871", "+56991291415", "+51955755308", "+51981254477", "+51961276835", "51954712581", "51977652871", "56991291415", "51955755308", "51981254477", "51961276835"}
 from app.services.biometria_policy import skip_biometria_checks
-from app.config import TWILIO_FROM, BIOMETRIA_MODE, circa_soporte_wa_link
+from app.config import TWILIO_FROM, BIOMETRIA_MODE, VENDEDOR_WA_ENABLED, circa_soporte_wa_link
 
 
 def normalize(text: str) -> str:
@@ -204,6 +204,21 @@ def _handler_preventa_propuesta(telefono: str, link_token: str, bodega: dict) ->
     return [mensaje]
 
 
+def _reset_vend_session_to_bodega(telefono: str, bodega: dict | None, session: dict) -> dict:
+    """Si el modo vendedor WA está apagado, sacar sesiones vend_* al flujo bodeguero."""
+    fase = session.get("fase") or ""
+    if not fase.startswith("vend_"):
+        return session
+    bodega_id = bodega["id"] if bodega else None
+    if bodega and bodega.get("estado") == "activo":
+        db.upsert_session(telefono, "menu", {}, bodega_id)
+    elif bodega:
+        db.upsert_session(telefono, "welcome", {}, bodega_id)
+    else:
+        db.upsert_session(telefono, "welcome", {}, None)
+    return db.get_session(telefono) or session
+
+
 def handle_message(telefono: str, body: str, media_url: str = None) -> list:
     body_raw = (body or "").strip()
     body_n = normalize(body_raw)
@@ -212,23 +227,27 @@ def handle_message(telefono: str, body: str, media_url: str = None) -> list:
     bodega = db.get_bodega_by_phone(telefono)
     vendedor = db.get_vendedor_by_phone(telefono)
 
+    if not VENDEDOR_WA_ENABLED and session:
+        session = _reset_vend_session_to_bodega(telefono, bodega, session)
+
     if body_n and body_n in _TEXTO_PIDE_CONTACTO_CIRCA:
         return _desvio_contacto_circa_responses()
 
-    # ── VENDEDOR POR WHATSAPP ──
-    if vendedor and body_n in ("VENDEDOR", "VEND"):
-        return vend_wa.handle_vendedor_message(
-            telefono, body_raw, body_n, vendedor, session, force_entry=True,
-        )
-    if vend_wa.should_show_actor_chooser(vendedor, bodega, session):
-        if body_n in ("1", "VENDEDOR", "VEND"):
+    # ── VENDEDOR POR WHATSAPP (opcional; desactivado → solo flujo bodega) ──
+    if VENDEDOR_WA_ENABLED:
+        if vendedor and body_n in ("VENDEDOR", "VEND"):
             return vend_wa.handle_vendedor_message(
                 telefono, body_raw, body_n, vendedor, session, force_entry=True,
             )
-        if body_n not in ("2", "BODEGA", "CLIENTE", "SOY BODEGA"):
-            return vend_wa.actor_chooser_responses()
-    if vend_wa.should_route_to_vendedor(vendedor, bodega, session):
-        return vend_wa.handle_vendedor_message(telefono, body_raw, body_n, vendedor, session)
+        if vend_wa.should_show_actor_chooser(vendedor, bodega, session):
+            if body_n in ("1", "VENDEDOR", "VEND"):
+                return vend_wa.handle_vendedor_message(
+                    telefono, body_raw, body_n, vendedor, session, force_entry=True,
+                )
+            if body_n not in ("2", "BODEGA", "CLIENTE", "SOY BODEGA"):
+                return vend_wa.actor_chooser_responses()
+        if vend_wa.should_route_to_vendedor(vendedor, bodega, session):
+            return vend_wa.handle_vendedor_message(telefono, body_raw, body_n, vendedor, session)
 
     # ── PREVENTA PROPUESTA POR VENDEDOR ──
     # Si el mensaje contiene "Pedido <link_token>" y la bodega esta activa,

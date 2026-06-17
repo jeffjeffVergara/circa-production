@@ -3,6 +3,7 @@ import os
 
 os.environ["SUPABASE_URL"] = "http://localhost"
 os.environ["SUPABASE_SERVICE_KEY"] = "test-key"
+os.environ["VENDEDOR_WA_ENABLED"] = "true"
 
 from app.services import vendedor_wa as vw
 
@@ -83,3 +84,15 @@ def test_buscar_bodega_por_nombre_en_cartera(monkeypatch):
     assert err is None
     assert matches == []
     assert bodega["nombre_comercial"] == "Bodega Jeff"
+
+
+def test_vendedor_wa_disabled_blocks_routing(monkeypatch):
+    monkeypatch.setenv("VENDEDOR_WA_ENABLED", "false")
+    from importlib import reload
+    from app import config
+
+    reload(config)
+    reload(vw)
+    v = {"id": "v1", "activo": True}
+    assert vw.should_route_to_vendedor(v, None, None) is False
+    assert vw.should_show_actor_chooser(v, {"id": "b1"}, None) is False

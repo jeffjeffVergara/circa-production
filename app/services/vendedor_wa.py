@@ -91,12 +91,20 @@ def _wa_pedido_link(link_token: str) -> str:
     return f"https://wa.me/{CIRCA_WA_NUMBER}?text=Pedido%20{link_token}"
 
 
+def vendedor_wa_enabled() -> bool:
+    from app.config import VENDEDOR_WA_ENABLED
+
+    return VENDEDOR_WA_ENABLED
+
+
 def should_route_to_vendedor(
     vendedor: dict | None,
     bodega: dict | None,
     session: dict | None,
 ) -> bool:
     """True si el mensaje debe ir al flujo vendedor (sin chooser dual)."""
+    if not vendedor_wa_enabled():
+        return False
     if not vendedor or not vendedor.get("activo"):
         return False
     fase = (session or {}).get("fase") or ""
@@ -110,6 +118,8 @@ def should_route_to_vendedor(
 
 
 def should_show_actor_chooser(vendedor: dict | None, bodega: dict | None, session: dict | None) -> bool:
+    if not vendedor_wa_enabled():
+        return False
     if not vendedor or not bodega:
         return False
     if session:

@@ -79,6 +79,14 @@ FACE_MATCH_MIN_SCORE = float(os.getenv("FACE_MATCH_MIN_SCORE", "0.56"))
 # Si el modelo marca face_match=false pero el score es alto, aceptar (mitiga mismos rechazos por lentes/edad).
 FACE_MATCH_SCORE_OVERRIDE = float(os.getenv("FACE_MATCH_SCORE_OVERRIDE", "0.64"))
 
+# WhatsApp: flujo vendedor de campo (cartera/preventa por WA). false = todos entran como bodega.
+VENDEDOR_WA_ENABLED = os.getenv("VENDEDOR_WA_ENABLED", "false").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+    "on",
+)
+
 # ── SUNAT / RENIEC API ──
 # Supports: apiinti.dev, peruapi.com, apiperu.dev, apis.net.pe
 PERU_API_PROVIDER = os.getenv("PERU_API_PROVIDER", "apiinti")  # apiinti | peruapi | apiperu
