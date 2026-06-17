@@ -8,6 +8,7 @@ from __future__ import annotations
 
 # Portal distribuidor (canónico)
 STATUS_FLOW: dict[str, str] = {
+    "preventa_aceptada": "recibido",
     "confirmado": "recibido",
     "recibido": "en_preparacion",
     "en_preparacion": "despachado",
