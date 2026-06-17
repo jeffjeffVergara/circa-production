@@ -39,6 +39,20 @@ def test_authenticate_admin_and_viewer():
     assert auth.authenticate("lectura@test.pe", "wrong") is None
 
 
+def test_authenticate_viewer_from_credentials_env(monkeypatch):
+    monkeypatch.delenv("BACKOFFICE_VIEWER_EMAIL", raising=False)
+    monkeypatch.delenv("BACKOFFICE_VIEWER_PASSWORD", raising=False)
+    monkeypatch.setenv("BACKOFFICE_VIEWER_CREDENTIALS", "otro@test.pe:clave-otra")
+    from importlib import reload
+    from app import config
+    from app.services import backoffice_auth as ba
+
+    reload(config)
+    reload(ba)
+    user = ba.authenticate("otro@test.pe", "clave-otra")
+    assert user and user["role"] == ba.ROLE_VIEWER
+
+
 def test_login_ok():
     result = asyncio.run(bo.login(bo.LoginRequest(email="soporte@test.pe", password="test-pass-123")))
     assert result["ok"] is True

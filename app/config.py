@@ -140,6 +140,36 @@ def backoffice_viewer_password_or_raise() -> str:
     return "circa-viewer-dev-only"
 
 
+def backoffice_viewer_accounts() -> list[tuple[str, str]]:
+    """Cuentas viewer: BACKOFFICE_VIEWER_CREDENTIALS o EMAIL+PASSWORD."""
+    accounts: list[tuple[str, str]] = []
+    seen: set[str] = set()
+
+    raw = (os.getenv("BACKOFFICE_VIEWER_CREDENTIALS") or "").strip()
+    if raw:
+        for chunk in raw.split(","):
+            piece = chunk.strip()
+            if not piece or ":" not in piece:
+                continue
+            email, password = piece.split(":", 1)
+            email = email.strip().lower()
+            password = password.strip()
+            if email and password and email not in seen:
+                accounts.append((email, password))
+                seen.add(email)
+
+    email = (os.getenv("BACKOFFICE_VIEWER_EMAIL") or "").strip().lower()
+    if email and email not in seen:
+        password = (os.getenv("BACKOFFICE_VIEWER_PASSWORD") or "").strip()
+        if not password and not is_production():
+            password = "circa-viewer-dev-only"
+        if password:
+            accounts.append((email, password))
+            seen.add(email)
+
+    return accounts
+
+
 def meta_verify_token_or_raise() -> str:
     token = (os.getenv("META_VERIFY_TOKEN") or "").strip()
     if token:

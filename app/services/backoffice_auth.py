@@ -34,12 +34,14 @@ def bootstrap_credentials() -> tuple[str, str]:
 
 
 def viewer_credentials() -> tuple[str, str] | None:
-    from app.config import backoffice_viewer_password_or_raise
+    accounts = backoffice_viewer_accounts()
+    return accounts[0] if accounts else None
 
-    email = (os.getenv("BACKOFFICE_VIEWER_EMAIL") or "").strip().lower()
-    if not email:
-        return None
-    return email, backoffice_viewer_password_or_raise()
+
+def _viewer_accounts() -> list[tuple[str, str]]:
+    from app.config import backoffice_viewer_accounts
+
+    return backoffice_viewer_accounts()
 
 
 def verify_password(plain: str, hashed: str | None = None) -> bool:
@@ -60,12 +62,13 @@ def hash_password(plain: str) -> str:
 def authenticate(email: str, password: str) -> dict[str, Any] | None:
     """Valida credenciales admin o viewer (solo lectura)."""
     normalized = email.strip().lower()
+    plain = password or ""
     boot_email, _ = bootstrap_credentials()
-    if normalized == boot_email and verify_password(password):
+    if normalized == boot_email and verify_password(plain):
         return {"id": "bootstrap-admin", "email": normalized, "role": ROLE_ADMIN}
-    viewer = viewer_credentials()
-    if viewer and normalized == viewer[0] and hmac.compare_digest(password, viewer[1]):
-        return {"id": "bootstrap-viewer", "email": normalized, "role": ROLE_VIEWER}
+    for viewer_email, viewer_pass in _viewer_accounts():
+        if normalized == viewer_email and hmac.compare_digest(plain, viewer_pass):
+            return {"id": "bootstrap-viewer", "email": normalized, "role": ROLE_VIEWER}
     return None
 
 
