@@ -484,6 +484,9 @@ def vendedor_share_link(
 
     total = float(pedido.get("total_pedido") or 0)
     wa_link = f"https://wa.me/{CIRCA_WA_NUMBER}?text=Pedido%20{link_token}"
+    from urllib.parse import quote as _q
+    _share_msg = f"Hola te paso el link para aprobar tu pedido Circa: {wa_link}"
+    share_link = f"https://wa.me/?text={_q(_share_msg, safe='')}"
 
     html = f"""<!DOCTYPE html>
 <html lang="es">
@@ -536,7 +539,7 @@ def vendedor_share_link(
 
   <div class="btns-final">
     <a href="/v/{token}/preventa" class="btn secondary">Nueva preventa</a>
-    <a href="https://wa.me/?text=Hola%20te%20paso%20el%20link%20para%20aprobar%20tu%20pedido%20Circa%3A%20{wa_link}" target="_blank" class="btn">Compartir</a>
+    <a href="{share_link}" target="_blank" class="btn">Compartir</a>
   </div>
 
   <script>
