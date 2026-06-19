@@ -9,7 +9,13 @@ import logging
 import re
 import unicodedata
 
-from app.config import ANTHROPIC_VISION_MODEL, FACE_MATCH_MIN_SCORE, FACE_MATCH_SCORE_OVERRIDE
+from app.config import (
+    ANTHROPIC_VISION_MODEL,
+    DNI_PHOTO_RELAXED,
+    FACE_MATCH_MIN_SCORE,
+    FACE_MATCH_SCORE_OVERRIDE,
+    SELFIE_LIVENESS_RELAXED,
+)
 
 logger = logging.getLogger("circa.vision")
 
@@ -89,15 +95,21 @@ def verify_selfie(image_bytes: bytes, strict: bool = True) -> dict:
                         {
                             "type": "text",
                             "text": (
-                                "Eres un verificador biometrico KYC estricto. "
-                                "Evalua SOLO esta imagen y decide si es una selfie valida para onboarding. "
-                                "Reglas estrictas: "
-                                "1) Debe haber exactamente un rostro humano. "
-                                "2) Rostro frontal, mirada a camara, ojos visibles y abiertos. "
-                                "3) Rostro centrado y visible (aprox >=30% de la imagen). "
-                                "4) Imagen nitida y bien iluminada, sin obstrucciones fuertes del rostro. "
-                                "5) Debe parecer captura real del momento; si parece pantalla, impresion, foto de otra foto, deepfake o manipulacion, INVALIDA. "
-                                "6) Si hay duda razonable, responde valid=false. "
+                                "Eres un verificador KYC pragmático para onboarding por WhatsApp. "
+                                "Evalua SOLO esta imagen (selfie reciente del usuario). "
+                                "CONTEXTO CLAVE: en el siguiente paso esta selfie se comparará con la foto del "
+                                "anverso del DNI peruano (foto oficial del documento, suele ser de hace años, "
+                                "baja resolución, impresa en plástico, distinta iluminación). "
+                                "Por eso NO exijas calidad de selfie de alta seguridad ni pose de estudio. "
+                                "Objetivo de este paso: confirmar que hay UN rostro humano real y reconocible "
+                                "en una foto típica de celular. "
+                                "Acepta (valid=true) si: "
+                                "- Hay un rostro humano visible (aunque no esté perfectamente centrado). "
+                                "- Ángulo leve, lentes, sombra, compresión JPEG o calidad media son normales. "
+                                "- Ojos no perfectamente abiertos o rostro parcialmente cubierto por cabello/lentes "
+                                "NO invalidan si el rostro es identificable. "
+                                "Rechaza (valid=false) solo si: no hay rostro, hay varias personas, o evidencia "
+                                "clara de pantalla/foto de foto/deepfake. "
                                 "Responde SOLO JSON valido, sin markdown ni texto adicional, con esta estructura exacta: "
                                 '{"valid": true/false, "reason_code": "ok|no_face|multiple_faces|off_angle|eyes_not_visible|low_quality|occluded_face|screen_capture_suspected|photo_of_photo_suspected|spoof_suspected|uncertain", '
                                 '"reason": "explicacion breve en espanol", '
@@ -130,11 +142,7 @@ def verify_selfie(image_bytes: bytes, strict: bool = True) -> dict:
             text = text.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
         if text.startswith("{"):
             result = json.loads(text)
-            result.setdefault("reason_code", "ok" if result.get("valid") else "uncertain")
-            result.setdefault("reason", "Verificacion completada.")
-            result.setdefault("confidence", "medium")
-            result.setdefault("checks", {})
-            result["valid"] = bool(result.get("valid", False))
+            result = _finalize_selfie_result(result)
             logger.info(f"Selfie result: {result}")
             return result
         
@@ -159,6 +167,108 @@ def verify_selfie(image_bytes: bytes, strict: bool = True) -> dict:
             "confidence": "low",
         }
 
+
+
+_DNI_HARD_REJECT_CODES = frozenset({"not_dni", "tampering_suspected"})
+_SELFIE_SOFT_REJECT_CODES = frozenset({
+    "off_angle",
+    "eyes_not_visible",
+    "low_quality",
+    "occluded_face",
+    "uncertain",
+})
+
+
+def _finalize_selfie_result(result: dict) -> dict:
+    result.setdefault("reason_code", "ok" if result.get("valid") else "uncertain")
+    result.setdefault("reason", "Verificacion completada.")
+    result.setdefault("confidence", "medium")
+    result.setdefault("checks", {})
+    reason_code = str(result.get("reason_code", "") or "uncertain")
+    checks = result.get("checks") or {}
+    model_valid = bool(result.get("valid", False))
+    single_face = checks.get("single_face", True)
+
+    if SELFIE_LIVENESS_RELAXED:
+        if model_valid:
+            accepted = True
+        elif single_face and reason_code in _SELFIE_SOFT_REJECT_CODES:
+            accepted = True
+            reason_code = "ok"
+        else:
+            accepted = False
+    else:
+        accepted = model_valid
+
+    result["valid"] = accepted
+    result["reason_code"] = reason_code if accepted else reason_code
+    return result
+
+
+def _norm_name(s: str) -> str:
+    s = unicodedata.normalize("NFKD", (s or "").upper())
+    s = "".join(c for c in s if not unicodedata.combining(c))
+    s = re.sub(r"[^A-Z0-9\s]", " ", s)
+    return re.sub(r"\s+", " ", s).strip()
+
+
+def _dni_digits_match(found: str, expected: str, *, relaxed: bool) -> bool:
+    if not expected or len(expected) != 8:
+        return False
+    if found == expected:
+        return True
+    if expected in found or found in expected:
+        return True
+    if not relaxed or len(found) != 8:
+        return False
+    mismatches = sum(a != b for a, b in zip(found, expected))
+    return mismatches <= 1
+
+
+def _finalize_dni_photo_result(result: dict, expected_dni: str, expected_name: str) -> dict:
+    dni_found_raw = str(result.get("dni_found", "") or "")
+    dni_found = "".join(ch for ch in dni_found_raw if ch.isdigit())[:8]
+    result["dni_found"] = dni_found
+
+    expected_name_n = _norm_name(expected_name)
+    name_found_n = _norm_name(str(result.get("name_found", "") or ""))
+    common = set(expected_name_n.split()) & set(name_found_n.split())
+
+    matches_expected_dni = _dni_digits_match(
+        dni_found, expected_dni, relaxed=DNI_PHOTO_RELAXED,
+    )
+    if name_found_n:
+        matches_expected_name = len(common) >= 2 or expected_name_n == name_found_n
+    else:
+        matches_expected_name = None
+
+    reason_code = str(result.get("reason_code", "") or "uncertain")
+    model_valid = bool(result.get("valid", False))
+
+    if DNI_PHOTO_RELAXED:
+        # Prioridad: número correcto aunque haya dudas de ángulo/reflejo/rotación.
+        if matches_expected_dni and reason_code not in _DNI_HARD_REJECT_CODES:
+            accepted = True
+            reason_code = "ok"
+        elif model_valid and reason_code not in _DNI_HARD_REJECT_CODES:
+            accepted = True
+        else:
+            accepted = False
+    else:
+        accepted = model_valid and matches_expected_dni
+
+    result["matches_expected_dni"] = matches_expected_dni
+    result["matches_expected_name"] = matches_expected_name
+    result["matches_expected"] = matches_expected_dni and (
+        matches_expected_name is not False
+    )
+    result["valid"] = accepted
+    result["reason_code"] = reason_code if accepted else (
+        reason_code if reason_code != "ok" else "dni_mismatch"
+    )
+    result.setdefault("confidence", "medium")
+    result.setdefault("reason", "Verificacion completada.")
+    return result
 
 
 def verify_dni_photo(image_bytes: bytes, expected_dni: str, expected_name: str) -> dict:
@@ -198,17 +308,22 @@ def verify_dni_photo(image_bytes: bytes, expected_dni: str, expected_name: str) 
                         {
                             "type": "text",
                             "text": (
-                                "Eres un sistema KYC estricto para validar el anverso de DNI peruano. "
+                                "Eres un verificador KYC pragmático para fotos de DNI peruano enviadas por WhatsApp. "
                                 "Analiza SOLO esta imagen. "
-                                "Objetivo: verificar documento fisico real, extraer DNI/nombre legibles y comparar contra valores esperados. "
                                 f"expected_dni={expected_dni}; expected_name={expected_name}. "
-                                "Reglas estrictas: "
-                                "1) Debe parecer un DNI peruano fisico real (no pantalla, no captura, no foto de otra foto, no impresion, no edicion). "
-                                "2) Si el numero de DNI no es legible o hay ambiguedad de digitos, valid=false. "
-                                "3) Extrae dni_found y name_found solo si son legibles; si no, devuelve cadena vacia. "
-                                "4) matches_expected_dni=true solo si dni_found coincide EXACTAMENTE con expected_dni. "
-                                "5) Para nombre, compara normalizado (sin tildes, mayusculas, sin signos, orden flexible por tokens). "
-                                "6) Si hay duda razonable, responde valid=false y confidence=low. "
+                                "CONTEXTO: fotos de celular suelen tener reflejo en el plástico, compresión, "
+                                "ligera rotación, documento al revés o parcialmente tapado por los dedos. "
+                                "Eso NO invalida el documento si el anverso del DNI es reconocible. "
+                                "Objetivo: confirmar que es un DNI peruano (anverso) y extraer el número cuando sea legible. "
+                                "Reglas: "
+                                "1) valid=true si el anverso del DNI peruano es reconocible y el número coincide con expected_dni "
+                                "(aunque la foto esté rotada, con reflejo o calidad media). "
+                                "2) Extrae dni_found con los 8 dígitos si puedes leerlos; si no, cadena vacía. "
+                                "3) El nombre es opcional; no rechaces solo por nombre ilegible. "
+                                "4) Rechaza (valid=false) solo si claramente NO es un DNI, el número contradice expected_dni, "
+                                "o hay evidencia fuerte de manipulación del número. "
+                                "5) NO rechaces por photo_of_photo_suspected o screen_capture_suspected si el DNI físico "
+                                "es visible y el número coincide. "
                                 "Responde SOLO JSON valido, sin markdown ni texto adicional, con esta estructura exacta: "
                                 '{"valid": true/false, "reason_code": "ok|not_dni|illegible|dni_mismatch|name_mismatch|screen_capture_suspected|photo_of_photo_suspected|tampering_suspected|uncertain", '
                                 '"reason": "explicacion breve en espanol", "dni_found": "numero extraido o vacio", "name_found": "nombre extraido o vacio", '
@@ -233,43 +348,7 @@ def verify_dni_photo(image_bytes: bytes, expected_dni: str, expected_name: str) 
             text = text.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
         if text.startswith("{"):
             result = json.loads(text)
-
-            # Defensive normalization in case model omits fields or returns noisy text.
-            dni_found_raw = str(result.get("dni_found", "") or "")
-            dni_found = "".join(ch for ch in dni_found_raw if ch.isdigit())[:8]
-            result["dni_found"] = dni_found
-
-            def _norm_name(s: str) -> str:
-                s = unicodedata.normalize("NFKD", (s or "").upper())
-                s = "".join(c for c in s if not unicodedata.combining(c))
-                s = re.sub(r"[^A-Z0-9\s]", " ", s)
-                return re.sub(r"\s+", " ", s).strip()
-
-            expected_name_n = _norm_name(expected_name)
-            name_found_n = _norm_name(str(result.get("name_found", "") or ""))
-            expected_tokens = set(expected_name_n.split())
-            found_tokens = set(name_found_n.split())
-            common = expected_tokens & found_tokens
-
-            matches_expected_dni = (dni_found == expected_dni)
-            # Name match is optional when OCR cannot read a name, but strict when it can.
-            if name_found_n:
-                matches_expected_name = len(common) >= 2 or expected_name_n == name_found_n
-            else:
-                matches_expected_name = False
-
-            # Final acceptance prioritizes exact DNI match and document validity.
-            valid_flag = bool(result.get("valid", False))
-            matches_expected = matches_expected_dni and (matches_expected_name or not name_found_n)
-
-            result.setdefault("reason_code", "ok" if valid_flag and matches_expected else "uncertain")
-            result["matches_expected_dni"] = matches_expected_dni
-            result["matches_expected_name"] = matches_expected_name
-            result["matches_expected"] = matches_expected
-            result["valid"] = valid_flag and matches_expected_dni
-            result.setdefault("confidence", "medium")
-            result.setdefault("reason", "Verificacion completada.")
-
+            result = _finalize_dni_photo_result(result, expected_dni, expected_name)
             logger.info(f"DNI photo result: {result}")
             return result
         
@@ -340,23 +419,33 @@ def verify_selfie_vs_dni(selfie_bytes: bytes, dni_front_bytes: bytes, expected_n
                         {
                             "type": "text",
                             "text": (
-                                "Eres un verificador de identidad peruano (KYC). Comparas si la MISMA persona aparece en dos imagenes.\n"
-                                "Imagen 1 = selfie reciente del usuario. Imagen 2 = anverso del DNI (foto oficial, suele ser mas antigua).\n"
-                                f"Nombre de referencia (opcional, no es prueba definitiva): {expected_name or '(no indicado)'}.\n\n"
-                                "CONTEXTO IMPORTANTE (reduce falsos negativos):\n"
-                                "- El DNI puede tener anos de antiguedad: envejecimiento, cambio de peso, barba/bigote, peinado, "
-                                "cejas o piel NO implican persona distinta si la estructura facial y rasgos clave coinciden.\n"
-                                "- Lentes: si solo una foto tiene lentes, o distinto tipo de montura, NO descartes por eso. "
-                                "Compara forma de cara, nariz, boca, distancia entre ojos, menton y arco cigomatico cuando sea visible.\n"
-                                "- Iluminacion, angulo, compresion JPEG, reflejos en el plastico del DNI y baja resolucion del carnet "
-                                "pueden alterar apariencia; ante duda razonable, favorece 'misma persona'.\n\n"
-                                "Cuando marcar face_match=false (personas distintas):\n"
-                                "- Solo si hay evidencia fuerte de dos identidades distintas (proporciones incompatibles, rasgos "
-                                "estructurales claramente diferentes), no por maquillaje leve, lentes, barba o foto vieja.\n\n"
-                                "face_match_score en [0,1]: 0.85+ casi seguro misma persona; 0.65-0.84 probable misma persona con variacion temporal/accesorios; "
-                                "0.45-0.64 duda; por debajo de 0.45 probable distinta.\n"
-                                "valid=true si rostros legibles en ambas y (misma persona con confianza media-alta). "
-                                "Si una cara es ilegible o el documento no muestra rostro usable, valid=false.\n\n"
+                                "Eres un verificador de identidad peruano (KYC) en un flujo WhatsApp. "
+                                "Tu tarea es decidir si la MISMA persona aparece en dos imágenes muy distintas.\n\n"
+                                "Imagen 1 = selfie reciente tomada con celular (ahora).\n"
+                                "Imagen 2 = foto del rostro en el anverso del DNI peruano (foto oficial del documento).\n"
+                                f"Nombre de referencia (opcional): {expected_name or '(no indicado)'}.\n\n"
+                                "CONTEXTO CRÍTICO — documento vs selfie (reduce falsos negativos):\n"
+                                "- La foto del DNI suele tener años de antigüedad: envejecimiento, más o menos peso, "
+                                "barba/bigote, peinado, maquillaje, arrugas o piel NO significan persona distinta "
+                                "si la estructura ósea y rasgos principales coinciden.\n"
+                                "- El carnet tiene baja resolución, tinte del plástico, reflejos, desgaste e impresión "
+                                "offset; la selfie tiene otra luz, ángulo y compresión JPEG. Eso es NORMAL.\n"
+                                "- Lentes: si solo una imagen tiene lentes, o monturas distintas, NO rechaces por eso. "
+                                "Compara forma de cara, nariz, boca, distancia entre ojos, mentón y pómulos.\n"
+                                "- No exijas que ambas fotos se vean iguales en expresión, edad aparente ni iluminación.\n\n"
+                                "Cuándo marcar face_match=false (personas distintas):\n"
+                                "- Solo con evidencia fuerte de dos identidades (proporciones faciales incompatibles, "
+                                "rasgos estructurales claramente diferentes). No por foto vieja, lentes, ángulo o calidad.\n\n"
+                                "face_match_score en [0,1] (calibrado documento vs selfie):\n"
+                                "- 0.75+ muy probable misma persona\n"
+                                "- 0.55-0.74 probable misma persona con variación temporal/accesorios/calidad DNI\n"
+                                "- 0.40-0.54 duda; si no hay contradicción fuerte, favorece misma persona\n"
+                                "- <0.40 probable persona distinta\n\n"
+                                "valid=true si hay rostro usable en ambas imágenes y es razonable que sea la misma persona "
+                                "(confianza media basta). Ante duda razonable por diferencia de edad o calidad del DNI, "
+                                "favorece valid=true y face_match=true con score acorde.\n"
+                                "valid=false solo si falta rostro legible en selfie o en DNI, o hay evidencia clara "
+                                "de personas distintas.\n\n"
                                 "Responde SOLO JSON valido (sin markdown):\n"
                                 '{"valid": true/false, "reason_code": "ok|face_mismatch|no_face_in_selfie|no_face_in_dni|low_quality|uncertain", '
                                 '"reason": "explicacion breve en espanol", "face_match": true/false, '
@@ -403,8 +492,11 @@ def verify_selfie_vs_dni(selfie_bytes: bytes, dni_front_bytes: bytes, expected_n
         score = result["face_match_score"]
         min_s = FACE_MATCH_MIN_SCORE
         override_s = FACE_MATCH_SCORE_OVERRIDE
-        # Decisión en backend: no depender solo del booleano "valid" del modelo (puede contradecir el score).
-        score_ok = score >= min_s
+        reason_code = str(result.get("reason_code", "") or "uncertain")
+        effective_min = min_s
+        if reason_code in ("uncertain", "low_quality"):
+            effective_min = min(min_s, 0.48)
+        score_ok = score >= effective_min
         strong_score = score >= override_s
         result["valid"] = score_ok and (result["face_match"] or strong_score)
         result.setdefault("reason_code", "ok" if result["valid"] else "uncertain")

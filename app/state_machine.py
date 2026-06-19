@@ -420,10 +420,7 @@ En menos de 24 horas validamos tu solicitud y activamos tu línea. Empiezas comp
                                 datos.get("dni_number", ""),
                                 datos.get("dni_nombre", ""),
                             )
-                        matches_ok = check.get("matches_expected_dni")
-                        if matches_ok is None:
-                            matches_ok = check.get("matches_expected")
-                        if not check.get("valid", False) or matches_ok is False:
+                        if not check.get("valid", False):
                             reason = check.get("reason", "No se pudo verificar el DNI.")
                             db.log_biometria_auditoria(
                                 bodega_id=bodega_id,
