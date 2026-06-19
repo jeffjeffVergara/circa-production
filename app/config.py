@@ -74,8 +74,8 @@ BIOMETRIA_RELAX_FOR_TEST_BODEGAS = os.getenv("BIOMETRIA_RELAX_FOR_TEST_BODEGAS",
     "yes",
     "on",
 )
-# Umbral selfie vs foto DNI (0–1). Más bajo = menos falsos negativos, más riesgo de falso positivo.
-FACE_MATCH_MIN_SCORE = float(os.getenv("FACE_MATCH_MIN_SCORE", "0.56"))
+# Umbral selfie vs foto DNI (0–1). Más bajo = menos falsos negativos en DNI gris vs selfie color.
+FACE_MATCH_MIN_SCORE = float(os.getenv("FACE_MATCH_MIN_SCORE", "0.45"))
 # Si el modelo marca face_match=false pero el score es alto, aceptar (mitiga mismos rechazos por lentes/edad).
 FACE_MATCH_SCORE_OVERRIDE = float(os.getenv("FACE_MATCH_SCORE_OVERRIDE", "0.64"))
 # Claude Vision (DNI/selfie). claude-sonnet-4-20250514 retirado 2026-06-15 → usar 4.6.
@@ -89,6 +89,13 @@ DNI_PHOTO_RELAXED = os.getenv("DNI_PHOTO_RELAXED", "true").strip().lower() in (
 )
 # Selfie: no exigir estudio fotográfico; se comparará luego con foto del DNI (antigua/baja res).
 SELFIE_LIVENESS_RELAXED = os.getenv("SELFIE_LIVENESS_RELAXED", "true").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+    "on",
+)
+# Comparación selfie vs foto DNI (monocroma): umbrales y tolerancia a artefactos de impresión.
+FACE_MATCH_DNI_GRAYSCALE_RELAXED = os.getenv("FACE_MATCH_DNI_GRAYSCALE_RELAXED", "true").strip().lower() in (
     "1",
     "true",
     "yes",

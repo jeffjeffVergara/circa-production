@@ -12,6 +12,7 @@ import unicodedata
 from app.config import (
     ANTHROPIC_VISION_MODEL,
     DNI_PHOTO_RELAXED,
+    FACE_MATCH_DNI_GRAYSCALE_RELAXED,
     FACE_MATCH_MIN_SCORE,
     FACE_MATCH_SCORE_OVERRIDE,
     SELFIE_LIVENESS_RELAXED,
@@ -361,7 +362,14 @@ def verify_dni_photo(image_bytes: bytes, expected_dni: str, expected_name: str) 
 
 _SKIN_TONE_INFERENCE_RE = re.compile(
     r"piel\s+m[aá]s|tono\s+de\s+piel|tez\s+|afrodescend|asi[aá]tic|mestiz|etnia|fenotip|racial|"
-    r"moren[ao]|piel\s+clar|piel\s+osc|oscuro.*clar|clar.*oscuro|color\s+de\s+piel",
+    r"moren[ao]|piel\s+clar|piel\s+osc|oscuro.*clar|clar.*oscuro|color\s+de\s+piel|labios\s+m[aá]s\s+grues",
+    re.IGNORECASE,
+)
+_GEOMETRY_HALFTONE_ARTIFACT_RE = re.compile(
+    r"mand[ií]bula\s+m[aá]s\s+(ancha|estrecha|redondeada|definida)|"
+    r"nariz\s+m[aá]s\s+(ancha|delgada|definida|achatada|prominente)|"
+    r"rostro\s+m[aá]s\s+(ancho|alargado|delgado)|p[oó]mulos\s+m[aá]s\s+prominentes|"
+    r"proporci[oó]n.*distinta|geometr[ií]a.*(diferente|incompatible|marcada)",
     re.IGNORECASE,
 )
 
@@ -369,6 +377,21 @@ _SKIN_TONE_INFERENCE_RE = re.compile(
 def _reason_uses_skin_tone_or_ethnicity(reason: str) -> bool:
     """El DNI peruano es monocromo; rechazos basados en tono/etnia son inválidos."""
     return bool(_SKIN_TONE_INFERENCE_RE.search(reason or ""))
+
+
+def _reason_suggests_halftone_geometry_artifact(reason: str) -> bool:
+    """El halftone del DNI distorsiona mandíbula/nariz; el modelo suele alucinar diferencias."""
+    return bool(_GEOMETRY_HALFTONE_ARTIFACT_RE.search(reason or ""))
+
+
+def _accept_grayscale_face_match(result: dict, reason_code: str, reason: str) -> dict:
+    result["face_match"] = True
+    result["face_match_score"] = max(float(result.get("face_match_score", 0.0)), FACE_MATCH_MIN_SCORE)
+    result["valid"] = True
+    result["reason_code"] = "ok"
+    result["reason"] = reason
+    result.setdefault("confidence", "medium")
+    return result
 
 
 def _finalize_face_match_result(result: dict) -> dict:
@@ -382,6 +405,15 @@ def _finalize_face_match_result(result: dict) -> dict:
     reason = str(result.get("reason", "") or "")
     reason_code = str(result.get("reason_code", "") or "uncertain")
 
+    anchors = result.get("matching_anchors") or []
+    if isinstance(anchors, list) and len(anchors) >= 2:
+        logger.info("Face match accepted via %d structural anchors: %s", len(anchors), anchors[:4])
+        return _accept_grayscale_face_match(
+            result,
+            reason_code,
+            f"Coincidencia por señales estructurales: {', '.join(str(a) for a in anchors[:3])}.",
+        )
+
     if (
         not result["face_match"]
         and reason_code == "face_mismatch"
@@ -391,24 +423,37 @@ def _finalize_face_match_result(result: dict) -> dict:
             "Face match rejection used skin tone/ethnicity from grayscale DNI; overriding: %s",
             reason[:120],
         )
-        reason_code = "ok"
-        result["face_match"] = True
-        result["face_match_score"] = max(score, min(FACE_MATCH_MIN_SCORE, 0.56))
-        score = result["face_match_score"]
-        result["reason"] = (
+        return _accept_grayscale_face_match(
+            result,
+            reason_code,
             "Coincidencia aceptada: la foto del DNI es en escala de grises y no permite "
-            "inferir tono de piel ni etnia; se comparan rasgos estructurales."
+            "inferir tono de piel ni etnia; se comparan rasgos estructurales.",
         )
-        result["valid"] = True
-        result["reason_code"] = reason_code
-        result.setdefault("confidence", "medium")
-        return result
+
+    if (
+        FACE_MATCH_DNI_GRAYSCALE_RELAXED
+        and not result["face_match"]
+        and reason_code == "face_mismatch"
+        and _reason_suggests_halftone_geometry_artifact(reason)
+        and score >= 0.20
+    ):
+        logger.warning(
+            "Face match rejection likely halftone geometry artifact; overriding (score=%.2f): %s",
+            score,
+            reason[:120],
+        )
+        return _accept_grayscale_face_match(
+            result,
+            reason_code,
+            "Coincidencia aceptada: el halftone y la iluminación plana del DNI suelen "
+            "distorsionar mandíbula y nariz; no implican personas distintas.",
+        )
 
     min_s = FACE_MATCH_MIN_SCORE
     override_s = FACE_MATCH_SCORE_OVERRIDE
-    effective_min = min_s
+    effective_min = min(min_s, 0.40) if FACE_MATCH_DNI_GRAYSCALE_RELAXED else min_s
     if reason_code in ("uncertain", "low_quality"):
-        effective_min = min(min_s, 0.48)
+        effective_min = min(effective_min, 0.38)
     score_ok = score >= effective_min
     strong_score = score >= override_s
     result["valid"] = score_ok and (result["face_match"] or strong_score)
@@ -478,39 +523,39 @@ def verify_selfie_vs_dni(selfie_bytes: bytes, dni_front_bytes: bytes, expected_n
                         {
                             "type": "text",
                             "text": (
-                                "Eres un verificador de identidad peruano (KYC) en un flujo WhatsApp. "
+                                "Eres un verificador de identidad peruano (KYC) en WhatsApp. "
                                 "Decide si la MISMA persona aparece en dos imágenes muy distintas.\n\n"
-                                "Imagen 1 = selfie a color reciente (celular).\n"
-                                "Imagen 2 = foto del rostro en el anverso del DNI peruano.\n"
-                                f"Nombre de referencia (opcional): {expected_name or '(no indicado)'}.\n\n"
-                                "REGLA ABSOLUTA — FOTO DEL DNI EN ESCALA DE GRISES:\n"
-                                "- La foto oficial del DNI peruano es SIEMPRE monocroma (escala de grises / blanco y negro, "
-                                "impresión offset o halftone). NO representa el color real de piel.\n"
-                                "- PROHIBIDO usar tono de piel, color, etnia, raza o apariencia fenotípica inferida del DNI "
-                                "para rechazar. Una persona morena puede verse 'más clara' en el DNI y viceversa.\n"
-                                "- PROHIBIDO describir etnias (afrodescendiente, asiática, mestiza, etc.) en tu razón.\n"
-                                "- Si la selfie es a color y el DNI en gris, la diferencia de luminosidad es NORMAL, no evidencia "
-                                "de personas distintas.\n\n"
-                                "QUÉ SÍ COMPARAR (geometría facial, no pigmentación):\n"
-                                "- Distancia entre ojos, forma del puente y punta nasal, contorno de mandíbula y mentón, "
-                                "proporción frente-nariz-boca, orejas si se ven.\n"
-                                "- Cambios por edad, peso, barba, peinado, lentes, maquillaje o iluminación NO invalidan.\n"
-                                "- Baja resolución, reflejo en plástico, compresión JPEG del DNI son NORMALES.\n\n"
-                                "Cuándo face_match=false:\n"
-                                "- Solo si la geometría facial es claramente incompatible (dos personas distintas), "
-                                "NO por tono de piel, etnia percibida ni contraste gris vs color.\n\n"
-                                "face_match_score [0,1] (documento gris vs selfie color):\n"
-                                "- 0.75+ muy probable misma persona\n"
-                                "- 0.55-0.74 probable misma persona (variación temporal / calidad DNI)\n"
-                                "- 0.45-0.54 duda → favorece misma persona si no hay contradicción geométrica fuerte\n"
-                                "- <0.45 probable distinta (solo por forma facial, nunca por color de piel)\n\n"
-                                "valid=true con confianza media si hay rostro usable en ambas y la geometría es compatible. "
-                                "Ante duda, favorece misma persona.\n"
-                                "En reason, explica solo rasgos estructurales; nunca tono de piel ni etnia.\n\n"
+                                "Imagen 1 = selfie a color reciente (celular, puede tener barba incipiente, lentes, hoodie).\n"
+                                "Imagen 2 = foto del rostro en el anverso del DNI peruano (oficial, impresa en el documento).\n"
+                                f"Nombre de referencia: {expected_name or '(no indicado)'}.\n\n"
+                                "REGLA 1 — DNI SIEMPRE EN ESCALA DE GRISES:\n"
+                                "- La foto del DNI es monocroma (blanco y negro / halftone). NO indica color de piel real.\n"
+                                "- PROHIBIDO rechazar o describir etnias, tono de piel, tez o raza.\n"
+                                "- Las zonas oscuras del halftone en mejillas, nariz y barbilla NO son piel morena: "
+                                "son sombras de impresión. No interpretes contraste gris como persona distinta.\n\n"
+                                "REGLA 2 — EL DNI DISTORSIONA LA GEOMETRÍA (falsos negativos frecuentes):\n"
+                                "- Foto oficial: iluminación plana frontal, baja resolución, puntos halftone, holograma encima.\n"
+                                "- Eso hace que mandíbula, nariz y pómulos PAREZCAN más anchos o más estrechos que en la selfie 3D.\n"
+                                "- NO rechaces por 'mandíbula más ancha en DNI' o 'nariz más delgada en selfie' si hay otras señales de match.\n"
+                                "- Barba o bigote en selfie ausentes en DNI antiguo = NORMAL. Cambio de peso o edad = NORMAL.\n\n"
+                                "REGLA 3 — BUSCA ANCLAS DE MISMA PERSONA (prioridad alta):\n"
+                                "- Lunares/marcas en mismas zonas (nariz, mejilla, frente).\n"
+                                "- Misma distancia entre ojos, misma forma de orejas, mismo contorno de labios.\n"
+                                "- Misma estructura general de frente-nariz-mentón aunque el DNI se vea más 'aplanado'.\n"
+                                "- Si encuentras 2+ anclas compatibles, face_match=true aunque la calidad del DNI sea mala.\n\n"
+                                "REGLA 4 — CUÁNDO RECHAZAR (solo casos claros):\n"
+                                "- Rostro ilegible en selfie o en DNI.\n"
+                                "- Evidencia fuerte de DOS personas sin anclas compartidas (no solo ilusión por gris/halftone).\n\n"
+                                "face_match_score [0,1] (calibrado DNI gris vs selfie color, sé generoso si hay anclas):\n"
+                                "- 0.70+ misma persona | 0.50-0.69 probable misma persona | 0.35-0.49 duda → favorece match si hay anclas\n"
+                                "- <0.35 probable distinta solo sin ninguna ancla compatible\n\n"
+                                "Ante duda razonable, favorece face_match=true y valid=true.\n"
+                                "En reason cita solo anclas estructurales observadas; nunca etnia ni tono de piel.\n\n"
                                 "Responde SOLO JSON valido (sin markdown):\n"
                                 '{"valid": true/false, "reason_code": "ok|face_mismatch|no_face_in_selfie|no_face_in_dni|low_quality|uncertain", '
                                 '"reason": "explicacion breve en espanol", "face_match": true/false, '
-                                '"face_match_score": 0.0, "confidence": "low|medium|high"}'
+                                '"face_match_score": 0.0, "matching_anchors": ["ancla1", "ancla2"], '
+                                '"confidence": "low|medium|high"}'
                             ),
                         },
                     ],
