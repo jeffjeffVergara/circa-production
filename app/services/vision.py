@@ -359,6 +359,65 @@ def verify_dni_photo(image_bytes: bytes, expected_dni: str, expected_name: str) 
         return {"valid": True, "reason": "Error verificacion", "dni_found": ""}
 
 
+_SKIN_TONE_INFERENCE_RE = re.compile(
+    r"piel\s+m[aá]s|tono\s+de\s+piel|tez\s+|afrodescend|asi[aá]tic|mestiz|etnia|fenotip|racial|"
+    r"moren[ao]|piel\s+clar|piel\s+osc|oscuro.*clar|clar.*oscuro|color\s+de\s+piel",
+    re.IGNORECASE,
+)
+
+
+def _reason_uses_skin_tone_or_ethnicity(reason: str) -> bool:
+    """El DNI peruano es monocromo; rechazos basados en tono/etnia son inválidos."""
+    return bool(_SKIN_TONE_INFERENCE_RE.search(reason or ""))
+
+
+def _finalize_face_match_result(result: dict) -> dict:
+    result["face_match"] = bool(result.get("face_match", False))
+    try:
+        result["face_match_score"] = float(result.get("face_match_score", 0.0))
+    except Exception:
+        result["face_match_score"] = 0.0
+
+    score = result["face_match_score"]
+    reason = str(result.get("reason", "") or "")
+    reason_code = str(result.get("reason_code", "") or "uncertain")
+
+    if (
+        not result["face_match"]
+        and reason_code == "face_mismatch"
+        and _reason_uses_skin_tone_or_ethnicity(reason)
+    ):
+        logger.warning(
+            "Face match rejection used skin tone/ethnicity from grayscale DNI; overriding: %s",
+            reason[:120],
+        )
+        reason_code = "ok"
+        result["face_match"] = True
+        result["face_match_score"] = max(score, min(FACE_MATCH_MIN_SCORE, 0.56))
+        score = result["face_match_score"]
+        result["reason"] = (
+            "Coincidencia aceptada: la foto del DNI es en escala de grises y no permite "
+            "inferir tono de piel ni etnia; se comparan rasgos estructurales."
+        )
+        result["valid"] = True
+        result["reason_code"] = reason_code
+        result.setdefault("confidence", "medium")
+        return result
+
+    min_s = FACE_MATCH_MIN_SCORE
+    override_s = FACE_MATCH_SCORE_OVERRIDE
+    effective_min = min_s
+    if reason_code in ("uncertain", "low_quality"):
+        effective_min = min(min_s, 0.48)
+    score_ok = score >= effective_min
+    strong_score = score >= override_s
+    result["valid"] = score_ok and (result["face_match"] or strong_score)
+    result["reason_code"] = "ok" if result["valid"] else reason_code
+    result.setdefault("reason", "Verificacion facial completada.")
+    result.setdefault("confidence", "medium")
+    return result
+
+
 def verify_selfie_vs_dni(selfie_bytes: bytes, dni_front_bytes: bytes, expected_name: str = "") -> dict:
     """
     Compare selfie face against DNI front face using Claude Vision.
@@ -420,32 +479,34 @@ def verify_selfie_vs_dni(selfie_bytes: bytes, dni_front_bytes: bytes, expected_n
                             "type": "text",
                             "text": (
                                 "Eres un verificador de identidad peruano (KYC) en un flujo WhatsApp. "
-                                "Tu tarea es decidir si la MISMA persona aparece en dos imágenes muy distintas.\n\n"
-                                "Imagen 1 = selfie reciente tomada con celular (ahora).\n"
-                                "Imagen 2 = foto del rostro en el anverso del DNI peruano (foto oficial del documento).\n"
+                                "Decide si la MISMA persona aparece en dos imágenes muy distintas.\n\n"
+                                "Imagen 1 = selfie a color reciente (celular).\n"
+                                "Imagen 2 = foto del rostro en el anverso del DNI peruano.\n"
                                 f"Nombre de referencia (opcional): {expected_name or '(no indicado)'}.\n\n"
-                                "CONTEXTO CRÍTICO — documento vs selfie (reduce falsos negativos):\n"
-                                "- La foto del DNI suele tener años de antigüedad: envejecimiento, más o menos peso, "
-                                "barba/bigote, peinado, maquillaje, arrugas o piel NO significan persona distinta "
-                                "si la estructura ósea y rasgos principales coinciden.\n"
-                                "- El carnet tiene baja resolución, tinte del plástico, reflejos, desgaste e impresión "
-                                "offset; la selfie tiene otra luz, ángulo y compresión JPEG. Eso es NORMAL.\n"
-                                "- Lentes: si solo una imagen tiene lentes, o monturas distintas, NO rechaces por eso. "
-                                "Compara forma de cara, nariz, boca, distancia entre ojos, mentón y pómulos.\n"
-                                "- No exijas que ambas fotos se vean iguales en expresión, edad aparente ni iluminación.\n\n"
-                                "Cuándo marcar face_match=false (personas distintas):\n"
-                                "- Solo con evidencia fuerte de dos identidades (proporciones faciales incompatibles, "
-                                "rasgos estructurales claramente diferentes). No por foto vieja, lentes, ángulo o calidad.\n\n"
-                                "face_match_score en [0,1] (calibrado documento vs selfie):\n"
-                                "- 0.75+ muy probable misma persona\n"
-                                "- 0.55-0.74 probable misma persona con variación temporal/accesorios/calidad DNI\n"
-                                "- 0.40-0.54 duda; si no hay contradicción fuerte, favorece misma persona\n"
-                                "- <0.40 probable persona distinta\n\n"
-                                "valid=true si hay rostro usable en ambas imágenes y es razonable que sea la misma persona "
-                                "(confianza media basta). Ante duda razonable por diferencia de edad o calidad del DNI, "
-                                "favorece valid=true y face_match=true con score acorde.\n"
-                                "valid=false solo si falta rostro legible en selfie o en DNI, o hay evidencia clara "
+                                "REGLA ABSOLUTA — FOTO DEL DNI EN ESCALA DE GRISES:\n"
+                                "- La foto oficial del DNI peruano es SIEMPRE monocroma (escala de grises / blanco y negro, "
+                                "impresión offset o halftone). NO representa el color real de piel.\n"
+                                "- PROHIBIDO usar tono de piel, color, etnia, raza o apariencia fenotípica inferida del DNI "
+                                "para rechazar. Una persona morena puede verse 'más clara' en el DNI y viceversa.\n"
+                                "- PROHIBIDO describir etnias (afrodescendiente, asiática, mestiza, etc.) en tu razón.\n"
+                                "- Si la selfie es a color y el DNI en gris, la diferencia de luminosidad es NORMAL, no evidencia "
                                 "de personas distintas.\n\n"
+                                "QUÉ SÍ COMPARAR (geometría facial, no pigmentación):\n"
+                                "- Distancia entre ojos, forma del puente y punta nasal, contorno de mandíbula y mentón, "
+                                "proporción frente-nariz-boca, orejas si se ven.\n"
+                                "- Cambios por edad, peso, barba, peinado, lentes, maquillaje o iluminación NO invalidan.\n"
+                                "- Baja resolución, reflejo en plástico, compresión JPEG del DNI son NORMALES.\n\n"
+                                "Cuándo face_match=false:\n"
+                                "- Solo si la geometría facial es claramente incompatible (dos personas distintas), "
+                                "NO por tono de piel, etnia percibida ni contraste gris vs color.\n\n"
+                                "face_match_score [0,1] (documento gris vs selfie color):\n"
+                                "- 0.75+ muy probable misma persona\n"
+                                "- 0.55-0.74 probable misma persona (variación temporal / calidad DNI)\n"
+                                "- 0.45-0.54 duda → favorece misma persona si no hay contradicción geométrica fuerte\n"
+                                "- <0.45 probable distinta (solo por forma facial, nunca por color de piel)\n\n"
+                                "valid=true con confianza media si hay rostro usable en ambas y la geometría es compatible. "
+                                "Ante duda, favorece misma persona.\n"
+                                "En reason, explica solo rasgos estructurales; nunca tono de piel ni etnia.\n\n"
                                 "Responde SOLO JSON valido (sin markdown):\n"
                                 '{"valid": true/false, "reason_code": "ok|face_mismatch|no_face_in_selfie|no_face_in_dni|low_quality|uncertain", '
                                 '"reason": "explicacion breve en espanol", "face_match": true/false, '
@@ -484,25 +545,7 @@ def verify_selfie_vs_dni(selfie_bytes: bytes, dni_front_bytes: bytes, expected_n
             }
 
         result = json.loads(text)
-        result["face_match"] = bool(result.get("face_match", False))
-        try:
-            result["face_match_score"] = float(result.get("face_match_score", 0.0))
-        except Exception:
-            result["face_match_score"] = 0.0
-        score = result["face_match_score"]
-        min_s = FACE_MATCH_MIN_SCORE
-        override_s = FACE_MATCH_SCORE_OVERRIDE
-        reason_code = str(result.get("reason_code", "") or "uncertain")
-        effective_min = min_s
-        if reason_code in ("uncertain", "low_quality"):
-            effective_min = min(min_s, 0.48)
-        score_ok = score >= effective_min
-        strong_score = score >= override_s
-        result["valid"] = score_ok and (result["face_match"] or strong_score)
-        result.setdefault("reason_code", "ok" if result["valid"] else "uncertain")
-        result.setdefault("reason", "Verificacion facial completada.")
-        result.setdefault("confidence", "medium")
-        return result
+        return _finalize_face_match_result(result)
 
     except Exception as e:
         logger.error(f"Selfie vs DNI verify error: {e}", exc_info=True)
