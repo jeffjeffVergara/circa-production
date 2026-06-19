@@ -39,7 +39,13 @@ from app.services.preventa_propuesta import (
 # Test phones — bypass SUNAT/RENIEC/Vision validation
 TEST_PHONES = {"+51954712581", "+51977652871", "+56991291415", "+51955755308", "+51981254477", "+51961276835", "51954712581", "51977652871", "56991291415", "51955755308", "51981254477", "51961276835"}
 from app.services.biometria_policy import skip_biometria_checks
-from app.config import TWILIO_FROM, BIOMETRIA_MODE, VENDEDOR_WA_ENABLED, circa_soporte_wa_link
+from app.config import (
+    ANTHROPIC_VISION_MODEL,
+    BIOMETRIA_MODE,
+    TWILIO_FROM,
+    VENDEDOR_WA_ENABLED,
+    circa_soporte_wa_link,
+)
 
 
 def normalize(text: str) -> str:
@@ -428,7 +434,7 @@ En menos de 24 horas validamos tu solicitud y activamos tu línea. Empiezas comp
                                 reason_code=check.get("reason_code", ""),
                                 confidence=check.get("confidence", ""),
                                 provider="anthropic",
-                                model="claude-sonnet-4-20250514",
+                                model=ANTHROPIC_VISION_MODEL,
                                 metadata={
                                     "dni_found": check.get("dni_found", ""),
                                     "name_found": check.get("name_found", ""),
@@ -446,7 +452,7 @@ En menos de 24 horas validamos tu solicitud y activamos tu línea. Empiezas comp
                             reason_code=check.get("reason_code", "ok"),
                             confidence=check.get("confidence", ""),
                             provider="anthropic",
-                            model="claude-sonnet-4-20250514",
+                            model=ANTHROPIC_VISION_MODEL,
                             metadata={
                                 "dni_found": check.get("dni_found", ""),
                                 "name_found": check.get("name_found", ""),
@@ -490,7 +496,7 @@ En menos de 24 horas validamos tu solicitud y activamos tu línea. Empiezas comp
                         reason_code="dni_photo_exception",
                         confidence="low",
                         provider="anthropic",
-                        model="claude-sonnet-4-20250514",
+                        model=ANTHROPIC_VISION_MODEL,
                         metadata={"error": str(e)[:200]},
                     )
                     datos["dni_photo_verified"] = True
@@ -626,7 +632,7 @@ En menos de 24 horas validamos tu solicitud y activamos tu línea. Empiezas comp
                             reason_code=check.get("reason_code", ""),
                             confidence=check.get("confidence", ""),
                             provider="anthropic",
-                            model="claude-sonnet-4-20250514",
+                            model=ANTHROPIC_VISION_MODEL,
                             metadata={
                                 "checks": check.get("checks", {}),
                             },
@@ -648,7 +654,7 @@ En menos de 24 horas validamos tu solicitud y activamos tu línea. Empiezas comp
                                 reason_code="dni_reference_missing",
                                 confidence="low",
                                 provider="anthropic",
-                                model="claude-sonnet-4-20250514",
+                                model=ANTHROPIC_VISION_MODEL,
                                 metadata={"phase": "selfie_vs_dni"},
                             )
                             return ["\u274c No pude validar el rostro contra tu DNI. Reenvía el anverso del DNI."]
@@ -684,7 +690,7 @@ En menos de 24 horas validamos tu solicitud y activamos tu línea. Empiezas comp
                                 reason_code=face_cmp.get("reason_code", "face_mismatch"),
                                 confidence=face_cmp.get("confidence", ""),
                                 provider="anthropic",
-                                model="claude-sonnet-4-20250514",
+                                model=ANTHROPIC_VISION_MODEL,
                                 metadata={
                                     "phase": "selfie_vs_dni",
                                     "face_match": face_cmp.get("face_match", False),
@@ -705,7 +711,7 @@ En menos de 24 horas validamos tu solicitud y activamos tu línea. Empiezas comp
                         reason_code=check.get("reason_code", "ok"),
                         confidence=check.get("confidence", ""),
                         provider="anthropic",
-                        model="claude-sonnet-4-20250514",
+                        model=ANTHROPIC_VISION_MODEL,
                         metadata={
                             "phase": "selfie_liveness",
                             "checks": check.get("checks", {}),
@@ -740,7 +746,7 @@ En menos de 24 horas validamos tu solicitud y activamos tu línea. Empiezas comp
                     reason_code="selfie_exception",
                     confidence="low",
                     provider="anthropic",
-                    model="claude-sonnet-4-20250514",
+                    model=ANTHROPIC_VISION_MODEL,
                     metadata={"error": str(e)[:200]},
                 )
                 datos["biometria_verified"] = True

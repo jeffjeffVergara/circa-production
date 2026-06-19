@@ -9,7 +9,7 @@ import logging
 import re
 import unicodedata
 
-from app.config import FACE_MATCH_MIN_SCORE, FACE_MATCH_SCORE_OVERRIDE
+from app.config import ANTHROPIC_VISION_MODEL, FACE_MATCH_MIN_SCORE, FACE_MATCH_SCORE_OVERRIDE
 
 logger = logging.getLogger("circa.vision")
 
@@ -73,7 +73,7 @@ def verify_selfie(image_bytes: bytes, strict: bool = True) -> dict:
                 "content-type": "application/json",
             },
             json={
-                "model": "claude-sonnet-4-20250514",
+                "model": ANTHROPIC_VISION_MODEL,
                 "max_tokens": 200,
                 "messages": [{
                     "role": "user",
@@ -182,7 +182,7 @@ def verify_dni_photo(image_bytes: bytes, expected_dni: str, expected_name: str) 
                 "content-type": "application/json",
             },
             json={
-                "model": "claude-sonnet-4-20250514",
+                "model": ANTHROPIC_VISION_MODEL,
                 "max_tokens": 300,
                 "messages": [{
                     "role": "user",
@@ -316,7 +316,7 @@ def verify_selfie_vs_dni(selfie_bytes: bytes, dni_front_bytes: bytes, expected_n
                 "content-type": "application/json",
             },
             json={
-                "model": "claude-sonnet-4-20250514",
+                "model": ANTHROPIC_VISION_MODEL,
                 "max_tokens": 420,
                 "messages": [{
                     "role": "user",

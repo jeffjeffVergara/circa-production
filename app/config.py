@@ -78,6 +78,8 @@ BIOMETRIA_RELAX_FOR_TEST_BODEGAS = os.getenv("BIOMETRIA_RELAX_FOR_TEST_BODEGAS",
 FACE_MATCH_MIN_SCORE = float(os.getenv("FACE_MATCH_MIN_SCORE", "0.56"))
 # Si el modelo marca face_match=false pero el score es alto, aceptar (mitiga mismos rechazos por lentes/edad).
 FACE_MATCH_SCORE_OVERRIDE = float(os.getenv("FACE_MATCH_SCORE_OVERRIDE", "0.64"))
+# Claude Vision (DNI/selfie). claude-sonnet-4-20250514 retirado 2026-06-15 → usar 4.6.
+ANTHROPIC_VISION_MODEL = os.getenv("ANTHROPIC_VISION_MODEL", "claude-sonnet-4-6").strip()
 
 # WhatsApp: flujo vendedor de campo (cartera/preventa por WA). false = todos entran como bodega.
 VENDEDOR_WA_ENABLED = os.getenv("VENDEDOR_WA_ENABLED", "false").strip().lower() in (
