@@ -15,6 +15,7 @@ from app.config import (
     FACE_MATCH_DNI_GRAYSCALE_RELAXED,
     FACE_MATCH_MIN_SCORE,
     FACE_MATCH_SCORE_OVERRIDE,
+    FACE_MATCH_TRUST_DNI_CHAIN,
     SELFIE_LIVENESS_RELAXED,
 )
 
@@ -109,8 +110,9 @@ def verify_selfie(image_bytes: bytes, strict: bool = True) -> dict:
                                 "- Ángulo leve, lentes, sombra, compresión JPEG o calidad media son normales. "
                                 "- Ojos no perfectamente abiertos o rostro parcialmente cubierto por cabello/lentes "
                                 "NO invalidan si el rostro es identificable. "
-                                "Rechaza (valid=false) solo si: no hay rostro, hay varias personas, o evidencia "
-                                "clara de pantalla/foto de foto/deepfake. "
+                                "Rechaza (valid=false) SOLO si: no hay ningún rostro humano, hay varias personas "
+                                "claramente distintas, o evidencia muy fuerte de pantalla/foto de foto. "
+                                "En caso de duda, valid=true. "
                                 "Responde SOLO JSON valido, sin markdown ni texto adicional, con esta estructura exacta: "
                                 '{"valid": true/false, "reason_code": "ok|no_face|multiple_faces|off_angle|eyes_not_visible|low_quality|occluded_face|screen_capture_suspected|photo_of_photo_suspected|spoof_suspected|uncertain", '
                                 '"reason": "explicacion breve en espanol", '
@@ -171,12 +173,22 @@ def verify_selfie(image_bytes: bytes, strict: bool = True) -> dict:
 
 
 _DNI_HARD_REJECT_CODES = frozenset({"not_dni", "tampering_suspected"})
+_SELFIE_HARD_REJECT_CODES = frozenset({
+    "no_face",
+    "multiple_faces",
+    "screen_capture_suspected",
+    "photo_of_photo_suspected",
+    "spoof_suspected",
+})
 _SELFIE_SOFT_REJECT_CODES = frozenset({
     "off_angle",
     "eyes_not_visible",
     "low_quality",
     "occluded_face",
     "uncertain",
+    "invalid_response",
+    "provider_error",
+    "exception",
 })
 
 
@@ -193,7 +205,10 @@ def _finalize_selfie_result(result: dict) -> dict:
     if SELFIE_LIVENESS_RELAXED:
         if model_valid:
             accepted = True
-        elif single_face and reason_code in _SELFIE_SOFT_REJECT_CODES:
+        elif single_face and reason_code not in _SELFIE_HARD_REJECT_CODES:
+            accepted = True
+            reason_code = "ok"
+        elif reason_code in _SELFIE_SOFT_REJECT_CODES:
             accepted = True
             reason_code = "ok"
         else:
@@ -369,7 +384,10 @@ _GEOMETRY_HALFTONE_ARTIFACT_RE = re.compile(
     r"mand[ií]bula\s+m[aá]s\s+(ancha|estrecha|redondeada|definida)|"
     r"nariz\s+m[aá]s\s+(ancha|delgada|definida|achatada|prominente)|"
     r"rostro\s+m[aá]s\s+(ancho|alargado|delgado)|p[oó]mulos\s+m[aá]s\s+prominentes|"
-    r"proporci[oó]n.*distinta|geometr[ií]a.*(diferente|incompatible|marcada)",
+    r"proporci[oó]n.*distinta|geometr[ií]a.*(diferente|incompatible|marcada)|"
+    r"estructura\s+craneal.*distinta|morfolog[ií]a.*distinta|"
+    r"proporciones\s+faciales.*no\s+coinciden|no\s+se\s+(identifican|encontraron).*anclas|"
+    r"epic[aá]ntic|pliegue\s+epic",
     re.IGNORECASE,
 )
 
@@ -394,7 +412,7 @@ def _accept_grayscale_face_match(result: dict, reason_code: str, reason: str) ->
     return result
 
 
-def _finalize_face_match_result(result: dict) -> dict:
+def _finalize_face_match_result(result: dict, *, dni_chain_verified: bool = False) -> dict:
     result["face_match"] = bool(result.get("face_match", False))
     try:
         result["face_match_score"] = float(result.get("face_match_score", 0.0))
@@ -406,12 +424,33 @@ def _finalize_face_match_result(result: dict) -> dict:
     reason_code = str(result.get("reason_code", "") or "uncertain")
 
     anchors = result.get("matching_anchors") or []
-    if isinstance(anchors, list) and len(anchors) >= 2:
+    min_anchors = 1 if (FACE_MATCH_DNI_GRAYSCALE_RELAXED and dni_chain_verified) else 2
+    if isinstance(anchors, list) and len(anchors) >= min_anchors:
         logger.info("Face match accepted via %d structural anchors: %s", len(anchors), anchors[:4])
         return _accept_grayscale_face_match(
             result,
             reason_code,
             f"Coincidencia por señales estructurales: {', '.join(str(a) for a in anchors[:3])}.",
+        )
+
+    _no_face_codes = frozenset({"no_face_in_selfie", "no_face_in_dni"})
+    if (
+        FACE_MATCH_DNI_GRAYSCALE_RELAXED
+        and FACE_MATCH_TRUST_DNI_CHAIN
+        and dni_chain_verified
+        and not result["face_match"]
+        and reason_code not in _no_face_codes
+    ):
+        logger.warning(
+            "Face match rejected but full DNI chain trusted; overriding (code=%s score=%.2f)",
+            reason_code,
+            score,
+        )
+        return _accept_grayscale_face_match(
+            result,
+            reason_code,
+            "Coincidencia aceptada: identidad ya validada con RENIEC y documento; "
+            "la foto del DNI en gris no permite comparación facial fiable.",
         )
 
     if (
@@ -435,7 +474,7 @@ def _finalize_face_match_result(result: dict) -> dict:
         and not result["face_match"]
         and reason_code == "face_mismatch"
         and _reason_suggests_halftone_geometry_artifact(reason)
-        and score >= 0.20
+        and score >= 0.0
     ):
         logger.warning(
             "Face match rejection likely halftone geometry artifact; overriding (score=%.2f): %s",
@@ -451,9 +490,11 @@ def _finalize_face_match_result(result: dict) -> dict:
 
     min_s = FACE_MATCH_MIN_SCORE
     override_s = FACE_MATCH_SCORE_OVERRIDE
-    effective_min = min(min_s, 0.40) if FACE_MATCH_DNI_GRAYSCALE_RELAXED else min_s
-    if reason_code in ("uncertain", "low_quality"):
-        effective_min = min(effective_min, 0.38)
+    effective_min = min(min_s, 0.28) if FACE_MATCH_DNI_GRAYSCALE_RELAXED else min_s
+    if reason_code in ("uncertain", "low_quality", "face_mismatch"):
+        effective_min = min(effective_min, 0.25)
+    if dni_chain_verified and FACE_MATCH_DNI_GRAYSCALE_RELAXED:
+        effective_min = min(effective_min, 0.20)
     score_ok = score >= effective_min
     strong_score = score >= override_s
     result["valid"] = score_ok and (result["face_match"] or strong_score)
@@ -463,7 +504,13 @@ def _finalize_face_match_result(result: dict) -> dict:
     return result
 
 
-def verify_selfie_vs_dni(selfie_bytes: bytes, dni_front_bytes: bytes, expected_name: str = "") -> dict:
+def verify_selfie_vs_dni(
+    selfie_bytes: bytes,
+    dni_front_bytes: bytes,
+    expected_name: str = "",
+    *,
+    dni_chain_verified: bool = False,
+) -> dict:
     """
     Compare selfie face against DNI front face using Claude Vision.
     Returns:
@@ -527,8 +574,17 @@ def verify_selfie_vs_dni(selfie_bytes: bytes, dni_front_bytes: bytes, expected_n
                                 "Decide si la MISMA persona aparece en dos imágenes muy distintas.\n\n"
                                 "Imagen 1 = selfie a color reciente (celular, puede tener barba incipiente, lentes, hoodie).\n"
                                 "Imagen 2 = foto del rostro en el anverso del DNI peruano (oficial, impresa en el documento).\n"
-                                f"Nombre de referencia: {expected_name or '(no indicado)'}.\n\n"
-                                "REGLA 1 — DNI SIEMPRE EN ESCALA DE GRISES:\n"
+                                f"Nombre de referencia: {expected_name or '(no indicado)'}.\n"
+                                + (
+                                    "CONTEXTO DEL FLUJO: el número de DNI y el anverso del documento YA fueron "
+                                    "validados en el paso anterior. Tu rol es confirmar que la selfie muestra "
+                                    "a la misma persona titular del DNI, no buscar diferencias artificiales.\n"
+                                    "Si hay un rostro humano claro en ambas imágenes y no hay prueba fuerte "
+                                    "de otra persona, responde face_match=true y valid=true.\n\n"
+                                    if dni_chain_verified
+                                    else ""
+                                )
+                                + "REGLA 1 — DNI SIEMPRE EN ESCALA DE GRISES:\n"
                                 "- La foto del DNI es monocroma (blanco y negro / halftone). NO indica color de piel real.\n"
                                 "- PROHIBIDO rechazar o describir etnias, tono de piel, tez o raza.\n"
                                 "- Las zonas oscuras del halftone en mejillas, nariz y barbilla NO son piel morena: "
@@ -543,13 +599,14 @@ def verify_selfie_vs_dni(selfie_bytes: bytes, dni_front_bytes: bytes, expected_n
                                 "- Misma distancia entre ojos, misma forma de orejas, mismo contorno de labios.\n"
                                 "- Misma estructura general de frente-nariz-mentón aunque el DNI se vea más 'aplanado'.\n"
                                 "- Si encuentras 2+ anclas compatibles, face_match=true aunque la calidad del DNI sea mala.\n\n"
-                                "REGLA 4 — CUÁNDO RECHAZAR (solo casos claros):\n"
-                                "- Rostro ilegible en selfie o en DNI.\n"
-                                "- Evidencia fuerte de DOS personas sin anclas compartidas (no solo ilusión por gris/halftone).\n\n"
-                                "face_match_score [0,1] (calibrado DNI gris vs selfie color, sé generoso si hay anclas):\n"
-                                "- 0.70+ misma persona | 0.50-0.69 probable misma persona | 0.35-0.49 duda → favorece match si hay anclas\n"
-                                "- <0.35 probable distinta solo sin ninguna ancla compatible\n\n"
-                                "Ante duda razonable, favorece face_match=true y valid=true.\n"
+                                "REGLA 4 — CUÁNDO RECHAZAR (muy restrictivo):\n"
+                                "- Solo si NO hay rostro legible en selfie o en DNI (reason_code no_face_in_*).\n"
+                                "- NO rechaces por diferencias de mandíbula, nariz, edad, peso, lentes o halftone.\n\n"
+                                "face_match_score [0,1] (sé MUY generoso; DNI gris vs selfie color):\n"
+                                "- 0.50+ misma persona | 0.35-0.49 probable misma persona | 0.20-0.34 duda → face_match=true\n"
+                                "- <0.20 solo si claramente son dos personas distintas con rostros legibles en ambas\n\n"
+                                "DEFAULT: si hay un rostro en cada imagen, face_match=true y valid=true salvo prueba "
+                                "contundente de otra persona.\n"
                                 "En reason cita solo anclas estructurales observadas; nunca etnia ni tono de piel.\n\n"
                                 "Responde SOLO JSON valido (sin markdown):\n"
                                 '{"valid": true/false, "reason_code": "ok|face_mismatch|no_face_in_selfie|no_face_in_dni|low_quality|uncertain", '
@@ -590,7 +647,7 @@ def verify_selfie_vs_dni(selfie_bytes: bytes, dni_front_bytes: bytes, expected_n
             }
 
         result = json.loads(text)
-        return _finalize_face_match_result(result)
+        return _finalize_face_match_result(result, dni_chain_verified=dni_chain_verified)
 
     except Exception as e:
         logger.error(f"Selfie vs DNI verify error: {e}", exc_info=True)

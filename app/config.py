@@ -75,9 +75,16 @@ BIOMETRIA_RELAX_FOR_TEST_BODEGAS = os.getenv("BIOMETRIA_RELAX_FOR_TEST_BODEGAS",
     "on",
 )
 # Umbral selfie vs foto DNI (0–1). Más bajo = menos falsos negativos en DNI gris vs selfie color.
-FACE_MATCH_MIN_SCORE = float(os.getenv("FACE_MATCH_MIN_SCORE", "0.45"))
+FACE_MATCH_MIN_SCORE = float(os.getenv("FACE_MATCH_MIN_SCORE", "0.30"))
 # Si el modelo marca face_match=false pero el score es alto, aceptar (mitiga mismos rechazos por lentes/edad).
-FACE_MATCH_SCORE_OVERRIDE = float(os.getenv("FACE_MATCH_SCORE_OVERRIDE", "0.64"))
+FACE_MATCH_SCORE_OVERRIDE = float(os.getenv("FACE_MATCH_SCORE_OVERRIDE", "0.48"))
+# Si RENIEC + foto DNI + selfie liveness ya pasaron, no bloquear por comparación gris vs color.
+FACE_MATCH_TRUST_DNI_CHAIN = os.getenv("FACE_MATCH_TRUST_DNI_CHAIN", "true").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+    "on",
+)
 # Claude Vision (DNI/selfie). claude-sonnet-4-20250514 retirado 2026-06-15 → usar 4.6.
 ANTHROPIC_VISION_MODEL = os.getenv("ANTHROPIC_VISION_MODEL", "claude-sonnet-4-6").strip()
 # Foto anverso DNI: modo pragmático para fotos WhatsApp (ángulo, reflejo, rotación).

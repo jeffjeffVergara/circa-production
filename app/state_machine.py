@@ -676,6 +676,9 @@ En menos de 24 horas validamos tu solicitud y activamos tu línea. Empiezas comp
                             image_bytes,
                             dni_front_bytes,
                             expected_name=rep_name,
+                            dni_chain_verified=bool(
+                                datos.get("dni_photo_verified") and datos.get("dni_number"),
+                            ),
                         )
                         if not face_cmp.get("valid", False):
                             db.log_biometria_auditoria(
