@@ -201,7 +201,7 @@ async def list_pedidos(estado: Optional[str] = None, incluir_test: bool = False,
     bodega_ids = list(set(p.get("bodega_id", "") for p in pedidos if p.get("bodega_id")))
     bodegas_map = _sb_map_by_ids(
         "bodegas",
-        "id,nombre_comercial,telefono_whatsapp,ruc,direccion_fiscal,es_test",
+        "id,nombre_comercial,razon_social,representante_nombre_corto,representante_legal,telefono_whatsapp,ruc,direccion_fiscal,es_test,codigo_afiliado",
         bodega_ids,
     )
     # El distribuidor ve solo pedidos reales por defecto; ?incluir_test=true muestra los de prueba.
