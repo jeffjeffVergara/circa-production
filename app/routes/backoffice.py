@@ -1192,3 +1192,6 @@ async def confirm_preventa_import(
         "items_no_match": resultado.get("items_no_match") or [],
         "link_token": resultado.get("link_token"),
     }
+
+from app.routes.backoffice_ops import bodegas_ops_handler
+router.get("/bodegas-ops")(bodegas_ops_handler)
