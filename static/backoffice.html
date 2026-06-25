@@ -465,22 +465,56 @@ tr:hover td{background:var(--card-hover)}
 <button class="btn btn-green btn-small bo-write" onclick="openCreateBodega()">+ Nueva bodega</button>
 </span>
 </h2>
-<div class="search-bar">
-<input type="search" id="bodegasSearch" name="circa-bodegas-filter" placeholder="Buscar razón social, dueño, DNI, RUC o teléfono..." autocomplete="off" autocorrect="off" spellcheck="false" data-lpignore="true" data-form-type="other" oninput="onBodegasSearchInput()">
+<!-- KPIs bodegas (se llenan desde bodegas-ops) -->
+<div id="bodegasKpis" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:16px">
+</div>
+<div class="search-bar" style="flex-wrap:wrap;gap:8px;display:flex;align-items:center">
+<input type="search" id="bodegasSearch" name="circa-bodegas-filter" placeholder="Buscar nombre, teléfono, DNI, RUC..." autocomplete="off" autocorrect="off" spellcheck="false" data-lpignore="true" data-form-type="other" oninput="onBodegasSearchInput()" style="flex:1;min-width:200px">
 <select id="bodegasFiltroEstado" onchange="loadBodegas()" style="padding:9px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px">
-<option value="">Todos los estados</option>
+<option value="">Estado: todos</option>
 <option value="activo">Activos</option>
 <option value="inactivo">Inactivos</option>
 <option value="suspendido">Suspendidos</option>
 <option value="bloqueado">Bloqueados</option>
 </select>
+<select id="bodegasFiltroVendedor" onchange="loadBodegas()" style="padding:9px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px">
+<option value="">Vendedor: todos</option>
+</select>
+<select id="bodegasFiltroSupervisor" onchange="loadBodegas()" style="padding:9px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px">
+<option value="">Supervisor: todos</option>
+</select>
+<select id="bodegasFiltroGrupo" onchange="loadBodegas()" style="padding:9px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px">
+<option value="">Grupo: todos</option>
+</select>
+<select id="bodegasFiltroEnrolada" onchange="loadBodegas()" style="padding:9px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px">
+<option value="">Enrolada: todos</option>
+<option value="si">Enroladas</option>
+<option value="no">Pendientes</option>
+</select>
+<select id="bodegasFiltroPedido" onchange="loadBodegas()" style="padding:9px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px">
+<option value="">Pedido: todos</option>
+<option value="si">Con pedido</option>
+<option value="no">Sin pedido</option>
+</select>
+<select id="bodegasFiltroMora" onchange="loadBodegas()" style="padding:9px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px">
+<option value="">Mora: todos</option>
+<option value="sin_deuda">Sin deuda</option>
+<option value="por_vencer">Por vencer</option>
+<option value="vencido">Vencido</option>
+</select>
+<select id="bodegasFiltroLinea" onchange="loadBodegas()" style="padding:9px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px">
+<option value="">Línea: todos</option>
+<option value="true">Sin usar</option>
+</select>
+<button class="btn btn-outline btn-small" onclick="clearBodegaFilters()" title="Limpiar filtros">✕</button>
+<button class="btn btn-green btn-small" onclick="exportBodegasCSV()">📥 Excel</button>
 </div>
 <div class="table-wrap">
 <table class="bodegas-table">
 <thead><tr>
-<th></th><th>Bodega / Dueño</th><th>Teléfono</th><th>Fase bot</th><th>Última actividad</th><th>Línea (disp/aprob)</th><th>Pedidos</th><th></th>
+<th></th><th>Bodega / Dueño</th><th>Vendedor</th><th>Teléfono</th><th>Enrolada</th><th>Fase bot</th><th>Actividad</th><th>Línea (disp/aprob)</th><th>Uso</th><th>Pedidos</th><th>Mora</th><th></th>
 </tr></thead>
-<tbody id="bodegasBody"><tr><td colspan="8" class="empty">Cargando...</td></tr></tbody>
+<tbody id="bodegasBody"><tr><td colspan="12" class="empty">Cargando...</td></tr></tbody>
 </table>
 </div>
 </div>
@@ -1261,29 +1295,109 @@ function loadSobregiroAlert(){
   }).catch(function(e){ console.error('Sobregiro error', e); });
 }
 
+function clearBodegaFilters(){
+  document.getElementById('bodegasSearch').value='';
+  document.getElementById('bodegasFiltroEstado').value='';
+  document.getElementById('bodegasFiltroVendedor').value='';
+  document.getElementById('bodegasFiltroSupervisor').value='';
+  document.getElementById('bodegasFiltroGrupo').value='';
+  document.getElementById('bodegasFiltroEnrolada').value='';
+  document.getElementById('bodegasFiltroPedido').value='';
+  document.getElementById('bodegasFiltroMora').value='';
+  document.getElementById('bodegasFiltroLinea').value='';
+  loadBodegas();
+}
+
+var _bodegasOpsCache = null;
+function exportBodegasCSV(){
+  if(!_bodegasOpsCache || !_bodegasOpsCache.length) return;
+  var headers = ['Nombre','Razón Social','Representante','Teléfono','WA Link','Vendedor','Supervisor','Grupo','Estado','Enrolada','Onboarding','Fase Bot','Línea Aprob','Línea Disp','Uso %','Pedidos','Saldo','Mora días','Distrito','Última actividad'];
+  var rows = _bodegasOpsCache.map(function(b){
+    return [b.nombre_comercial,b.razon_social,b.representante,b.telefono_whatsapp,b.wa_link||'',b.vendedor_codigo,b.supervisor,b.grupo,b.estado,b.enrolada?'Sí':'No',b.onboarding_fase,b.fase_bot,b.linea_aprobada,b.linea_disponible,b.uso_pct,b.n_pedidos,b.saldo,b.dias_mora,b.distrito,b.last_activity||''].map(function(v){return '"'+(v===null||v===undefined?'':v)+'"'}).join(',');
+  });
+  downloadCSV([headers.join(',')].concat(rows), 'circa_bodegas_'+new Date().toISOString().slice(0,10)+'.csv');
+}
+
+function _renderBodegaKpis(kpis){
+  var el = document.getElementById('bodegasKpis');
+  if(!el) return;
+  var items = [
+    {l:'Total',v:kpis.total,c:'var(--blue-light)'},
+    {l:'Activas',v:kpis.activas,c:'var(--green)'},
+    {l:'Enroladas',v:kpis.enroladas,c:'var(--green)'},
+    {l:'Pendientes',v:kpis.pendientes_enrolamiento,c:'var(--yellow)'},
+    {l:'Usando línea',v:kpis.usando_linea,c:'var(--blue-light)'},
+    {l:'Línea sin uso',v:kpis.linea_sin_uso,c:'var(--yellow)'},
+    {l:'Sin pedido',v:kpis.sin_pedido,c:'var(--orange)'},
+    {l:'En mora',v:kpis.en_mora + (kpis.monto_mora>0?' · S/'+(kpis.monto_mora||0).toFixed(0):''),c:'var(--red)'},
+  ];
+  el.innerHTML = items.map(function(k){
+    return '<div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 14px"><div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin-bottom:3px">'+k.l+'</div><div style="font-size:22px;font-weight:700;color:'+k.c+'">'+k.v+'</div></div>';
+  }).join('');
+}
+
+function _populateFilterDropdown(selectId, options, labelFn){
+  var sel = document.getElementById(selectId);
+  if(!sel) return;
+  var current = sel.value;
+  var first = sel.options[0].outerHTML;
+  sel.innerHTML = first + options.map(function(o){
+    var label = labelFn ? labelFn(o) : o;
+    return '<option value="'+o+'"'+(o===current?' selected':'')+'>'+label+'</option>';
+  }).join('');
+}
+
 function loadBodegas(){
   if(bodegaModalId) return Promise.resolve();
   var search = document.getElementById('bodegasSearch').value;
   var estado = document.getElementById('bodegasFiltroEstado').value;
-  var url = '/api/backoffice/bodegas?';
+  var vendedor = (document.getElementById('bodegasFiltroVendedor')||{}).value || '';
+  var supervisor = (document.getElementById('bodegasFiltroSupervisor')||{}).value || '';
+  var grupo = (document.getElementById('bodegasFiltroGrupo')||{}).value || '';
+  var enrolada = (document.getElementById('bodegasFiltroEnrolada')||{}).value || '';
+  var con_pedido = (document.getElementById('bodegasFiltroPedido')||{}).value || '';
+  var moraFilt = (document.getElementById('bodegasFiltroMora')||{}).value || '';
+  var lineaFilt = (document.getElementById('bodegasFiltroLinea')||{}).value || '';
+
+  var url = '/api/backoffice/bodegas-ops?';
   if(search) url += 'search='+encodeURIComponent(search)+'&';
-  if(estado) url += 'estado='+estado;
+  if(estado) url += 'estado='+estado+'&';
+  if(vendedor) url += 'vendedor='+encodeURIComponent(vendedor)+'&';
+  if(supervisor) url += 'supervisor='+encodeURIComponent(supervisor)+'&';
+  if(grupo) url += 'grupo='+encodeURIComponent(grupo)+'&';
+  if(enrolada) url += 'enrolada='+enrolada+'&';
+  if(con_pedido) url += 'con_pedido='+con_pedido+'&';
+  if(moraFilt) url += 'mora='+moraFilt+'&';
+  if(lineaFilt) url += 'linea_sin_uso='+lineaFilt+'&';
+
   return api(url).then(function(d){
     var bodegas = d.bodegas || [];
+    _bodegasOpsCache = bodegas;
     document.getElementById('bodegasInfoLine').textContent =
       '· '+bodegas.length+' bodegas · filtro: '+(window.MODE_FILTER||'real');
+
+    // KPIs
+    if(d.kpis) _renderBodegaKpis(d.kpis);
+
+    // Populate filter dropdowns (solo primera carga o si cambian)
+    if(d.filtros_disponibles){
+      var f = d.filtros_disponibles;
+      _populateFilterDropdown('bodegasFiltroVendedor', f.vendedores||[]);
+      _populateFilterDropdown('bodegasFiltroSupervisor', f.supervisores||[], function(s){ return s.length>25 ? s.slice(0,22)+'...' : s; });
+      _populateFilterDropdown('bodegasFiltroGrupo', f.grupos||[]);
+    }
+
     if(!bodegas.length){
       document.getElementById('bodegasBody').innerHTML =
-        '<tr><td colspan="8" class="empty">Sin bodegas para los filtros aplicados</td></tr>';
+        '<tr><td colspan="12" class="empty">Sin bodegas para los filtros aplicados</td></tr>';
       return;
     }
     document.getElementById('bodegasBody').innerHTML = bodegas.map(function(b){
       var name = b.nombre_comercial || b.razon_social || '?';
-      var dueno = b.representante_legal || '';
+      var dueno = b.representante || '';
       var tel = b.telefono_whatsapp || '';
-      var ses = b.sesion || {};
-      var fase = ses.fase || '—';
-      var la = ses.last_activity;
+      var fase = b.fase_bot || '—';
+      var la = b.last_activity;
       var hace = la ? hacecuanto(la) : '<span class="status-no-session">nunca</span>';
       var clase = 'status-stale';
       if(la){
@@ -1294,22 +1408,33 @@ function loadBodegas(){
       var statusLabel = la ? (clase==='status-active'?'activa':(clase==='status-warning'?'demora':'inactiva')) : 'sin sesión';
       var disp = (b.linea_disponible||0).toFixed(0);
       var aprob = (b.linea_aprobada||0).toFixed(0);
-      var pedCount = b.pedidos_count || 0;
-      var pedPagados = b.pedidos_pagados || 0;
+      var usoPct = b.uso_pct || 0;
+      var usoColor = usoPct > 75 ? 'var(--red)' : usoPct > 50 ? 'var(--orange)' : usoPct > 0 ? 'var(--green)' : 'var(--muted)';
+      var moraTd = b.dias_mora > 0
+        ? '<span style="color:var(--red);font-weight:600">'+b.dias_mora+'d</span>'
+        : (b.saldo > 0 ? '<span style="color:var(--yellow)">S/'+b.saldo.toFixed(0)+'</span>' : '—');
+      var waLink = b.wa_link ? '<a href="'+b.wa_link+'" target="_blank" onclick="event.stopPropagation()" style="color:var(--green);text-decoration:none" title="Abrir WhatsApp">📱</a> ' : '';
+      var enrBadge = b.enrolada
+        ? '<span style="color:var(--green);font-size:11px;font-weight:600">Sí</span>'
+        : '<span style="color:var(--yellow);font-size:11px">No</span>';
       return '<tr onclick="openBodegaDetail(\''+b.id+'\', event)">'+
         '<td><span class="status-dot '+clase+'">'+statusLabel+'</span></td>'+
         '<td><div style="font-weight:600">'+name+'</div><div style="font-size:11px;color:var(--muted)">'+dueno+'</div></td>'+
-        '<td style="color:var(--muted);font-size:12px">'+tel+'</td>'+
+        '<td style="font-size:11px;color:var(--muted)">'+b.vendedor_codigo+(b.supervisor?' <span style="color:var(--blue-light)">·</span> '+b.supervisor.split(' ')[0]:'')+'</td>'+
+        '<td style="font-size:12px">'+waLink+tel+'</td>'+
+        '<td style="text-align:center">'+enrBadge+'</td>'+
         '<td><span style="color:var(--blue-light);font-size:12px">'+fase+'</span></td>'+
         '<td style="font-size:12px">'+hace+'</td>'+
         '<td style="font-size:12px">S/'+disp+' / '+aprob+'</td>'+
-        '<td style="font-size:12px">'+pedCount+(pedPagados>0?' <span style="color:var(--green)">('+pedPagados+' ✓)</span>':'')+'</td>'+
+        '<td style="font-size:12px;color:'+usoColor+'">'+usoPct+'%</td>'+
+        '<td style="font-size:12px;text-align:center">'+b.n_pedidos+'</td>'+
+        '<td style="font-size:12px">'+moraTd+'</td>'+
         '<td style="color:var(--muted)">›</td>'+
       '</tr>';
     }).join('');
   }).catch(function(e){
     document.getElementById('bodegasBody').innerHTML =
-      '<tr><td colspan="8" class="empty">Error: '+e.message+'</td></tr>';
+      '<tr><td colspan="12" class="empty">Error: '+e.message+'</td></tr>';
   });
 }
 
@@ -2045,7 +2170,7 @@ function renderCircaBodegaPreview(p, fieldStash){
     renderImportPreviewToolbar(circaImportEditMode, 'toggleCircaImportEdit', 'revalidateCircaBodegas')+
     '<div class="import-preview-wrap"><table class="import-preview-table"><thead><tr>'+
       '<th>Fila</th><th>RUC</th><th>Razón social</th><th>Comercial</th><th>Teléfono</th><th>Línea</th><th>Tipo</th><th>Validación</th>'+
-    '</tr></thead><tbody id="importCircaPreviewBody">'+(tableRows || '<tr><td colspan="8" class="empty">Sin filas</td></tr>')+'</tbody></table></div>'+
+    '</tr></thead><tbody id="importCircaPreviewBody">'+(tableRows || '<tr><td colspan="12" class="empty">Sin filas</td></tr>')+'</tbody></table></div>'+
     '<div class="modal-field"><label>Comentario (mín. 8 caracteres)</label><input id="impBodComentario" class="input" placeholder="Import plantilla Circa"></div>'+
     '<div class="modal-field"><label>Contraseña</label><input type="password" id="impBodPass" class="input"></div>'+
     '<div class="modal-actions"><button class="btn btn-outline" onclick="openImportBodegas(\'circa\')">← Otro archivo</button>'+
