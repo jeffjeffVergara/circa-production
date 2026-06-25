@@ -10,7 +10,7 @@ from __future__ import annotations
 STATUS_FLOW: dict[str, str] = {
     "preventa_aceptada": "recibido",
     "confirmado": "recibido",
-    "recibido": "en_preparacion",
+    "recibido": "en_camino",  # simplificado: skip en_preparacion+despachado
     "en_preparacion": "despachado",
     "despachado": "en_camino",
     "en_camino": "entregado",
@@ -34,7 +34,7 @@ LEGACY_ESTADO_ALIASES: dict[str, str] = {
 
 VALID_TRANSITIONS: dict[str, list[str]] = {
     "confirmado": ["recibido", "cancelado"],
-    "recibido": ["en_preparacion", "cancelado"],
+    "recibido": ["en_camino", "cancelado"],
     "en_preparacion": ["despachado", "cancelado"],
     "despachado": ["en_camino", "cancelado"],
     "en_camino": ["entregado", "cancelado"],
@@ -45,7 +45,7 @@ VALID_TRANSITIONS: dict[str, list[str]] = {
 
 STATUS_MESSAGES: dict[str, str] = {
     "confirmado": "Tu pedido ha sido recibido y confirmado.",
-    "recibido": "El distribuidor confirmó que recibió tu pedido.",
+    "recibido": "El distribuidor recibió tu pedido y lo está preparando.",
     "en_preparacion": "En preparación en el almacén del distribuidor.",
     "despachado": "Despachado — salió del almacén.",
     "en_camino": "En camino a tu bodega.",

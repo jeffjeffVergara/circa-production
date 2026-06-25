@@ -50,10 +50,10 @@ from app.services.order_status import STATUS_FLOW, STATUS_LABELS as _STATUS_LABE
 STATUS_LABELS = {**_STATUS_LABELS, "pagado": "Pagado"}
 
 WA_MESSAGES = {
-    "recibido": "✅ *Pedido {numero} recibido*\n{distribuidor} confirmo que recibio tu pedido.",
+    "recibido": "✅ *Pedido {numero} recibido*\n{distribuidor} recibió tu pedido y lo está preparando.",
     "en_preparacion": "📦 *Pedido {numero} en preparacion*\n{distribuidor} esta armando tu pedido.",
     "despachado": "🚚 *Pedido {numero} despachado*\n{distribuidor} despacho tu pedido. Salio del almacen.",
-    "en_camino": "🚚 *Pedido {numero} en camino*\nTu pedido va camino a tu bodega.",
+    "en_camino": "🚚 *Pedido {numero} en camino*\nTu pedido salió del almacén y va camino a tu bodega.",
     "entregado": "🎉 *Pedido {numero} entregado*\nTu pedido fue entregado en tu bodega. Gracias por comprar con Circa!",
 }
 
