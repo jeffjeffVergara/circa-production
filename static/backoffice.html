@@ -1420,7 +1420,7 @@ function loadBodegas(){
         if(horas < 24) clase = 'status-active';
         else if(horas < 168) clase = 'status-warning';
       } else { clase = 'status-no-session'; }
-      var statusLabel = la ? (clase==='status-active'?'activa':(clase==='status-warning'?'demora':'inactiva')) : 'sin sesión';
+      var statusLabel = la ? (clase==='status-active'?'activa':(clase==='status-warning'?'1-7d':'inactiva')) : 'sin sesión';
       var disp = (b.linea_disponible||0).toLocaleString('es-PE',{maximumFractionDigits:0});
       var aprob = (b.linea_aprobada||0).toLocaleString('es-PE',{maximumFractionDigits:0});
       var usoPct = b.uso_pct || 0;
