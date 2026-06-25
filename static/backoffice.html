@@ -833,6 +833,18 @@ function renderRankings(){
     '</div>';
 }
 
+function marcarPagoDistribuidor(pid){
+  if(!confirm('¿Confirmas que Circa ya transfirió al distribuidor por este pedido?')) return;
+  apiPost('/api/backoffice/pedido/'+pid+'/pago-distribuidor', {}).then(function(x){
+    if(x.ok || (x.d && x.d.ok)){
+      showToast('Pago al distribuidor registrado', 'success');
+      loadPagos();
+    } else {
+      showToast((x.d && x.d.detail) || 'Error al registrar', 'error');
+    }
+  }).catch(function(e){ showToast('Error: '+e.message, 'error'); });
+}
+
 function loadPagos(){
   var fd = document.getElementById('pagosFechaDesde').value;
   var fh = document.getElementById('pagosFechaHasta').value;
@@ -848,7 +860,10 @@ function loadPagos(){
       html += '<div class="dist-group"><div class="dist-header"><div><div class="dist-name">'+(dist.nombre_comercial||'?')+'</div><div style="color:var(--muted);font-size:12px">RUC: '+(dist.ruc||'-')+' · '+g.pedidos.length+' pedidos</div></div><div class="dist-total">S/'+g.total_financiado.toFixed(2)+' <span style="font-size:11px;color:var(--muted)">a transferir</span></div></div><div class="dist-body">';
       g.pedidos.forEach(function(p){
         var b = p.bodega || {};
-        html += '<div class="pedido-row"><div class="pedido-num">'+(p.numero||'-')+'</div><div>'+(b.nombre_comercial||'?')+'</div><div style="color:var(--muted);font-size:12px">Total: S/'+(p.monto_productos||0)+'</div><div style="color:var(--blue-light);font-weight:600">S/'+(p.monto_financiado||0)+'</div><div><span class="badge badge-'+p.estado+'">'+p.estado+'</span></div></div>';
+        var pagoDistBtn = p.circa_pagado_dist_at
+            ? '<span style="color:var(--green);font-size:11px">✓ Pagado '+fmtFechaCorta(p.circa_pagado_dist_at)+'</span>'
+            : '<button class="btn btn-green btn-small bo-write" onclick="event.stopPropagation();marcarPagoDistribuidor(\''+p.id+'\')">✓ Marcar pagado</button>';
+        html += '<div class="pedido-row"><div class="pedido-num">'+(p.numero||'-')+'</div><div>'+(b.nombre_comercial||'?')+'</div><div style="color:var(--muted);font-size:12px">Total: S/'+(p.monto_productos||0)+'</div><div style="color:var(--blue-light);font-weight:600">S/'+(p.monto_financiado||0)+'</div><div><span class="badge badge-'+p.estado+'">'+p.estado+'</span></div><div>'+pagoDistBtn+'</div></div>';
       });
       html += '</div></div>';
     });

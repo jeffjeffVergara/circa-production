@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Circa — Portal Distribuidor</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+:root{--circa-dark:#1a1a2e;--circa-darker:#12121f;--circa-navy:#16213e;--circa-blue:#4a90d9;--circa-blue-light:#5ba0e9;--circa-surface:#1e1e38;--circa-surface-hover:#262647;--circa-border:#2a2a4a;--circa-text:#e8e8f0;--circa-text-muted:#8888aa;--circa-green:#22c55e;--circa-yellow:#eab308;--circa-orange:#f97316;--circa-red:#ef4444;--radius:12px;--radius-sm:8px}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'DM Sans',sans-serif;background:var(--circa-darker);color:var(--circa-text);min-height:100vh}
+.login-screen{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px;background:radial-gradient(ellipse at 20% 50%,rgba(74,144,217,.08) 0%,transparent 50%),var(--circa-darker)}
+.login-card{background:var(--circa-surface);border:1px solid var(--circa-border);border-radius:20px;padding:48px 40px;width:100%;max-width:420px;text-align:center}
+.login-logo{font-family:'JetBrains Mono',monospace;font-size:28px;font-weight:700;color:var(--circa-blue);letter-spacing:4px;margin-bottom:4px}
+.login-subtitle{color:var(--circa-text-muted);font-size:14px;margin-bottom:36px}
+.input-group{margin-bottom:20px;text-align:left}
+.input-group label{display:block;font-size:12px;font-weight:500;color:var(--circa-text-muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:1px}
+.input-group input{width:100%;padding:14px 16px;background:var(--circa-dark);border:1px solid var(--circa-border);border-radius:var(--radius-sm);color:var(--circa-text);font-family:'JetBrains Mono',monospace;font-size:15px;transition:border-color .2s}
+.input-group input:focus{outline:none;border-color:var(--circa-blue)}
+.login-btn{width:100%;padding:14px;background:var(--circa-blue);color:#fff;border:none;border-radius:var(--radius-sm);font-family:'DM Sans',sans-serif;font-size:15px;font-weight:600;cursor:pointer;margin-top:8px;transition:background .2s}
+.login-btn:hover{background:var(--circa-blue-light)}
+.login-error{color:var(--circa-red);font-size:13px;margin-top:12px;display:none}
+.dashboard{display:none;min-height:100vh}
+.dashboard.active{display:block}
+.login-screen.hidden{display:none}
+.topbar{background:var(--circa-surface);border-bottom:1px solid var(--circa-border);padding:0 28px;height:64px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
+.topbar-left{display:flex;align-items:center;gap:16px}
+.topbar-logo{font-family:'JetBrains Mono',monospace;font-size:18px;font-weight:700;color:var(--circa-blue);letter-spacing:3px}
+.topbar-divider{width:1px;height:24px;background:var(--circa-border)}
+.topbar-dist-name{font-size:14px;color:var(--circa-text-muted);font-weight:500}
+.topbar-right{display:flex;align-items:center;gap:16px}
+.refresh-btn{background:transparent;border:1px solid var(--circa-border);color:var(--circa-text-muted);padding:8px 14px;border-radius:var(--radius-sm);font-family:'DM Sans',sans-serif;font-size:13px;cursor:pointer;transition:all .2s;display:flex;align-items:center;gap:6px}
+.refresh-btn:hover{border-color:var(--circa-blue);color:var(--circa-text)}
+.refresh-btn.spinning svg{animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.logout-btn{background:transparent;border:none;color:var(--circa-text-muted);font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif}
+.logout-btn:hover{color:var(--circa-red)}
+.stats-strip{display:flex;gap:1px;background:var(--circa-border);margin:24px 28px 0;border-radius:var(--radius);overflow:hidden}
+.stat-card{flex:1;background:var(--circa-surface);padding:20px 24px;cursor:pointer;transition:background .15s;position:relative}
+.stat-card:first-child{border-radius:var(--radius) 0 0 var(--radius)}
+.stat-card:last-child{border-radius:0 var(--radius) var(--radius) 0}
+.stat-card:hover,.stat-card.active{background:var(--circa-surface-hover)}
+.stat-card.active::after{content:'';position:absolute;bottom:0;left:16px;right:16px;height:3px;background:var(--circa-blue);border-radius:3px 3px 0 0}
+.stat-count{font-size:28px;font-weight:700;font-family:'JetBrains Mono',monospace;line-height:1}
+.stat-label{font-size:12px;color:var(--circa-text-muted);margin-top:6px;text-transform:uppercase;letter-spacing:.5px}
+.count-nuevo{color:var(--circa-blue)}.count-recibido{color:var(--circa-yellow)}.count-preparacion{color:var(--circa-orange)}.count-despachado{color:var(--circa-green)}
+.orders-section{padding:24px 28px}
+.orders-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
+.orders-title{font-size:16px;font-weight:600}
+.filter-label{font-size:13px;color:var(--circa-text-muted)}
+.order-card{background:var(--circa-surface);border:1px solid var(--circa-border);border-radius:var(--radius);margin-bottom:12px;overflow:hidden;transition:border-color .2s}
+.order-card:hover{border-color:rgba(74,144,217,.3)}
+.order-main{padding:20px 24px;display:grid;grid-template-columns:1fr auto;gap:16px;align-items:start;cursor:pointer}
+.order-info{min-width:0}
+.order-top-row{display:flex;align-items:center;gap:12px;margin-bottom:8px;flex-wrap:wrap}
+.order-number{font-family:'JetBrains Mono',monospace;font-size:15px;font-weight:600;color:var(--circa-blue)}
+.status-badge{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px}
+.badge-confirmado{background:rgba(74,144,217,.15);color:var(--circa-blue)}
+.badge-recibido{background:rgba(234,179,8,.15);color:var(--circa-yellow)}
+.badge-en_preparacion{background:rgba(249,115,22,.15);color:var(--circa-orange)}
+.badge-despachado,.badge-en_camino{background:rgba(34,197,94,.15);color:var(--circa-green)}
+.badge-entregado{background:rgba(34,197,94,.25);color:var(--circa-green)}
+.order-bodega{font-size:15px;font-weight:500;margin-bottom:4px}
+.order-meta{font-size:13px;color:var(--circa-text-muted);display:flex;gap:16px;flex-wrap:wrap}
+.order-amount{font-family:'JetBrains Mono',monospace;font-size:20px;font-weight:700;white-space:nowrap}
+.order-detail{display:none;border-top:1px solid var(--circa-border);padding:20px 24px;background:var(--circa-dark)}
+.order-card.expanded .order-detail{display:block}
+.detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:20px}
+.detail-section h4{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--circa-text-muted);margin-bottom:10px}
+.items-table{width:100%;font-size:13px}
+.items-table th{text-align:left;font-weight:500;color:var(--circa-text-muted);padding:4px 8px 8px;border-bottom:1px solid var(--circa-border)}
+.items-table td{padding:8px;border-bottom:1px solid rgba(42,42,74,.5)}
+.items-table .mono{font-family:'JetBrains Mono',monospace}
+.detail-field{margin-bottom:8px;font-size:13px}
+.detail-field span:first-child{color:var(--circa-text-muted);margin-right:8px}
+.order-actions{display:flex;gap:10px;padding-top:16px;border-top:1px solid var(--circa-border);flex-wrap:wrap}
+.action-btn{padding:10px 20px;border:none;border-radius:var(--radius-sm);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:6px}
+.action-btn:active{transform:scale(.97)}
+.action-primary{background:var(--circa-blue);color:#fff}.action-primary:hover{background:var(--circa-blue-light)}
+.action-success{background:var(--circa-green);color:#fff}.action-success:hover{background:#16a34a}
+.action-invoice{background:transparent;border:1px solid var(--circa-border);color:var(--circa-text)}.action-invoice:hover{border-color:var(--circa-blue);color:var(--circa-blue)}
+.action-btn:disabled{opacity:.4;cursor:not-allowed}
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:200;align-items:center;justify-content:center;padding:24px}
+.modal-overlay.active{display:flex}
+.modal{background:var(--circa-surface);border:1px solid var(--circa-border);border-radius:16px;width:100%;max-width:640px;max-height:85vh;overflow-y:auto}
+.modal-header{display:flex;justify-content:space-between;align-items:center;padding:20px 24px;border-bottom:1px solid var(--circa-border)}
+.modal-header h3{font-size:16px;font-weight:600}
+.modal-close{background:none;border:none;color:var(--circa-text-muted);font-size:20px;cursor:pointer;padding:4px}
+.modal-close:hover{color:var(--circa-text)}
+.modal-body{padding:24px}
+.invoice-section{margin-bottom:20px;padding-bottom:20px;border-bottom:1px solid var(--circa-border)}
+.invoice-section:last-child{border-bottom:none;margin-bottom:0}
+.invoice-section h4{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--circa-text-muted);margin-bottom:12px}
+.invoice-row{display:flex;justify-content:space-between;font-size:14px;padding:4px 0}
+.invoice-row.total{font-weight:700;font-size:16px;border-top:1px solid var(--circa-border);padding-top:12px;margin-top:8px}
+.modal-footer{padding:16px 24px;border-top:1px solid var(--circa-border);display:flex;gap:10px;justify-content:flex-end}
+.copy-btn{padding:10px 20px;background:var(--circa-blue);color:#fff;border:none;border-radius:var(--radius-sm);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer}
+.copy-btn:hover{background:var(--circa-blue-light)}
+.empty-state{text-align:center;padding:60px 24px;color:var(--circa-text-muted)}
+.loading-bar{height:2px;background:var(--circa-blue);position:fixed;top:0;left:0;z-index:999;transition:width .3s}
+.toast{position:fixed;bottom:28px;right:28px;background:var(--circa-surface);border:1px solid var(--circa-border);border-radius:var(--radius-sm);padding:14px 20px;font-size:13px;z-index:300;display:flex;align-items:center;gap:8px;transform:translateY(80px);opacity:0;transition:all .3s ease}
+.toast.visible{transform:translateY(0);opacity:1}
+.toast.success{border-color:var(--circa-green)}.toast.error{border-color:var(--circa-red)}
+@media(max-width:768px){.stats-strip{margin:16px;flex-wrap:wrap}.stat-card{min-width:45%}.orders-section{padding:16px}.topbar{padding:0 16px}.order-main{grid-template-columns:1fr}.detail-grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="login-screen" id="loginScreen">
+<div class="login-card">
+<div class="login-logo">CIRCA</div>
+<div class="login-subtitle">Portal Distribuidor</div>
+<div class="input-group"><label>Token de acceso</label><input type="password" id="tokenInput" placeholder="Ingresa tu token" autocomplete="off"></div>
+<button class="login-btn" id="loginBtn" onclick="doLogin()">Ingresar</button>
+<div class="login-error" id="loginError">Token invalido. Contacta a Circa.</div>
+</div></div>
+<div class="dashboard" id="dashboard">
+<div class="loading-bar" id="loadingBar" style="width:0"></div>
+<div class="topbar"><div class="topbar-left"><div class="topbar-logo">CIRCA</div><div class="topbar-divider"></div><div class="topbar-dist-name" id="distName">Distribuidor</div></div><div class="topbar-right"><button class="refresh-btn" id="refreshBtn" onclick="loadPedidos()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 2v6h-6M3 12a9 9 0 0 1 15-6.7L21 8M3 22v-6h6M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>Actualizar</button><button class="logout-btn" onclick="doLogout()">Salir</button></div></div>
+<div class="stats-strip" id="statsStrip">
+<div class="stat-card active" onclick="filterOrders('all',this)"><div class="stat-count" id="countAll">0</div><div class="stat-label">Total activos</div></div>
+<div class="stat-card" onclick="filterOrders('confirmado',this)"><div class="stat-count count-nuevo" id="countNuevo">0</div><div class="stat-label">Nuevos</div></div>
+<div class="stat-card" onclick="filterOrders('recibido',this)"><div class="stat-count count-recibido" id="countRecibido">0</div><div class="stat-label">Recibidos</div></div>
+<div class="stat-card" onclick="filterOrders('en_preparacion',this)"><div class="stat-count count-preparacion" id="countPrep">0</div><div class="stat-label">Preparando</div></div>
+<div class="stat-card" onclick="filterOrders('despachado',this)"><div class="stat-count count-despachado" id="countDesp">0</div><div class="stat-label">Despachados</div></div>
+</div>
+<div class="orders-section"><div class="orders-header"><div class="orders-title">Pedidos</div><div style="display:flex;gap:10px;align-items:center"><button onclick="exportCSV()" style="background:transparent;border:1px solid var(--circa-border);color:var(--circa-text-muted);padding:6px 14px;border-radius:8px;font-size:12px;cursor:pointer;font-family:inherit">Descargar CSV</button><div class="filter-label" id="filterLabel">Mostrando: Todos</div></div></div><div id="ordersList"></div></div>
+</div>
+<div class="modal-overlay" id="invoiceModal"><div class="modal"><div class="modal-header"><h3>Datos para Facturacion</h3><button class="modal-close" onclick="closeInvoiceModal()">x</button></div><div class="modal-body" id="invoiceBody"></div><div class="modal-footer"><button class="copy-btn" onclick="copyInvoiceJSON()">Copiar JSON para SUNAT</button><button class="copy-btn" style="background:var(--circa-green)" onclick="downloadInvoiceXML()">Descargar XML</button></div></div></div>
+<div class="toast" id="toast"></div>
+<script>
+const API_BASE=window.location.origin+'/api/distribuidor';
+let TOKEN='',allPedidos=[],currentFilter='all',currentInvoice=null,pollInterval=null;
+const STATUS_LABELS={confirmado:'Nuevo',recibido:'Recibido',en_preparacion:'En Preparacion',despachado:'Despachado',en_camino:'En Camino',entregado:'Entregado',pagado:'Pagado'};
+const NEXT_ACTION={confirmado:{label:'Marcar Recibido',next:'recibido',icon:'\u2705',cls:'action-primary'},recibido:{label:'Iniciar Preparacion',next:'en_preparacion',icon:'\ud83d\udce6',cls:'action-primary'},en_preparacion:{label:'Despachar',next:'despachado',icon:'\ud83d\ude9a',cls:'action-success'},despachado:{label:'Confirmar En Camino',next:'en_camino',icon:'\ud83d\ude9a',cls:'action-primary'},en_camino:{label:'Confirmar Entrega',next:'entregado',icon:'\ud83c\udf89',cls:'action-success'}};
+function doLogin(){TOKEN=document.getElementById('tokenInput').value.trim();if(!TOKEN)return;document.getElementById('loginBtn').textContent='Verificando...';apiFetch('/pedidos').then(data=>{document.getElementById('distName').textContent=data.distribuidor||'Distribuidor';document.getElementById('loginScreen').classList.add('hidden');document.getElementById('dashboard').classList.add('active');allPedidos=data.pedidos||[];renderAll();startPolling()}).catch(()=>{document.getElementById('loginError').style.display='block';document.getElementById('loginBtn').textContent='Ingresar'})}
+function doLogout(){TOKEN='';stopPolling();document.getElementById('loginScreen').classList.remove('hidden');document.getElementById('dashboard').classList.remove('active');document.getElementById('tokenInput').value='';document.getElementById('loginError').style.display='none';document.getElementById('loginBtn').textContent='Ingresar'}
+document.getElementById('tokenInput').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin()});
+async function apiFetch(path,options={}){const bar=document.getElementById('loadingBar');bar.style.width='60%';const res=await fetch(API_BASE+path,{...options,headers:{'Content-Type':'application/json','X-API-Token':TOKEN,...(options.headers||{})}});bar.style.width='100%';setTimeout(()=>{bar.style.width='0'},300);if(!res.ok){const err=await res.json().catch(()=>({}));throw new Error(err.detail||'Error')}return res.json()}
+async function loadPedidos(){const btn=document.getElementById('refreshBtn');btn.classList.add('spinning');try{const data=await apiFetch('/pedidos');allPedidos=data.pedidos||[];renderAll()}catch(e){showToast('Error cargando pedidos','error')}btn.classList.remove('spinning')}
+function startPolling(){stopPolling();pollInterval=setInterval(loadPedidos,30000)}
+function stopPolling(){if(pollInterval)clearInterval(pollInterval)}
+function renderAll(){renderStats();renderOrders()}
+function renderStats(){const active=allPedidos.filter(p=>!['pagado','rechazado','en_mora'].includes(p.estado));document.getElementById('countAll').textContent=active.length;document.getElementById('countNuevo').textContent=allPedidos.filter(p=>p.estado==='confirmado').length;document.getElementById('countRecibido').textContent=allPedidos.filter(p=>p.estado==='recibido').length;document.getElementById('countPrep').textContent=allPedidos.filter(p=>p.estado==='en_preparacion').length;document.getElementById('countDesp').textContent=allPedidos.filter(p=>['despachado','en_camino'].includes(p.estado)).length}
+function renderOrders(){const c=document.getElementById('ordersList');let f=allPedidos;if(currentFilter!=='all'){if(currentFilter==='despachado')f=allPedidos.filter(p=>['despachado','en_camino'].includes(p.estado));else f=allPedidos.filter(p=>p.estado===currentFilter)}else f=allPedidos.filter(p=>!['pagado','rechazado','en_mora'].includes(p.estado));document.getElementById('filterLabel').textContent=currentFilter==='all'?'Mostrando: Todos activos':'Mostrando: '+(STATUS_LABELS[currentFilter]||currentFilter);if(!f.length){c.innerHTML='<div class="empty-state"><div>No hay pedidos'+(currentFilter!=='all'?' con este estado':'')+'</div></div>';return}c.innerHTML=f.map(p=>{const b=p.bodegas||{};var _raw=p.items||p.items_json||'[]';var items;try{items=typeof _raw==='string'?JSON.parse(_raw):(Array.isArray(_raw)?_raw:[])}catch(e){items=[]};const total=p.monto_productos||p.total||p.monto_total||items.reduce((s,i)=>s+(i.precio_unitario||i.precio||0)*(i.cantidad||1),0);const action=NEXT_ACTION[p.estado];const canInv=['despachado','en_camino','entregado'].includes(p.estado);const fecha=p.created_at?new Date(p.created_at).toLocaleDateString('es-PE',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}):'';return '<div class="order-card" id="card-'+p.id+'"><div class="order-main" onclick="toggleCard(\''+p.id+'\')"><div class="order-info"><div class="order-top-row"><span class="order-number">'+(p.numero||p.id.slice(0,8))+'</span><span class="status-badge badge-'+p.estado+'">\u25cf '+(STATUS_LABELS[p.estado]||p.estado)+'</span></div><div class="order-bodega">'+(b.nombre_comercial||'Bodega')+'</div><div class="order-meta"><span>'+items.length+' producto'+(items.length!==1?'s':'')+'</span><span>'+fecha+'</span>'+(p.financiamiento_pct?'<span>Financ. '+p.financiamiento_pct+'%</span>':'')+'</div></div><div class="order-amount">S/'+total.toFixed(2)+'<div style="font-size:0.7em;opacity:0.7;margin-top:4px">'+(p.monto_contado&&Number(p.monto_contado)>0?'Efectivo: S/'+Number(p.monto_contado).toFixed(2)+'<br>':'')+(p.monto_financiado&&Number(p.monto_financiado)>0?'Circa: S/'+Number(p.monto_financiado).toFixed(2):'')+'</div></div></div><div class="order-detail"><div class="detail-grid"><div class="detail-section"><h4>Productos</h4><table class="items-table"><tr><th>Producto</th><th>Cant.</th><th>P.Unit</th><th>Total</th></tr>'+items.map(i=>'<tr><td>'+(i.nombre||i.producto||'-')+'</td><td class="mono">'+(i.cantidad||1)+'</td><td class="mono">S/'+(i.precio_unitario||i.precio||0).toFixed(2)+'</td><td class="mono">S/'+((i.precio_unitario||i.precio||0)*(i.cantidad||1)).toFixed(2)+'</td></tr>').join('')+'</table></div><div class="detail-section"><h4>Cliente</h4><div class="detail-field"><span>Bodega:</span> '+(b.nombre_comercial||'-')+'</div><div class="detail-field"><span>RUC:</span> '+(b.ruc||'-')+'</div><div class="detail-field"><span>Direccion:</span> '+(b.direccion_fiscal||b.direccion||'-')+'</div><div class="detail-field"><span>Telefono:</span> '+(b.telefono_whatsapp||b.telefono||'-')+'</div>'+(p.monto_productos?'<div class="detail-field"><span>Total pedido:</span> <strong>S/'+Number(p.monto_productos||0).toFixed(2)+'</strong></div>':'')
++(p.monto_contado&&Number(p.monto_contado)>0?'<div class="detail-field"><span>Venta en efectivo:</span> S/'+Number(p.monto_contado||0).toFixed(2)+'</div>':'')
++(p.monto_financiado?'<div class="detail-field"><span>Venta con Circa:</span> <strong style="color:var(--circa-blue)">S/'+Number(p.monto_financiado||0).toFixed(2)+'</strong></div>':'')
++(p.plazo_dias?'<div class="detail-field"><span>Plazo:</span> '+p.plazo_dias+' dias</div>':'')+'</div></div><div class="order-actions">'+(action?'<button class="action-btn '+action.cls+'" onclick="advanceStatus(\''+p.id+'\',\''+action.next+'\')" id="action-'+p.id+'">'+action.icon+' '+action.label+'</button>':'')+(canInv?'<button class="action-btn action-invoice" onclick="openInvoice(\''+p.id+'\')">Facturar</button>':'')+(p.facturado?'<span style="color:var(--circa-green);font-size:12px">\u2713 Facturado</span>':'')
++(canInv?'<label class="action-btn action-invoice" style="cursor:pointer"><input type="file" accept="image/*,.pdf" style="display:none" onchange="uploadSustento(\''+p.id+'\',this.files[0])">\ud83d\udcf7 Subir sustento</label>':'')
++(p.prueba_entrega_url?'<span style="color:var(--circa-green);font-size:12px">\u2713 Sustento</span>':'')
++'</div></div></div>'}).join('')}
+function filterOrders(filter,el){currentFilter=filter;document.querySelectorAll('.stat-card').forEach(c=>c.classList.remove('active'));if(el)el.classList.add('active');renderOrders()}
+function toggleCard(id){document.getElementById('card-'+id).classList.toggle('expanded')}
+async function advanceStatus(pid,nuevo){const btn=document.getElementById('action-'+pid);if(btn){btn.disabled=true;btn.textContent='Actualizando...'}try{await apiFetch('/pedidos/'+pid+'/status',{method:'POST',body:JSON.stringify({nuevo_estado:nuevo})});showToast((STATUS_LABELS[nuevo]||nuevo)+': Bodeguero notificado por WhatsApp','success');await loadPedidos()}catch(e){showToast('Error: '+e.message,'error');if(btn){btn.disabled=false;btn.textContent='Reintentar'}}}
+async function openInvoice(pid){try{const data=await apiFetch('/pedidos/'+pid+'/facturar',{method:'POST'});currentInvoice=data.factura;renderInvoiceModal(data.factura);document.getElementById('invoiceModal').classList.add('active')}catch(e){showToast('Error: '+e.message,'error')}}
+function closeInvoiceModal(){document.getElementById('invoiceModal').classList.remove('active')}
+function renderInvoiceModal(f){document.getElementById('invoiceBody').innerHTML='<div class="invoice-section"><h4>Emisor</h4><div class="invoice-row"><span>RUC</span><span>'+f.emisor.ruc+'</span></div><div class="invoice-row"><span>Razon Social</span><span>'+f.emisor.razon_social+'</span></div></div><div class="invoice-section"><h4>Receptor (Bodega)</h4><div class="invoice-row"><span>RUC</span><span>'+f.receptor.ruc+'</span></div><div class="invoice-row"><span>Razon Social</span><span>'+f.receptor.razon_social+'</span></div></div><div class="invoice-section"><h4>Detalle</h4><table class="items-table"><tr><th>Descripcion</th><th>Cant.</th><th>P.Unit</th><th>IGV</th><th>Total</th></tr>'+f.items.map(i=>'<tr><td>'+i.descripcion+'</td><td class="mono">'+i.cantidad+'</td><td class="mono">S/'+i.precio_unitario.toFixed(2)+'</td><td class="mono">S/'+i.igv.toFixed(2)+'</td><td class="mono">S/'+i.precio_venta.toFixed(2)+'</td></tr>').join('')+'</table></div><div class="invoice-section"><h4>Totales</h4><div class="invoice-row"><span>Sub Total</span><span>S/'+f.subtotal.toFixed(2)+'</span></div><div class="invoice-row"><span>IGV (18%)</span><span>S/'+f.igv.toFixed(2)+'</span></div><div class="invoice-row total"><span>Total</span><span>S/'+f.total.toFixed(2)+'</span></div></div>'}
+function copyInvoiceJSON(){if(!currentInvoice)return;navigator.clipboard.writeText(JSON.stringify(currentInvoice,null,2)).then(()=>showToast('JSON copiado','success')).catch(()=>showToast('Error copiando','error'))}
+function downloadInvoiceXML(){if(!currentInvoice)return;const f=currentInvoice;const xml='<?xml version="1.0" encoding="UTF-8"?>\n<Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2" xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2" xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2">\n<cbc:ID>'+f.serie+'-00000000</cbc:ID>\n<cbc:IssueDate>'+f.fecha_emision+'</cbc:IssueDate>\n<cbc:InvoiceTypeCode>'+f.tipo_documento+'</cbc:InvoiceTypeCode>\n<cbc:DocumentCurrencyCode>'+f.moneda+'</cbc:DocumentCurrencyCode>\n<cac:AccountingSupplierParty><cac:Party><cac:PartyIdentification><cbc:ID schemeID="6">'+f.emisor.ruc+'</cbc:ID></cac:PartyIdentification><cac:PartyLegalEntity><cbc:RegistrationName>'+f.emisor.razon_social+'</cbc:RegistrationName></cac:PartyLegalEntity></cac:Party></cac:AccountingSupplierParty>\n<cac:AccountingCustomerParty><cac:Party><cac:PartyIdentification><cbc:ID schemeID="6">'+f.receptor.ruc+'</cbc:ID></cac:PartyIdentification><cac:PartyLegalEntity><cbc:RegistrationName>'+f.receptor.razon_social+'</cbc:RegistrationName></cac:PartyLegalEntity></cac:Party></cac:AccountingCustomerParty>\n<cac:TaxTotal><cbc:TaxAmount currencyID="'+f.moneda+'">'+f.igv.toFixed(2)+'</cbc:TaxAmount></cac:TaxTotal>\n<cac:LegalMonetaryTotal><cbc:PayableAmount currencyID="'+f.moneda+'">'+f.total.toFixed(2)+'</cbc:PayableAmount></cac:LegalMonetaryTotal>\n'+f.items.map((item,i)=>'<cac:InvoiceLine><cbc:ID>'+(i+1)+'</cbc:ID><cbc:InvoicedQuantity unitCode="'+item.unidad_medida+'">'+item.cantidad+'</cbc:InvoicedQuantity><cbc:LineExtensionAmount currencyID="'+f.moneda+'">'+item.valor_venta.toFixed(2)+'</cbc:LineExtensionAmount><cac:Item><cbc:Description>'+item.descripcion+'</cbc:Description></cac:Item><cac:Price><cbc:PriceAmount currencyID="'+f.moneda+'">'+item.precio_unitario.toFixed(2)+'</cbc:PriceAmount></cac:Price></cac:InvoiceLine>').join('\n')+'\n</Invoice>';const blob=new Blob([xml],{type:'application/xml'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='factura_'+f.pedido_circa+'_'+f.fecha_emision+'.xml';a.click();showToast('XML descargado','success')}
+document.getElementById('invoiceModal').addEventListener('click',e=>{if(e.target===e.currentTarget)closeInvoiceModal()});
+function showToast(msg,type){const t=document.getElementById('toast');t.className='toast '+type;t.innerHTML=(type==='success'?'\u2705':'\u274c')+' '+msg;t.classList.add('visible');setTimeout(()=>t.classList.remove('visible'),3500)}
+
+async function uploadSustento(pid,file){if(!file)return;showToast('Subiendo sustento...','success');try{const fd=new FormData();fd.append('file',file);const res=await fetch(API_BASE+'/pedidos/'+pid+'/sustento',{method:'POST',headers:{'X-API-Token':TOKEN},body:fd});const data=await res.json();if(data.ok){showToast('Sustento subido','success');await loadPedidos()}else{showToast('Error: '+(data.detail||''),'error')}}catch(e){showToast('Error: '+e.message,'error')}}
+
+async function uploadSustento(pid,file){if(!file)return;showToast('Subiendo sustento...','success');try{const fd=new FormData();fd.append('file',file);const res=await fetch(API_BASE+'/pedidos/'+pid+'/sustento',{method:'POST',headers:{'X-API-Token':TOKEN},body:fd});const data=await res.json();if(data.ok){showToast('Sustento subido','success');await loadPedidos()}else{showToast('Error: '+(data.detail||''),'error')}}catch(e){showToast('Error: '+e.message,'error')}}
+
+function exportCSV(){var rows=[['Pedido','Estado','Fecha','Bodega','RUC','Producto','Cantidad','P.Unitario','Subtotal','Total Pedido','Venta Efectivo','Venta Circa','Plazo']];allPedidos.forEach(function(p){var b=p.bodegas||{};var _r2=p.items||p.items_json||'[]';var it;try{it=typeof _r2==='string'?JSON.parse(_r2):(Array.isArray(_r2)?_r2:[])}catch(e){it=[]}var fecha=p.created_at?new Date(p.created_at).toLocaleDateString('es-PE'):'';if(it.length>0){it.forEach(function(i,idx){var pu=i.precio_unitario||i.precio||0;var cant=i.cantidad||1;rows.push([idx===0?(p.numero||''):'',idx===0?(p.estado||''):'',idx===0?fecha:'',idx===0?(b.nombre_comercial||''):'',idx===0?(b.ruc||''):'',i.nombre||i.producto||'',cant,pu.toFixed(2),(pu*cant).toFixed(2),idx===0?(p.monto_productos||0):'',idx===0?(p.monto_contado||0):'',idx===0?(p.monto_financiado||0):'',idx===0?(p.plazo_dias||''):''])})}else{rows.push([p.numero||'',p.estado||'',fecha,b.nombre_comercial||'',b.ruc||'','(sin items)','','','',p.monto_productos||0,p.monto_contado||0,p.monto_financiado||0,p.plazo_dias||''])}});var csv='\uFEFF'+rows.map(function(r){return r.map(function(c){return'"'+String(c).replace(/"/g,'""')+'"'}).join(',')}).join('\n');var blob=new Blob([csv],{type:'text/csv;charset=utf-8'});var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='pedidos_circa_'+new Date().toISOString().slice(0,10)+'.csv';a.click();showToast('CSV descargado','success')}
+</script>
+</body></html>

@@ -1195,3 +1195,5 @@ async def confirm_preventa_import(
 
 from app.routes.backoffice_ops import bodegas_ops_handler
 router.get("/bodegas-ops")(bodegas_ops_handler)
+from app.routes.backoffice_ops import marcar_pago_distribuidor_handler
+router.post("/pedido/{pedido_id}/pago-distribuidor")(marcar_pago_distribuidor_handler)
