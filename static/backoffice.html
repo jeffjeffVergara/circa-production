@@ -1395,6 +1395,25 @@ function loadGMV(periodo){
     } else {
       document.getElementById('gmvSemanas').innerHTML = '';
     }
+    // Tabla por bodega
+    var bods = d.bodegas || [];
+    if(bods.length){
+      var bt = '<h3 style="margin:16px 0 8px;font-size:14px">GMV por bodega</h3><table style="width:100%;border-collapse:collapse;font-size:13px">'+
+        '<thead><tr><th style="text-align:left;padding:8px 10px;color:var(--muted);font-size:11px;border-bottom:1px solid var(--border)">BODEGA</th>'+
+        '<th style="text-align:right;padding:8px 10px;color:var(--muted);font-size:11px;border-bottom:1px solid var(--border)">GMV</th>'+
+        '<th style="text-align:right;padding:8px 10px;color:var(--muted);font-size:11px;border-bottom:1px solid var(--border)">FINANCIADO</th>'+
+        '<th style="text-align:right;padding:8px 10px;color:var(--muted);font-size:11px;border-bottom:1px solid var(--border)">CONTADO</th>'+
+        '<th style="text-align:center;padding:8px 10px;color:var(--muted);font-size:11px;border-bottom:1px solid var(--border)">PEDIDOS</th></tr></thead><tbody>';
+      bods.forEach(function(b){
+        bt += '<tr><td style="padding:8px 10px;border-bottom:1px solid var(--border)">'+b.nombre+'</td>'+
+          '<td style="padding:8px 10px;text-align:right;font-weight:600;border-bottom:1px solid var(--border)">S/ '+fmtMiles(b.gmv)+'</td>'+
+          '<td style="padding:8px 10px;text-align:right;color:var(--green);border-bottom:1px solid var(--border)">S/ '+fmtMiles(b.financiado)+'</td>'+
+          '<td style="padding:8px 10px;text-align:right;color:var(--muted);border-bottom:1px solid var(--border)">S/ '+fmtMiles(b.contado)+'</td>'+
+          '<td style="padding:8px 10px;text-align:center;border-bottom:1px solid var(--border)">'+b.pedidos+'</td></tr>';
+      });
+      bt += '</tbody></table>';
+      document.getElementById('gmvSemanas').innerHTML += bt;
+    }
   }).catch(function(e){
     document.getElementById('gmvKpis').innerHTML = '<div class="empty">Error: '+e.message+'</div>';
   });
