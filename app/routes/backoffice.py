@@ -1199,5 +1199,3 @@ from app.routes.backoffice_ops import marcar_pago_distribuidor_handler
 router.post("/pedido/{pedido_id}/pago-distribuidor")(marcar_pago_distribuidor_handler)
 from app.routes.backoffice_ops import gmv_handler
 router.get("/gmv")(gmv_handler)
-from app.routes.backoffice_ops import gmv_handler
-router.get("/gmv")(gmv_handler)
