@@ -1146,7 +1146,7 @@ function exportCobranzasCSV(){
 
 function exportPedidosCSV(){
   if(!allPedidos.length){showToast('No hay datos','error');return}
-  var rows = [['Fecha','Pedido','Bodega','RUC','Distribuidor','Total','Financiado','Contado','Estado']];
+  var rows = [['Fecha','Pedido','Bodega','RUC','Distribuidor','Total','Venta Financiada','Venta al Contado','Estado']];
   allPedidos.forEach(function(p){
     var b = p.bodega || {};
     var d = p.distribuidor || {};
@@ -1358,15 +1358,15 @@ function loadGMV(periodo){
 
     var kpis = [
       {l:'GMV Total', v:'S/ '+fmtMiles(d.gmv_total), c:'var(--blue-light)'},
-      {l:'Financiado', v:'S/ '+fmtMiles(d.financiado), c:'var(--green)'},
-      {l:'Contado', v:'S/ '+fmtMiles(d.contado), c:'var(--muted)'},
+      {l:'Venta Financiada', v:'S/ '+fmtMiles(d.financiado), c:'var(--green)'},
+      {l:'Venta al Contado', v:'S/ '+fmtMiles(d.contado), c:'var(--muted)'},
       {l:'Comisiones', v:'S/ '+fmtMiles(d.fee_total), c:'var(--purple, var(--blue-light))'},
       {l:'Pedidos', v:fmtMilesInt(d.n_pedidos), c:'var(--blue-light)'},
       {l:'Financiados', v:d.n_financiados+' ('+d.pct_financiado+'%)', c:'var(--green)'},
       {l:'Ticket promedio', v:'S/ '+fmtMiles(d.ticket_promedio), c:'var(--blue-light)'},
       {l:'Bodegas únicas', v:fmtMilesInt(d.n_bodegas), c:'var(--blue-light)'},
-      {l:'Tasa promedio',v:(d.financiado>0 ? (d.fee_total/d.financiado*100).toFixed(2)+'%' : '0%'),c:'var(--purple, var(--blue-light))'},
-      {l:'Venta real Circa',v:'S/ '+fmtMiles(d.fee_total),c:'var(--green)'},
+      {l:'%Fee',v:(d.financiado>0 ? (d.fee_total/d.financiado*100).toFixed(2)+'%' : '0%'),c:'var(--purple, var(--blue-light))'},
+      {l:'Ingreso Circa',v:'S/ '+fmtMiles(d.fee_total),c:'var(--green)'},
       {l:'Pago dist. pendiente', v:'S/ '+fmtMiles(d.pago_dist_pendiente), c:d.pago_dist_pendiente > 0 ? 'var(--orange)' : 'var(--green)'},
     ];
 
