@@ -1365,6 +1365,8 @@ function loadGMV(periodo){
       {l:'Financiados', v:d.n_financiados+' ('+d.pct_financiado+'%)', c:'var(--green)'},
       {l:'Ticket promedio', v:'S/ '+fmtMiles(d.ticket_promedio), c:'var(--blue-light)'},
       {l:'Bodegas únicas', v:fmtMilesInt(d.n_bodegas), c:'var(--blue-light)'},
+      {l:'Tasa promedio',v:(d.financiado>0 ? (d.fee_total/d.financiado*100).toFixed(2)+'%' : '0%'),c:'var(--purple, var(--blue-light))'},
+      {l:'Venta real Circa',v:'S/ '+fmtMiles(d.fee_total),c:'var(--green)'},
       {l:'Pago dist. pendiente', v:'S/ '+fmtMiles(d.pago_dist_pendiente), c:d.pago_dist_pendiente > 0 ? 'var(--orange)' : 'var(--green)'},
     ];
 
