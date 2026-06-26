@@ -269,10 +269,18 @@ async def gmv_handler(
         q = q.gte("created_at", desde.isoformat())
 
     pedidos = q.order("created_at", desc=True).limit(5000).execute().data or []
-    if test == "real":
-        pedidos = [p for p in pedidos if not (p.get("numero") or "").startswith("TEST")]
-    elif test == "test":
-        pedidos = [p for p in pedidos if (p.get("numero") or "").startswith("TEST")]
+    # Filter by bodega es_test, not pedido prefix
+    if test in ("real", "test"):
+        test_bids = set()
+        all_bids = list({p.get("bodega_id") for p in pedidos if p.get("bodega_id")})
+        for i in range(0, len(all_bids), 50):
+            chunk = all_bids[i:i+50]
+            for b in db.sb.table("bodegas").select("id,es_test").in_("id", chunk).limit(50).execute().data or []:
+                if b.get("es_test"): test_bids.add(b["id"])
+        if test == "real":
+            pedidos = [p for p in pedidos if p.get("bodega_id") not in test_bids]
+        else:
+            pedidos = [p for p in pedidos if p.get("bodega_id") in test_bids]
 
     gmv_total = 0.0; financiado = 0.0; contado = 0.0; fee_total = 0.0
     n_pedidos = 0; n_financiados = 0; bodegas_set = set(); pago_dist_pendiente = 0.0
