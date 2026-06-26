@@ -277,6 +277,7 @@ async def gmv_handler(
     gmv_total = 0.0; financiado = 0.0; contado = 0.0; fee_total = 0.0
     n_pedidos = 0; n_financiados = 0; bodegas_set = set(); pago_dist_pendiente = 0.0
     semanas = {}
+    bodegas_gmv = {}
 
     for p in pedidos:
         tp = float(p.get("total_pedido") or 0)
@@ -289,6 +290,13 @@ async def gmv_handler(
         bodegas_set.add(p.get("bodega_id"))
         if mf > 0 and not p.get("circa_pagado_dist_at"):
             pago_dist_pendiente += mf
+        bid = p.get("bodega_id") or ""
+        if bid not in bodegas_gmv:
+            bodegas_gmv[bid] = {"bodega_id": bid, "nombre": "", "gmv": 0, "financiado": 0, "contado": 0, "pedidos": 0}
+        bodegas_gmv[bid]["gmv"] += tp
+        bodegas_gmv[bid]["financiado"] += mf
+        bodegas_gmv[bid]["contado"] += mc
+        bodegas_gmv[bid]["pedidos"] += 1
         ca = p.get("created_at", "")
         if ca:
             try:
@@ -300,6 +308,18 @@ async def gmv_handler(
                 semanas[ws]["contado"] += mc; semanas[ws]["pedidos"] += 1
             except Exception:
                 pass
+
+    bid_list = list(bodegas_gmv.keys())
+    for i in range(0, len(bid_list), 50):
+        chunk = bid_list[i:i+50]
+        for b in db.sb.table("bodegas").select("id,nombre_comercial,razon_social").in_("id", chunk).limit(50).execute().data or []:
+            if b["id"] in bodegas_gmv:
+                bodegas_gmv[b["id"]]["nombre"] = b.get("nombre_comercial") or b.get("razon_social") or "?"
+    bodegas_ranked = sorted(bodegas_gmv.values(), key=lambda x: x["gmv"], reverse=True)
+    for bg in bodegas_ranked:
+        bg["gmv"] = round(bg["gmv"], 2)
+        bg["financiado"] = round(bg["financiado"], 2)
+        bg["contado"] = round(bg["contado"], 2)
 
     ticket_prom = round(gmv_total / n_pedidos, 2) if n_pedidos > 0 else 0
     pct_fin = round((financiado / gmv_total) * 100, 1) if gmv_total > 0 else 0
@@ -315,4 +335,5 @@ async def gmv_handler(
         "n_bodegas": len(bodegas_set), "ticket_promedio": ticket_prom,
         "pct_financiado": pct_fin, "pago_dist_pendiente": round(pago_dist_pendiente, 2),
         "semanas": sem_sorted,
+        "bodegas": bodegas_ranked,
     }
