@@ -2127,7 +2127,7 @@ function openImportBodegas(mode){
     '<div class="modal-overlay open" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:520px"><h3>Importar bodegas</h3>'+
     '<div class="perfil-tabs" style="margin-bottom:14px">'+
       '<button type="button" class="perfil-tab import-bod-tab" data-mode="circa" onclick="switchImportBodegaMode(\'circa\')">Plantilla Circa</button>'+
-      '<button type="button" class="perfil-tab import-bod-tab" data-mode="dimax" onclick="switchImportBodegaMode(\'dimax\')">🆕 Nueva Plantilla</button>'+
+      '<button type="button" class="perfil-tab import-bod-tab" data-mode="dimax" onclick="switchImportBodegaMode(\'dimax\')">📊 Excel DIMAX (con análisis)</button>'+
     '</div>'+
     '<div id="importBodPanelCirca">'+
       '<p style="color:var(--muted);font-size:13px;margin-bottom:12px">Carga masiva con la <strong>plantilla Circa</strong>. Revisa la tabla antes de confirmar.</p>'+
@@ -2136,7 +2136,7 @@ function openImportBodegas(mode){
       '<button class="btn btn-green" onclick="analyzeCircaBodegas()">Analizar Excel</button></div>'+
     '</div>'+
     '<div id="importBodPanelDimax" style="display:none">'+
-      '<p style="color:var(--muted);font-size:13px;margin-bottom:12px">Plantilla nueva de alta de cliente (hoja <strong>clientes</strong>). Una bodega por archivo, con vista previa.</p>'+
+      '<p style="color:var(--muted);font-size:13px;margin-bottom:12px">Sube el Excel DIMAX de la bodega. Circa analiza el historial y sugiere la línea de crédito (hoja <strong>clientes</strong>). Una bodega por archivo, con vista previa.</p>'+
       '<div class="modal-field"><label>Archivo .xlsx</label><input type="file" id="dimaxBodFile" accept=".xlsx,.xls"></div>'+
       '<div class="modal-actions"><button class="btn btn-outline" onclick="closeModal()">Cancelar</button>'+
       '<button class="btn btn-green" onclick="analyzeDimaxBodega()">Analizar Excel</button></div>'+
@@ -2490,16 +2490,133 @@ function analyzeDimaxBodega(){
   var fd = new FormData();
   fd.append('file', f);
   dimaxImportEditMode = false;
-  showPanelLoader('Analizando nueva plantilla…', true);
-  fetch('/api/backoffice/import/dimax-bodega/preview', {method:'POST', headers: authHeaders(), body: fd})
+  showPanelLoader('Analizando bodega con modelo de riesgo\u2026', true);
+  fetch('/api/backoffice/import/dimax-analisis/preview', {method:'POST', headers: authHeaders(), body: fd})
     .then(function(r){ return r.json().then(function(d){ return {ok:r.ok,d:d}; }); })
     .then(function(x){
       if(!x.ok) throw new Error(x.d.detail || 'No se pudo leer el Excel');
-      var p = x.d.preview || {};
-      p.filename = f.name;
-      renderDimaxBodegaPreview(p);
+      window._dimaxAnalisis = x.d;
+      x.d.filename = f.name;
+      renderDimaxAnalisis(x.d);
     }).catch(function(e){ showToast(String(e.message).slice(0,200),'error'); })
     .finally(function(){ hidePanelLoader(); });
+}
+
+function renderDimaxAnalisis(d){
+  var c = d.cliente || {};
+  var v = d.vendedor || {};
+  var r = d.riesgo || {};
+  var vc = v.vendedor_circa;
+  var existe = d.bodega_existe;
+  var statusBadge = existe
+    ? '<span style="color:var(--yellow);font-weight:600">\u26A0 Ya existe en BD</span>'
+    : '<span style="color:var(--green);font-weight:600">\u2713 Nueva bodega</span>';
+  var vendedorInfo = vc
+    ? '<span style="color:var(--green)">\u2713 '+escAttr(vc.codigo)+' ('+escAttr(vc.nombre)+')</span>'
+    : '<span style="color:var(--yellow)">'+escAttr(v.cod_dimax)+' - se crear\u00E1 autom\u00E1ticamente</span>';
+
+  document.getElementById('modalContainer').innerHTML =
+    '<div class="modal-overlay open" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:720px;max-height:92vh;overflow:auto">'+
+    '<h3>\uD83D\uDCCA An\u00E1lisis de bodega</h3>'+
+    '<p style="color:var(--muted);font-size:12px;margin-bottom:12px">Archivo: '+escAttr(d.filename)+' \u00B7 '+statusBadge+'</p>'+
+
+    // Datos del cliente
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">'+
+      '<div class="modal-field"><label>Raz\u00F3n social</label><input id="daRazon" class="input" value="'+escAttr(c.razon_social)+'"></div>'+
+      '<div class="modal-field"><label>Tel\u00E9fono WhatsApp</label><input id="daTel" class="input" value="'+escAttr(c.telefono_whatsapp)+'"></div>'+
+      '<div class="modal-field"><label>DNI / RUC</label><input id="daDoc" class="input" value="'+escAttr(c.dni_representante || c.ruc || '')+'"></div>'+
+      '<div class="modal-field"><label>Distrito</label><input id="daDist" class="input" value="'+escAttr(c.distrito)+'"></div>'+
+      '<div class="modal-field" style="grid-column:1/-1"><label>Direcci\u00F3n</label><input id="daDir" class="input" value="'+escAttr(c.direccion_fiscal)+'"></div>'+
+    '</div>'+
+
+    // Vendedor
+    '<div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:16px">'+
+      '<div style="font-size:11px;color:var(--muted);text-transform:uppercase;margin-bottom:6px">Vendedor</div>'+
+      '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">'+
+        '<div><span style="font-size:11px;color:var(--muted)">C\u00F3digo:</span> <strong>'+escAttr(v.cod_dimax)+'</strong></div>'+
+        '<div><span style="font-size:11px;color:var(--muted)">Nombre:</span> '+escAttr(v.nombre_dimax)+'</div>'+
+        '<div>'+vendedorInfo+'</div>'+
+        '<div><span style="font-size:11px;color:var(--muted)">Grupo:</span> '+escAttr(v.grupo)+'</div>'+
+        '<div><span style="font-size:11px;color:var(--muted)">Supervisor:</span> '+escAttr(v.supervisor)+'</div>'+
+        '<div><span style="font-size:11px;color:var(--muted)">Visita:</span> '+escAttr(v.dia_visita)+' | <span style="font-size:11px;color:var(--muted)">Entrega:</span> '+escAttr(v.dia_entrega)+'</div>'+
+      '</div>'+
+    '</div>'+
+
+    // Análisis de riesgo
+    '<div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:16px">'+
+      '<div style="font-size:11px;color:var(--muted);text-transform:uppercase;margin-bottom:8px">\uD83D\uDCC8 An\u00E1lisis de riesgo (6 meses)</div>'+
+      '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;font-size:13px">'+
+        '<div><div style="color:var(--muted);font-size:10px">Per\u00EDodo</div>'+escAttr(r.periodo_desde)+' \u2192 '+escAttr(r.periodo_hasta)+'</div>'+
+        '<div><div style="color:var(--muted);font-size:10px">Pedidos</div><strong>'+r.n_pedidos+'</strong></div>'+
+        '<div><div style="color:var(--muted);font-size:10px">Total comprado</div><strong>S/ '+(r.total_comprado||0).toLocaleString('es-PE',{minimumFractionDigits:2})+'</strong></div>'+
+        '<div><div style="color:var(--muted);font-size:10px">Ticket promedio</div><strong>S/ '+(r.ticket_promedio||0).toFixed(2)+'</strong></div>'+
+        '<div><div style="color:var(--muted);font-size:10px">D\u00EDas entre pedidos</div>'+r.dias_entre_pedidos+'</div>'+
+        '<div><div style="color:var(--muted);font-size:10px">Regularidad</div><span style="color:'+(r.cv<0.4?'var(--green)':'var(--yellow)')+'">'+escAttr(r.regularidad)+' (CV '+r.cv+')</span></div>'+
+        '<div><div style="color:var(--muted);font-size:10px">Consumo diario</div>S/ '+(r.consumo_diario||0).toFixed(2)+'</div>'+
+        '<div><div style="color:var(--muted);font-size:10px">L\u00EDnea 7d</div>S/ '+(r.linea_7d||0).toFixed(2)+'</div>'+
+      '</div>'+
+    '</div>'+
+
+    // Línea editable
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">'+
+      '<div class="modal-field"><label>\uD83C\uDFE6 L\u00EDnea aprobada (sugerida: S/'+d.linea_sugerida+')</label>'+
+        '<input id="daLinea" class="input" type="number" value="'+d.linea_sugerida+'" style="font-size:18px;font-weight:700;color:var(--green)"></div>'+
+      '<div class="modal-field"><label>Clasificaci\u00F3n DIMAX</label>'+
+        '<input class="input" value="'+escAttr(c.clasificacion)+'" disabled></div>'+
+    '</div>'+
+
+    '<div class="modal-field"><label>Comentario (m\u00EDn. 8 caracteres)</label><input id="daComentario" class="input" value="Carga DIMAX con an\u00E1lisis de riesgo"></div>'+
+    '<div class="modal-field"><label>Contrase\u00F1a</label><input type="password" id="daPassword" class="input"></div>'+
+
+    '<div class="modal-actions">'+
+      '<button class="btn btn-outline" onclick="openImportBodegas(\'dimax\')">← Otro archivo</button>'+
+      '<button class="btn btn-outline" onclick="closeModal()">Cancelar</button>'+
+      '<button class="btn btn-green" onclick="confirmDimaxAnalisis()">'+(existe ? 'Actualizar bodega' : 'Crear bodega')+'</button>'+
+    '</div></div></div>';
+}
+
+function confirmDimaxAnalisis(){
+  var d = window._dimaxAnalisis;
+  if(!d){ showToast('Sin análisis previo','error'); return; }
+  var password = document.getElementById('daPassword').value;
+  var comentario = document.getElementById('daComentario').value.trim();
+  if(comentario.length < 8){ showToast('Comentario mín. 8 caracteres','error'); return; }
+  if(!password){ showToast('Ingresa contraseña','error'); return; }
+
+  var doc = document.getElementById('daDoc').value.trim();
+  var body = {
+    razon_social: document.getElementById('daRazon').value.trim(),
+    nombre_comercial: document.getElementById('daRazon').value.trim(),
+    telefono_whatsapp: document.getElementById('daTel').value.trim(),
+    ruc: doc.length === 11 ? doc : null,
+    dni_representante: doc.length <= 8 ? doc : null,
+    solo_dni_sin_ruc: doc.length <= 8,
+    direccion_fiscal: document.getElementById('daDir').value.trim(),
+    distrito: document.getElementById('daDist').value.trim(),
+    linea_aprobada: parseFloat(document.getElementById('daLinea').value) || 100,
+    cod_vendedor: d.vendedor.cod_dimax,
+    nombre_vendedor: d.vendedor.nombre_dimax,
+    grupo: d.vendedor.grupo,
+    supervisor: d.vendedor.supervisor,
+    dia_visita: d.vendedor.dia_visita,
+    dia_entrega: d.vendedor.dia_entrega,
+    password: password,
+    comentario: comentario,
+  };
+
+  showPanelLoader('Creando bodega\u2026', true);
+  fetch('/api/backoffice/import/dimax-analisis/confirm', {
+    method:'POST',
+    headers: Object.assign({'Content-Type':'application/json'}, authHeaders()),
+    body: JSON.stringify(body)
+  }).then(function(r){ return r.json().then(function(d){ return {ok:r.ok,d:d}; }); })
+  .then(function(x){
+    if(!x.ok) throw new Error(x.d.detail || 'Error al crear');
+    closeModal();
+    showToast(x.d.mensaje || 'Bodega creada','success');
+    loadBodegas();
+  }).catch(function(e){ showToast(String(e.message).slice(0,200),'error'); })
+  .finally(function(){ hidePanelLoader(); });
 }
 
 function confirmDimaxBodega(){
