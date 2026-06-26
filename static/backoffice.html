@@ -355,7 +355,7 @@ tr:hover td{background:var(--card-hover)}
 </div>
 
 <div class="kpi-grid">
-<div class="kpi"><div class="kpi-label">A pagar hoy a distribuidores</div><div class="kpi-value blue" id="kpiPagar">S/0.00</div></div>
+<div class="kpi"><div class="kpi-label">GMV Circa (mes)</div><div class="kpi-value blue" id="kpiPagar">S/0.00</div></div>
 <div class="kpi"><div class="kpi-label">Pedidos activos</div><div class="kpi-value green" id="kpiActivos">0</div></div>
 <div class="kpi"><div class="kpi-label">Cobranzas vencidas</div><div class="kpi-value red" id="kpiVencidas">0</div></div>
 <div class="kpi"><div class="kpi-label">Monto vencido</div><div class="kpi-value orange" id="kpiMontoVencido">S/0.00</div></div>
@@ -761,7 +761,7 @@ function refreshAll(){
   return Promise.all([
     api('/api/backoffice/resumen').then(function(d){
       document.getElementById('kpiActivos').textContent = d.total_pedidos || 0;
-      document.getElementById('kpiPagar').textContent = 'S/'+(d.circa_cobra_bodegas||0).toFixed(2);
+      api('/api/backoffice/gmv?periodo=mes').then(function(g){document.getElementById('kpiPagar').textContent = 'S/ '+(g.gmv_total||0).toLocaleString('es-PE',{minimumFractionDigits:2})}).catch(function(){});
     }).catch(console.error),
     api('/api/backoffice/cobranzas').then(function(d){
       allCobranzas = d.cobranzas || [];
