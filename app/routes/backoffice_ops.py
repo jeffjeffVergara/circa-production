@@ -176,7 +176,7 @@ async def bodegas_ops_handler(
 
         # Determinar si está "enrolada" (onboarding completado o tiene PIN)
         onb = b.get("onboarding_fase") or "invited"
-        enrolada_flag = b.get("estado") == "activo"
+        enrolada_flag = onb in ("completado", "pin_creado", "contrato_firmado")
 
         # Línea
         la = float(b.get("linea_aprobada") or 0)
@@ -289,7 +289,7 @@ async def bodegas_ops_handler(
     activas = sum(1 for r in result if r["estado"] == "activo")
     enroladas = sum(1 for r in result if r["enrolada"])
     pendientes = total - enroladas
-    con_linea = sum(1 for r in result if r["linea_aprobada"] > 0 and r["linea_usada"] > 0 and r["enrolada"])
+    con_linea = sum(1 for r in result if r["linea_aprobada"] > 0 and r["linea_usada"] > 0)
     sin_pedido_val = sum(1 for r in result if r["n_pedidos"] == 0)
     en_mora = sum(1 for r in result if r["dias_mora"] > 0)
     monto_mora = round(sum(r["monto_vencido"] for r in result), 2)
@@ -335,50 +335,3 @@ def _filtros_vacios():
 # O si prefieres en el mismo archivo, copia la función
 # y agrega el decorador:
 # @router.get("/bodegas-ops")
-
-
-from datetime import datetime, timezone as tz
-from fastapi import HTTPException
-
-async def marcar_pago_distribuidor_handler(
-    pedido_id: str,
-    user: dict = Depends(get_backoffice_user),
-):
-    """Marca que Circa ya pagó al distribuidor por este pedido."""
-    rows = db.sb.table("pedidos").select("id,estado,monto_financiado,circa_pagado_dist_at").eq("id", pedido_id).limit(1).execute().data
-    if not rows:
-        raise HTTPException(status_code=404, detail="Pedido no encontrado")
-    p = rows[0]
-    if p.get("circa_pagado_dist_at"):
-        raise HTTPException(status_code=400, detail="Ya fue marcado como pagado al distribuidor")
-    if float(p.get("monto_financiado") or 0) <= 0:
-        raise HTTPException(status_code=400, detail="Este pedido no tiene monto financiado")
-    ahora = datetime.now(tz.utc).isoformat()
-    db.sb.table("pedidos").update({
-        "circa_pagado_dist_at": ahora,
-        "circa_pagado_dist_por": user.get("email", ""),
-    }).eq("id", pedido_id).execute()
-    return {"ok": True, "pedido_id": pedido_id, "pagado_at": ahora}
-
-
-from datetime import datetime, timezone as tz
-from fastapi import HTTPException
-
-async def marcar_pago_distribuidor_handler(
-    pedido_id: str,
-    user: dict = Depends(get_backoffice_user),
-):
-    rows = db.sb.table("pedidos").select("id,estado,monto_financiado,circa_pagado_dist_at").eq("id", pedido_id).limit(1).execute().data
-    if not rows:
-        raise HTTPException(status_code=404, detail="Pedido no encontrado")
-    p = rows[0]
-    if p.get("circa_pagado_dist_at"):
-        raise HTTPException(status_code=400, detail="Ya fue marcado como pagado")
-    if float(p.get("monto_financiado") or 0) <= 0:
-        raise HTTPException(status_code=400, detail="Sin monto financiado")
-    ahora = datetime.now(tz.utc).isoformat()
-    db.sb.table("pedidos").update({
-        "circa_pagado_dist_at": ahora,
-        "circa_pagado_dist_por": user.get("email", ""),
-    }).eq("id", pedido_id).execute()
-    return {"ok": True, "pedido_id": pedido_id, "pagado_at": ahora}

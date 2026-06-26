@@ -15,3 +15,10 @@ venv/
 .venv/
 .archive/
 *.bak_*
+*.bak
+*.bak2
+*.bak3
+salida_carga/
+Corte_Comisiones_*
+Mensajes_Corte_*
+Circa_Reporte_*
