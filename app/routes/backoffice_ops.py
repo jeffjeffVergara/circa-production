@@ -335,3 +335,26 @@ def _filtros_vacios():
 # O si prefieres en el mismo archivo, copia la función
 # y agrega el decorador:
 # @router.get("/bodegas-ops")
+
+
+from datetime import datetime, timezone as tz
+from fastapi import HTTPException
+
+async def marcar_pago_distribuidor_handler(
+    pedido_id: str,
+    user: dict = Depends(get_backoffice_user),
+):
+    rows = db.sb.table("pedidos").select("id,estado,monto_financiado,circa_pagado_dist_at").eq("id", pedido_id).limit(1).execute().data
+    if not rows:
+        raise HTTPException(status_code=404, detail="Pedido no encontrado")
+    p = rows[0]
+    if p.get("circa_pagado_dist_at"):
+        raise HTTPException(status_code=400, detail="Ya marcado como pagado")
+    if float(p.get("monto_financiado") or 0) <= 0:
+        raise HTTPException(status_code=400, detail="Sin monto financiado")
+    ahora = datetime.now(tz.utc).isoformat()
+    db.sb.table("pedidos").update({
+        "circa_pagado_dist_at": ahora,
+        "circa_pagado_dist_por": user.get("email", ""),
+    }).eq("id", pedido_id).execute()
+    return {"ok": True, "pedido_id": pedido_id, "pagado_at": ahora}
