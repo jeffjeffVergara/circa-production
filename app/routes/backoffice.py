@@ -1199,3 +1199,6 @@ from app.routes.backoffice_ops import marcar_pago_distribuidor_handler
 router.post("/pedido/{pedido_id}/pago-distribuidor")(marcar_pago_distribuidor_handler)
 from app.routes.backoffice_ops import gmv_handler
 router.get("/gmv")(gmv_handler)
+from app.routes.backoffice_import_dimax import import_dimax_preview_handler, import_dimax_confirm_handler, DiMaxConfirmBody
+router.post("/import/dimax-analisis/preview")(import_dimax_preview_handler)
+router.post("/import/dimax-analisis/confirm")(import_dimax_confirm_handler)
