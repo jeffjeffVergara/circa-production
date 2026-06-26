@@ -168,7 +168,7 @@ async def bodegas_ops_handler(
 
     if search:
         q_lower = search.lower()
-        result = [r for r in result if q_lower in (r["nombre_comercial"] + r["razon_social"] + r["representante"] + r["telefono_whatsapp"] + r["ruc"] + r["dni"]).lower()]
+        result = [r for r in result if q_lower in ((r.get("nombre_comercial") or "") + (r.get("razon_social") or "") + (r.get("representante") or "") + (r.get("telefono_whatsapp") or "") + (r.get("ruc") or "") + (r.get("dni") or "")).lower()]
     if vendedor:
         result = [r for r in result if r["vendedor_codigo"] == vendedor]
     if supervisor:
