@@ -340,6 +340,8 @@ tr:hover td{background:var(--card-hover)}
 <button class="tab" onclick="showTab('bodegas')" id="tab-bodegas">🏪 Bodegas</button>
 <button class="tab" onclick="showTab('pagos')" id="tab-pagos">💸 Pagos a distribuidores</button>
 <button class="tab" onclick="showTab('cobranzas')" id="tab-cobranzas">💰 Cobranzas</button>
+<button class="tab" onclick="showTab('scoring')" id="tab-scoring">🎯 Score bodegas</button>
+<button class="tab" onclick="showTab('creditmodel')" id="tab-creditmodel">📈 Modelo líneas</button>
 <button class="tab" onclick="showTab('pedidos')" id="tab-pedidos">📋 Pedidos</button>
 <button class="tab" onclick="showTab('vendedores')" id="tab-vendedores">🧑‍💼 Vendedores</button>
 <button class="tab bo-write" onclick="showTab('soporte')" id="tab-soporte">💬 Soporte WA</button>
@@ -424,6 +426,82 @@ tr:hover td{background:var(--card-hover)}
 <thead><tr><th>Pedido</th><th>Bodega</th><th>Distribuidor</th><th>Entregado</th><th>Vence</th><th>Días</th><th>Monto</th><th>Estado</th><th>Acciones</th></tr></thead>
 <tbody id="cobranzasBody"></tbody>
 </table>
+</div>
+</div>
+</div>
+
+<!-- SCORE BODEGAS TAB -->
+<div id="view-scoring" style="display:none">
+<div class="section">
+<h2>🎯 Score de bodegas
+<span style="font-size:12px;color:var(--muted);font-weight:400" id="scoringInfoLine">modelo operativo Circa</span>
+<span style="float:right;display:flex;gap:8px;margin-top:-4px">
+<button class="btn btn-outline btn-small" onclick="loadScoring(false)">👁 Vista previa</button>
+<button class="btn btn-green btn-small bo-write" onclick="ejecutarScoringModel()">▶ Ejecutar y guardar</button>
+<button class="btn btn-outline btn-small" onclick="exportScoringCSV()">📥 CSV</button>
+</span>
+</h2>
+<p style="font-size:13px;color:var(--muted);margin:-8px 0 16px;max-width:720px">
+Calcula un score 0–100 por bodega: <strong>pagos 40%</strong>, <strong>actividad 30%</strong>, <strong>WhatsApp 15%</strong>, <strong>crédito 15%</strong>.
+La vista previa no modifica datos. <em>Ejecutar y guardar</em> escribe el resultado en <code>scoring</code> (visible en menú LÍNEA del bot).
+</p>
+<div id="scoringKpis" class="kpi-grid" style="margin-bottom:16px"></div>
+<div class="table-wrap">
+<table>
+<thead><tr>
+<th>#</th><th>Bodega</th><th>Score</th><th>Grado</th><th>Pagos</th><th>Actividad</th><th>WA</th><th>Crédito</th><th>Línea disp.</th><th>Scoring BD</th><th></th>
+</tr></thead>
+<tbody id="scoringBody"><tr><td colspan="11" class="empty">Abre esta pestaña o pulsa Vista previa.</td></tr></tbody>
+</table>
+</div>
+</div>
+</div>
+
+<!-- MODELO LINEAS TAB -->
+<div id="view-creditmodel" style="display:none">
+<div class="section">
+<h2>📈 Modelo de líneas de crédito
+<span style="font-size:12px;color:var(--muted);font-weight:400">Excel DIMAX → tier + SQL + WhatsApp</span>
+</h2>
+<p style="font-size:13px;color:var(--muted);margin:-8px 0 16px;max-width:820px">
+Sube uno o más Excel con hojas <strong>Cliente</strong> e <strong>Historial</strong>. El modelo calcula el tier conservador (100–500)
+y genera el SQL de alta. <em>Analizar</em> no toca la base; <em>Cargar seleccionadas</em> ejecuta en Postgres (<code>CIRCA_DB_URL</code>).
+</p>
+
+<div class="filters" style="margin-bottom:16px;flex-wrap:wrap;gap:10px">
+<input type="file" id="creditModelFiles" accept=".xlsx,.xls" multiple style="max-width:320px">
+<button class="btn btn-green btn-small" onclick="processCreditModel()">▶ Analizar Excel</button>
+<button class="btn btn-outline btn-small" onclick="clearCreditModel()">Limpiar</button>
+<span style="font-size:12px;color:var(--muted)" id="creditModelFileHint"></span>
+</div>
+
+<div id="creditModelKpis" class="kpi-grid" style="margin-bottom:16px;display:none"></div>
+
+<div class="table-wrap" id="creditModelTableWrap" style="display:none;margin-bottom:16px">
+<table>
+<thead><tr>
+<th><input type="checkbox" id="creditModelSelectAll" onchange="toggleCreditModelAll(this.checked)"></th>
+<th>Bodega</th><th>Teléfono</th><th>Tier</th><th>Pedidos 6m</th><th>Línea 7d</th><th>Estado</th><th></th>
+</tr></thead>
+<tbody id="creditModelBody"></tbody>
+</table>
+</div>
+
+<div id="creditModelErrores" style="display:none;margin-bottom:16px"></div>
+
+<div id="creditModelDetail" style="display:none">
+<div style="display:flex;gap:8px;margin-bottom:12px;border-bottom:1px solid var(--border);padding-bottom:8px">
+<button type="button" class="perfil-tab credit-model-tab active" data-cm-tab="reporte" onclick="switchCreditModelTab('reporte')">Reporte</button>
+<button type="button" class="perfil-tab credit-model-tab" data-cm-tab="sql" onclick="switchCreditModelTab('sql')">SQL</button>
+<button type="button" class="perfil-tab credit-model-tab" data-cm-tab="wa" onclick="switchCreditModelTab('wa')">WhatsApp</button>
+</div>
+<div id="creditModelPanelReporte" class="credit-model-panel"></div>
+<pre id="creditModelPanelSql" class="credit-model-panel" style="display:none;white-space:pre-wrap;font-size:12px;background:var(--bg2);padding:12px;border-radius:8px;max-height:420px;overflow:auto"></pre>
+<pre id="creditModelPanelWa" class="credit-model-panel" style="display:none;white-space:pre-wrap;font-size:13px;background:var(--bg2);padding:12px;border-radius:8px"></pre>
+</div>
+
+<div style="margin-top:20px;display:none" id="creditModelLoadBar" class="bo-write">
+<button class="btn btn-green" onclick="openCreditModelLoadModal()">💾 Cargar seleccionadas en base</button>
 </div>
 </div>
 </div>
@@ -627,7 +705,7 @@ function readOnlyBlocked(){
 }
 
 function isReadOnlyAllowedPost(path){
-  return /\/(preview|revalidate)$/.test(path);
+  return /\/(preview|revalidate|credit-model\/process)$/.test(path);
 }
 
 function login(){
@@ -700,7 +778,7 @@ function showTab(name){
   var activeId = active ? active.id.replace('tab-','') : null;
   if(activeId === name) return;
 
-  ['dashboard','bodegas','pagos','cobranzas','pedidos','vendedores','soporte'].forEach(function(t){
+  ['dashboard','bodegas','pagos','cobranzas','scoring','creditmodel','pedidos','vendedores','soporte'].forEach(function(t){
     var el = document.getElementById('view-'+t);
     if(el) el.style.display = (t===name ? 'block':'none');
     var tb = document.getElementById('tab-'+t);
@@ -712,6 +790,8 @@ function showTab(name){
     bodegas: 'Cargando bodegas…',
     pagos: 'Cargando pagos a distribuidores…',
     cobranzas: 'Cargando cobranzas…',
+    scoring: 'Calculando scores…',
+    creditmodel: 'Listo para analizar Excel…',
     pedidos: 'Cargando pedidos…',
     vendedores: 'Cargando vendedores…',
     soporte: 'Cargando inbox WhatsApp…'
@@ -722,6 +802,8 @@ function showTab(name){
     pagos: loadPagos,
     dashboard: function(){ loadGMV('mes'); },
     cobranzas: loadCobranzas,
+    scoring: function(){ return loadScoring(false); },
+    creditmodel: function(){ return Promise.resolve(); },
     pedidos: loadPedidos,
     vendedores: loadVendedores,
     soporte: loadSoporteInbox
@@ -1144,6 +1226,317 @@ function exportCobranzasCSV(){
   downloadCSV(rows,'cobranzas');
 }
 
+var scoringData = null;
+
+function renderScoringKpis(d){
+  var g = d.resumen_grados || {};
+  var el = document.getElementById('scoringKpis');
+  if(!el) return;
+  el.innerHTML =
+    '<div class="kpi"><div class="kpi-label">Bodegas</div><div class="kpi-value blue">'+(d.total||0)+'</div></div>'+
+    '<div class="kpi"><div class="kpi-label">Grado A</div><div class="kpi-value green">'+(g.A||0)+'</div></div>'+
+    '<div class="kpi"><div class="kpi-label">Grado B</div><div class="kpi-value blue">'+(g.B||0)+'</div></div>'+
+    '<div class="kpi"><div class="kpi-label">Grado C</div><div class="kpi-value orange">'+(g.C||0)+'</div></div>'+
+    '<div class="kpi"><div class="kpi-label">Grado D</div><div class="kpi-value red">'+(g.D||0)+'</div></div>';
+  var info = document.getElementById('scoringInfoLine');
+  if(info){
+    var when = d.ejecutado_at ? new Date(d.ejecutado_at).toLocaleString('es-PE') : '';
+    info.textContent = (d.persistido ? 'Guardado en BD · ' : 'Vista previa · ') + when;
+  }
+}
+
+function openBodegaFromScoring(id){
+  ['dashboard','bodegas','pagos','cobranzas','scoring','creditmodel','pedidos','vendedores','soporte'].forEach(function(t){
+    var el = document.getElementById('view-'+t);
+    if(el) el.style.display = (t === 'bodegas' ? 'block' : 'none');
+    var tb = document.getElementById('tab-'+t);
+    if(tb) tb.classList.toggle('active', t === 'bodegas');
+  });
+  openBodegaDetail(id);
+}
+
+function renderScoringTable(rows){
+  var body = document.getElementById('scoringBody');
+  if(!body) return;
+  if(!rows || !rows.length){
+    body.innerHTML = '<tr><td colspan="11" class="empty">Sin bodegas en este filtro.</td></tr>';
+    return;
+  }
+  body.innerHTML = rows.map(function(r, i){
+    var bd = r.breakdown || {};
+    var accent = scoreAccent(r.grade || 'C');
+    var prev = r.scoring_anterior != null ? Math.round(r.scoring_anterior) : '—';
+    return '<tr class="clickable" onclick="openBodegaFromScoring(\''+r.bodega_id+'\')">'+
+      '<td>'+(i+1)+'</td>'+
+      '<td><strong>'+escAttr(r.nombre)+'</strong><div style="font-size:11px;color:var(--muted)">'+escAttr(r.distrito||'')+'</div></td>'+
+      '<td><span style="font-weight:800;color:'+accent+'">'+r.score+'</span></td>'+
+      '<td><span class="badge" style="border-color:'+accent+';color:'+accent+'">'+escAttr(r.grade)+' · '+escAttr(r.label||'')+'</span></td>'+
+      '<td>'+(bd.pagos != null ? bd.pagos : '—')+'</td>'+
+      '<td>'+(bd.actividad != null ? bd.actividad : '—')+'</td>'+
+      '<td>'+(bd.engagement != null ? bd.engagement : '—')+'</td>'+
+      '<td>'+(bd.credito != null ? bd.credito : '—')+'</td>'+
+      '<td>S/'+Number(r.linea_disponible||0).toFixed(2)+' / S/'+Number(r.linea_aprobada||0).toFixed(2)+'</td>'+
+      '<td>'+prev+'</td>'+
+      '<td><button type="button" class="btn btn-outline btn-small" onclick="event.stopPropagation();openBodegaFromScoring(\''+r.bodega_id+'\')">Perfil</button></td>'+
+    '</tr>';
+  }).join('');
+}
+
+function loadScoring(persist){
+  return api('/api/backoffice/scoring').then(function(d){
+    scoringData = d;
+    renderScoringKpis(d);
+    renderScoringTable(d.bodegas || []);
+    if(persist) showToast('Score calculado (vista previa)','success');
+    return d;
+  }).catch(function(e){
+    showToast('Error al calcular score: '+e.message,'error');
+  });
+}
+
+function ejecutarScoringModel(){
+  if(isReadOnly()){ showToast('Solo lectura: no puedes ejecutar el modelo','error'); return; }
+  if(!confirm('¿Ejecutar el modelo y guardar scoring en todas las bodegas del filtro actual (Reales/Pruebas)?')) return;
+  showPanelLoader('Ejecutando modelo de score…');
+  var mode = window.MODE_FILTER || localStorage.getItem('circa_mode') || 'real';
+  apiPost('/api/backoffice/scoring/ejecutar?test='+encodeURIComponent(mode), {}).then(function(x){
+    hidePanelLoader();
+    if(!x.ok){ showToast((x.d && x.d.detail) || 'No se pudo ejecutar','error'); return; }
+    scoringData = x.d;
+    renderScoringKpis(x.d);
+    renderScoringTable(x.d.bodegas || []);
+    showToast('Score guardado en '+((x.d && x.d.actualizadas) || 0)+' bodegas','success');
+  }).catch(function(e){
+    hidePanelLoader();
+    showToast('Error: '+e.message,'error');
+  });
+}
+
+function exportScoringCSV(){
+  var rows = scoringData && scoringData.bodegas;
+  if(!rows || !rows.length){ showToast('Calcula el score primero','error'); return; }
+  var out = [['Rank','Bodega','Distrito','Score','Grado','Pagos','Actividad','WhatsApp','Credito','Linea disp','Linea aprob','Scoring BD anterior','Telefono','Estado']];
+  rows.forEach(function(r, i){
+    var bd = r.breakdown || {};
+    out.push([
+      i+1, r.nombre||'', r.distrito||'', r.score||0, r.grade||'', bd.pagos||'', bd.actividad||'', bd.engagement||'', bd.credito||'',
+      r.linea_disponible||0, r.linea_aprobada||0, r.scoring_anterior != null ? r.scoring_anterior : '', r.telefono_whatsapp||'', r.estado||''
+    ]);
+  });
+  downloadCSV(out,'score_bodegas');
+}
+
+var creditModelData = null;
+var creditModelSelectedIdx = -1;
+var creditModelChecked = {};
+
+function clearCreditModel(){
+  creditModelData = null;
+  creditModelSelectedIdx = -1;
+  creditModelChecked = {};
+  var inp = document.getElementById('creditModelFiles');
+  if(inp) inp.value = '';
+  ['creditModelKpis','creditModelTableWrap','creditModelErrores','creditModelDetail','creditModelLoadBar'].forEach(function(id){
+    var el = document.getElementById(id);
+    if(el) el.style.display = 'none';
+  });
+  var body = document.getElementById('creditModelBody');
+  if(body) body.innerHTML = '';
+  var hint = document.getElementById('creditModelFileHint');
+  if(hint) hint.textContent = '';
+}
+
+function renderCreditModelKpis(d){
+  var el = document.getElementById('creditModelKpis');
+  if(!el) return;
+  el.style.display = 'grid';
+  el.innerHTML =
+    '<div class="kpi"><div class="kpi-label">Procesadas</div><div class="kpi-value blue">'+(d.total||0)+'</div></div>'+
+    '<div class="kpi"><div class="kpi-label">Listas</div><div class="kpi-value green">'+((d.total||0)-(d.revisar||0))+'</div></div>'+
+    '<div class="kpi"><div class="kpi-label">Revisar</div><div class="kpi-value orange">'+(d.revisar||0)+'</div></div>'+
+    '<div class="kpi"><div class="kpi-label">Errores</div><div class="kpi-value red">'+((d.errores||[]).length)+'</div></div>';
+}
+
+function renderCreditModelTable(rows){
+  var wrap = document.getElementById('creditModelTableWrap');
+  var body = document.getElementById('creditModelBody');
+  if(!wrap || !body) return;
+  if(!rows || !rows.length){
+    wrap.style.display = 'none';
+    body.innerHTML = '';
+    return;
+  }
+  wrap.style.display = 'block';
+  document.getElementById('creditModelLoadBar').style.display = 'block';
+  body.innerHTML = rows.map(function(b, idx){
+    var a = b.analisis || {};
+    var estado = b.necesita_revision
+      ? '<span class="badge" style="border-color:var(--orange);color:var(--orange)">Revisar</span>'
+      : '<span class="badge" style="border-color:var(--green);color:var(--green)">Lista</span>';
+    var chk = creditModelChecked[idx] ? ' checked' : '';
+    return '<tr class="clickable'+(creditModelSelectedIdx===idx?' selected':'')+'">'+
+      '<td onclick="event.stopPropagation()"><input type="checkbox" data-cm-idx="'+idx+'"'+chk+' onchange="toggleCreditModelRow('+idx+', this.checked)"></td>'+
+      '<td onclick="selectCreditModelRow('+idx+')"><strong>'+escAttr(b.razon_social||'')+'</strong><div style="font-size:11px;color:var(--muted)">'+escAttr(b.archivo||'')+'</div></td>'+
+      '<td onclick="selectCreditModelRow('+idx+')">'+escAttr(b.telefono||'')+'</td>'+
+      '<td onclick="selectCreditModelRow('+idx+')">S/'+(b.tier||0)+'</td>'+
+      '<td onclick="selectCreditModelRow('+idx+')">'+(a.pedidos||'—')+'</td>'+
+      '<td onclick="selectCreditModelRow('+idx+')">S/'+Number(a.linea_7d||0).toFixed(2)+'</td>'+
+      '<td onclick="selectCreditModelRow('+idx+')">'+estado+'</td>'+
+      '<td><button type="button" class="btn btn-outline btn-small" onclick="event.stopPropagation();selectCreditModelRow('+idx+')">Ver</button></td>'+
+    '</tr>';
+  }).join('');
+}
+
+function renderCreditModelErrores(errores){
+  var el = document.getElementById('creditModelErrores');
+  if(!el) return;
+  if(!errores || !errores.length){ el.style.display='none'; el.innerHTML=''; return; }
+  el.style.display = 'block';
+  el.innerHTML = '<div class="alert" style="background:rgba(239,68,68,.08);border:1px solid var(--red);padding:12px;border-radius:8px;font-size:13px">'+
+    '<strong>Archivos omitidos</strong><ul style="margin:8px 0 0 16px">'+errores.map(function(e){
+      return '<li><code>'+escAttr(e.archivo)+'</code>: '+escAttr(e.error)+'</li>';
+    }).join('')+'</ul></div>';
+}
+
+function selectCreditModelRow(idx){
+  creditModelSelectedIdx = idx;
+  var rows = creditModelData && creditModelData.bodegas;
+  if(!rows || !rows[idx]) return;
+  renderCreditModelTable(rows);
+  var b = rows[idx];
+  var det = document.getElementById('creditModelDetail');
+  if(det) det.style.display = 'block';
+  var rep = document.getElementById('creditModelPanelReporte');
+  if(rep) rep.innerHTML = '<pre style="white-space:pre-wrap;font-size:12px;margin:0;max-height:420px;overflow:auto">'+escAttr(b.reporte_ficha||'')+'</pre>';
+  var sql = document.getElementById('creditModelPanelSql');
+  if(sql) sql.textContent = b.sql_block || '';
+  var wa = document.getElementById('creditModelPanelWa');
+  if(wa) wa.textContent = b.mensaje || '';
+  switchCreditModelTab('reporte');
+}
+
+function switchCreditModelTab(tab){
+  document.querySelectorAll('.credit-model-tab').forEach(function(btn){
+    btn.classList.toggle('active', btn.dataset.cmTab === tab);
+  });
+  var rep = document.getElementById('creditModelPanelReporte');
+  var sql = document.getElementById('creditModelPanelSql');
+  var wa = document.getElementById('creditModelPanelWa');
+  if(rep) rep.style.display = tab === 'reporte' ? 'block' : 'none';
+  if(sql) sql.style.display = tab === 'sql' ? 'block' : 'none';
+  if(wa) wa.style.display = tab === 'wa' ? 'block' : 'none';
+}
+
+function toggleCreditModelRow(idx, on){
+  if(on) creditModelChecked[idx] = true;
+  else delete creditModelChecked[idx];
+}
+
+function toggleCreditModelAll(on){
+  var rows = creditModelData && creditModelData.bodegas;
+  if(!rows) return;
+  creditModelChecked = {};
+  if(on) rows.forEach(function(_, i){ creditModelChecked[i] = true; });
+  renderCreditModelTable(rows);
+}
+
+function processCreditModel(){
+  var inp = document.getElementById('creditModelFiles');
+  if(!inp || !inp.files || !inp.files.length){ showToast('Selecciona al menos un Excel','error'); return; }
+  var fd = new FormData();
+  for(var i=0;i<inp.files.length;i++) fd.append('files', inp.files[i]);
+  showPanelLoader('Analizando Excel DIMAX…', true);
+  fetch('/api/backoffice/credit-model/process', { method:'POST', headers: authHeaders(), body: fd })
+    .then(function(r){ return r.json().then(function(d){ return {ok:r.ok,d:d}; }); })
+    .then(function(x){
+      if(!x.ok) throw new Error((x.d && x.d.detail) || 'No se pudo analizar');
+      creditModelData = x.d;
+      creditModelSelectedIdx = -1;
+      creditModelChecked = {};
+      var hint = document.getElementById('creditModelFileHint');
+      if(hint) hint.textContent = (x.d.total||0)+' bodega(s) de '+inp.files.length+' archivo(s)';
+      renderCreditModelKpis(x.d);
+      renderCreditModelTable(x.d.bodegas || []);
+      renderCreditModelErrores(x.d.errores || []);
+      document.getElementById('creditModelDetail').style.display = 'none';
+      showToast('Análisis listo: '+(x.d.total||0)+' bodega(s)','success');
+    }).catch(function(e){ showToast(String(e.message).slice(0,200),'error'); })
+    .finally(function(){ hidePanelLoader(); });
+}
+
+function openCreditModelLoadModal(){
+  if(isReadOnly()){ showToast('Solo lectura','error'); return; }
+  var rows = creditModelData && creditModelData.bodegas;
+  if(!rows || !rows.length){ showToast('Analiza Excel primero','error'); return; }
+  var picked = Object.keys(creditModelChecked).map(function(k){ return parseInt(k,10); });
+  if(!picked.length){ showToast('Marca al menos una bodega','error'); return; }
+  var revisarCount = picked.filter(function(i){ return rows[i] && rows[i].necesita_revision; }).length;
+  document.getElementById('modalContainer').innerHTML =
+    '<div class="modal-overlay open" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:520px"><h3>💾 Cargar bodegas en base</h3>'+
+    '<p style="font-size:13px;color:var(--muted)">Se ejecutará el SQL de alta para <strong>'+picked.length+'</strong> bodega(s). Requiere <code>CIRCA_DB_URL</code> en el servidor.</p>'+
+    (revisarCount ? '<p style="font-size:13px;color:var(--orange)">⚠ '+revisarCount+' bodega(s) marcadas para revisión: confirma abajo antes de cargar.</p>' : '')+
+    '<div id="creditModelLoadChecks" style="max-height:160px;overflow:auto;margin:12px 0;font-size:13px"></div>'+
+    '<div class="modal-field"><label>Comentario (mín. 8 caracteres)</label><input id="cmLoadComentario" class="input"></div>'+
+    '<div class="modal-field"><label>Contraseña</label><input type="password" id="cmLoadPass" class="input"></div>'+
+    '<div class="modal-actions"><button class="btn btn-outline" onclick="closeModal()">Cancelar</button>'+
+    '<button class="btn btn-green" onclick="submitCreditModelLoad()">Cargar</button></div></div></div>';
+  var box = document.getElementById('creditModelLoadChecks');
+  if(box){
+    box.innerHTML = picked.map(function(i){
+      var b = rows[i];
+      var extra = b.necesita_revision
+        ? ' <label style="font-size:12px"><input type="checkbox" id="cmConfirm_'+i+'"> Confirmar revisión</label>' : '';
+      return '<div style="padding:4px 0;border-bottom:1px solid var(--border)">'+escAttr(b.razon_social)+' · S/'+(b.tier||0)+extra+'</div>';
+    }).join('');
+  }
+  window._creditModelLoadPicked = picked;
+}
+
+function submitCreditModelLoad(){
+  var rows = creditModelData && creditModelData.bodegas;
+  var picked = window._creditModelLoadPicked || [];
+  var pass = (document.getElementById('cmLoadPass')||{}).value || '';
+  var com = (document.getElementById('cmLoadComentario')||{}).value || '';
+  if(com.trim().length < 8){ showToast('Comentario mínimo 8 caracteres','error'); return; }
+  if(!pass){ showToast('Ingresa tu contraseña','error'); return; }
+  var payload = [];
+  for(var j=0;j<picked.length;j++){
+    var i = picked[j];
+    var b = rows[i];
+    if(!b) continue;
+    var confirmar = b.necesita_revision && document.getElementById('cmConfirm_'+i)
+      ? document.getElementById('cmConfirm_'+i).checked : false;
+    if(b.necesita_revision && !confirmar){
+      showToast('Confirma revisión para: '+b.razon_social,'error');
+      return;
+    }
+    payload.push({
+      telefono: b.telefono,
+      razon_social: b.razon_social,
+      sql_inserts: b.sql_inserts,
+      sql_verificacion: b.sql_verificacion,
+      necesita_revision: b.necesita_revision,
+      confirmar_revision: confirmar
+    });
+  }
+  closeModal();
+  showPanelLoader('Cargando bodegas en Postgres…', true);
+  apiPost('/api/backoffice/credit-model/load', { password: pass, comentario: com, bodegas: payload })
+    .then(function(x){
+      hidePanelLoader();
+      if(!x.ok){ showToast((x.d && x.d.detail) || 'Error al cargar','error'); return; }
+      var ok = (x.d && x.d.ok) || 0;
+      var fail = (x.d && x.d.fallo) || 0;
+      showToast('Carga: '+ok+' OK, '+fail+' error(es)','success');
+      if(x.d && x.d.resultados){
+        console.log('credit-model load', x.d.resultados);
+      }
+    }).catch(function(e){
+      hidePanelLoader();
+      showToast('Error: '+e.message,'error');
+    });
+}
+
 function exportPedidosCSV(){
   if(!allPedidos.length){showToast('No hay datos','error');return}
   var rows = [['Fecha','Pedido','Bodega','RUC','Distribuidor','Total','Venta Financiada','Venta al Contado','Estado']];
@@ -1278,6 +1671,8 @@ function reloadActiveTab(){
   if(id === 'pagos') return loadPagos();
   if(id === 'dashboard') loadGMV(_gmvPeriodoActual || 'mes');
   if(id === 'cobranzas') return loadCobranzas();
+  if(id === 'scoring') return loadScoring(false);
+  if(id === 'creditmodel') return Promise.resolve();
   if(id === 'pedidos') return loadPedidos();
   if(id === 'bodegas') return loadBodegas();
   if(id === 'vendedores') return loadVendedores();

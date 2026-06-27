@@ -1193,6 +1193,92 @@ async def confirm_preventa_import(
         "link_token": resultado.get("link_token"),
     }
 
+@router.get("/scoring")
+async def scoring_preview(
+    test: Optional[str] = None,
+    user: dict = Depends(get_backoffice_user),
+):
+    """Vista previa del modelo de score (sin persistir en bodegas.scoring)."""
+    from app.services.bodega_scoring_batch import run_bodega_scoring_batch
+
+    return run_bodega_scoring_batch(test=test, persist=False)
+
+
+@router.post("/scoring/ejecutar")
+async def scoring_ejecutar(
+    test: Optional[str] = None,
+    user: dict = Depends(get_backoffice_writer),
+):
+    """Ejecuta el modelo y guarda score en bodegas.scoring."""
+    from app.services.bodega_scoring_batch import run_bodega_scoring_batch
+
+    result = run_bodega_scoring_batch(test=test, persist=True)
+    log_action(
+        user=user,
+        action="scoring_ejecutar",
+        entity_type="scoring",
+        entity_id="batch",
+        comment=f"test={test or 'all'} total={result.get('total', 0)}",
+        after={"actualizadas": result.get("actualizadas"), "resumen": result.get("resumen_grados")},
+    )
+    return result
+
+
+class CreditModelLoadItem(BaseModel):
+    telefono: str = Field(..., min_length=8)
+    razon_social: str = ""
+    sql_inserts: str = Field(..., min_length=1)
+    sql_verificacion: str = Field(..., min_length=1)
+    necesita_revision: bool = False
+    confirmar_revision: bool = False
+
+
+class CreditModelLoadRequest(ReauthMixin):
+    bodegas: list[CreditModelLoadItem] = Field(..., min_length=1)
+
+
+@router.post("/credit-model/process")
+async def credit_model_process(
+    files: list[UploadFile] = File(...),
+    user: dict = Depends(get_backoffice_user),
+):
+    """Analiza Excel DIMAX (cliente + historial) y devuelve tiers, SQL y mensajes."""
+    if not files:
+        raise HTTPException(status_code=400, detail="Sube al menos un archivo .xlsx")
+    from app.services.credit_model.credit_model_service import process_files
+
+    items: list[tuple[bytes, str]] = []
+    for f in files:
+        content = await _read_xlsx_upload(f, max_mb=10)
+        items.append((content, f.filename or "upload.xlsx"))
+    return process_files(items)
+
+
+@router.post("/credit-model/load")
+async def credit_model_load(
+    body: CreditModelLoadRequest,
+    user: dict = Depends(get_backoffice_writer),
+):
+    """Ejecuta SQL de alta de bodega(s) en Postgres (CIRCA_DB_URL)."""
+    verify_reauth_password(body.password)
+    from app.services.credit_model.credit_model_service import load_bodegas_from_api
+
+    try:
+        result = load_bodegas_from_api([b.model_dump() for b in body.bodegas])
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e)) from e
+
+    log_action(
+        user=user,
+        action="credit_model_load",
+        entity_type="credit_model",
+        entity_id="batch",
+        comment=body.comentario.strip(),
+        after={"ok": result.get("ok"), "fallo": result.get("fallo")},
+    )
+    return result
+
+
 from app.routes.backoffice_ops import bodegas_ops_handler
 router.get("/bodegas-ops")(bodegas_ops_handler)
 from app.routes.backoffice_ops import marcar_pago_distribuidor_handler
