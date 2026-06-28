@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.services.bodega_onboarding_snapshot import onboarding_alta_fields
 from app.services.credit_model.constants import DIMAX_ID
 from app.services.credit_model.helpers import (
     dia_min,
@@ -25,6 +26,7 @@ def generar_sql(b: dict[str, Any]) -> dict[str, Any]:
     direccion = titulo(c.get("Direccion"))
     distrito = titulo(c.get("Distrito"))
     tier = a["tier"]
+    alta = onboarding_alta_fields(tier)
 
     vendedores = []
     for n in ("1", "2"):
@@ -59,7 +61,8 @@ def generar_sql(b: dict[str, Any]) -> dict[str, Any]:
     ins.append("  distribuidor_id, razon_social, nombre_comercial, telefono_whatsapp,")
     ins.append("  ruc, dni_representante, solo_dni_sin_ruc,")
     ins.append("  direccion_fiscal, direccion_despacho, distrito,")
-    ins.append("  es_test, en_piloto, estado, linea_aprobada, linea_disponible)")
+    ins.append("  es_test, en_piloto, estado, linea_aprobada, linea_disponible,")
+    ins.append("  linea_alta, scoring_alta)")
     ins.append("SELECT %s, %s, %s, %s," % (
         sql_str(DIMAX_ID), sql_str(razon), sql_str(razon), sql_str(tel)))
     ins.append("       %s, %s, %s," % (
@@ -67,7 +70,8 @@ def generar_sql(b: dict[str, Any]) -> dict[str, Any]:
         "true" if doc["solo_dni"] else "false"))
     ins.append("       %s, %s, %s," % (
         sql_str(direccion), sql_str(direccion), sql_str(distrito)))
-    ins.append("       false, true, 'inactivo', %d, 0" % tier)
+    ins.append("       false, true, 'inactivo', %d, 0, %d, %d" % (
+        tier, int(alta["linea_alta"]), int(alta["scoring_alta"])))
     ins.append("WHERE NOT EXISTS (")
     ins.append("  SELECT 1 FROM bodegas WHERE telefono_whatsapp = %s);" % sql_str(tel))
     ins.append("")

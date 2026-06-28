@@ -296,6 +296,32 @@ tr:hover td{background:var(--card-hover)}
 .panel-loader-text{color:var(--text);font-size:14px;font-weight:600;letter-spacing:.2px}
 @keyframes panelSpin{to{transform:rotate(360deg)}}
 .mode-toggle.loading{opacity:.65;pointer-events:none}
+
+/* Layout con menú lateral */
+.app-layout{display:flex;align-items:stretch;min-height:calc(100vh - 53px)}
+.bo-sidebar{width:228px;flex-shrink:0;background:var(--card);border-right:1px solid var(--border);padding:16px 10px;display:flex;flex-direction:column;gap:4px}
+.bo-sidebar-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);padding:10px 12px 6px;margin-top:4px}
+.bo-nav-item{display:flex;align-items:center;gap:8px;width:100%;text-align:left;padding:10px 12px;background:transparent;border:1px solid transparent;border-radius:8px;color:var(--muted);font-size:13px;font-weight:600;cursor:pointer;transition:all .15s}
+.bo-nav-item:hover{background:var(--card-hover);color:var(--text);border-color:var(--border)}
+.bo-nav-item.active{background:rgba(37,99,235,.18);color:var(--blue-light);border-color:rgba(37,99,235,.45)}
+.bo-main{flex:1;min-width:0;display:flex;flex-direction:column}
+.bo-main .container{padding:20px 24px;max-width:none;flex:1}
+.batch-job-card{background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:12px}
+.batch-job-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
+.batch-job-title{font-weight:700;font-size:14px}
+.batch-job-meta{font-size:12px;color:var(--muted);margin-top:6px;line-height:1.45}
+.batch-status{display:inline-block;padding:2px 8px;border-radius:8px;font-size:10px;font-weight:700;text-transform:uppercase}
+.batch-status.ok{background:rgba(16,185,129,.15);color:var(--green)}
+.batch-status.failed{background:rgba(239,68,68,.15);color:var(--red)}
+.batch-status.partial{background:rgba(249,115,22,.15);color:var(--orange)}
+.batch-status.running{background:rgba(96,165,250,.15);color:var(--blue-light)}
+.batch-runs-table{font-size:12px}
+@media(max-width:1024px){
+  .app-layout{flex-direction:column}
+  .bo-sidebar{width:100%;flex-direction:row;flex-wrap:wrap;border-right:none;border-bottom:1px solid var(--border);padding:10px}
+  .bo-sidebar-label{width:100%;padding:4px 8px}
+  .bo-nav-item{width:auto;flex:1 1 auto;min-width:140px}
+}
 </style>
 </head>
 <body>
@@ -333,6 +359,15 @@ tr:hover td{background:var(--card-hover)}
 </div>
 </div>
 
+<div class="app-layout">
+<aside class="bo-sidebar" aria-label="Herramientas">
+<div class="bo-sidebar-label">Herramientas</div>
+<button type="button" class="bo-nav-item" onclick="showTab('procesos')" id="nav-procesos">⚙️ Procesos batch</button>
+<button type="button" class="bo-nav-item bo-write" onclick="showTab('soporte')" id="nav-soporte">💬 Soporte WA</button>
+<button type="button" class="bo-nav-item" onclick="showTab('creditmodel')" id="nav-creditmodel">📈 Modelo líneas</button>
+</aside>
+
+<div class="bo-main">
 <div class="container">
 
 <div class="tabs">
@@ -341,10 +376,8 @@ tr:hover td{background:var(--card-hover)}
 <button class="tab" onclick="showTab('pagos')" id="tab-pagos">💸 Pagos a distribuidores</button>
 <button class="tab" onclick="showTab('cobranzas')" id="tab-cobranzas">💰 Cobranzas</button>
 <button class="tab" onclick="showTab('scoring')" id="tab-scoring">🎯 Score bodegas</button>
-<button class="tab" onclick="showTab('creditmodel')" id="tab-creditmodel">📈 Modelo líneas</button>
 <button class="tab" onclick="showTab('pedidos')" id="tab-pedidos">📋 Pedidos</button>
 <button class="tab" onclick="showTab('vendedores')" id="tab-vendedores">🧑‍💼 Vendedores</button>
-<button class="tab bo-write" onclick="showTab('soporte')" id="tab-soporte">💬 Soporte WA</button>
 </div>
 
 <!-- DASHBOARD TAB -->
@@ -441,17 +474,18 @@ tr:hover td{background:var(--card-hover)}
 <button class="btn btn-outline btn-small" onclick="exportScoringCSV()">📥 CSV</button>
 </span>
 </h2>
-<p style="font-size:13px;color:var(--muted);margin:-8px 0 16px;max-width:720px">
+<p style="font-size:13px;color:var(--muted);margin:-8px 0 16px;max-width:820px">
 Calcula un score 0–100 por bodega: <strong>pagos 40%</strong>, <strong>actividad 30%</strong>, <strong>WhatsApp 15%</strong>, <strong>crédito 15%</strong>.
-La vista previa no modifica datos. <em>Ejecutar y guardar</em> escribe el resultado en <code>scoring</code> (visible en menú LÍNEA del bot).
+<strong>Score hoy</strong> es el modelo operativo en vivo. <strong>Score alta</strong> y <strong>línea alta</strong> son el snapshot al dar de alta (proxy según tier DIMAX).
+<em>Ejecutar y guardar</em> persiste el score hoy en <code>scoring</code> (menú LÍNEA del bot).
 </p>
 <div id="scoringKpis" class="kpi-grid" style="margin-bottom:16px"></div>
 <div class="table-wrap">
 <table>
 <thead><tr>
-<th>#</th><th>Bodega</th><th>Score</th><th>Grado</th><th>Pagos</th><th>Actividad</th><th>WA</th><th>Crédito</th><th>Línea disp.</th><th>Scoring BD</th><th></th>
+<th>#</th><th>Bodega</th><th>Score hoy</th><th>Score alta</th><th>Línea alta</th><th>Línea hoy</th><th>Grado</th><th>Pagos</th><th>Actividad</th><th>WA</th><th>Crédito</th><th>Scoring BD</th><th></th>
 </tr></thead>
-<tbody id="scoringBody"><tr><td colspan="11" class="empty">Abre esta pestaña o pulsa Vista previa.</td></tr></tbody>
+<tbody id="scoringBody"><tr><td colspan="13" class="empty">Abre esta pestaña o pulsa Vista previa.</td></tr></tbody>
 </table>
 </div>
 </div>
@@ -639,7 +673,34 @@ y genera el SQL de alta. <em>Analizar</em> no toca la base; <em>Cargar seleccion
 </div>
 </div>
 
-<!-- SOPORTE WA TAB -->
+<!-- PROCESOS BATCH -->
+<div id="view-procesos" style="display:none">
+<div class="section">
+<h2>⚙️ Procesos batch
+<span style="font-size:12px;color:var(--muted);font-weight:400">ejecutar y monitorear jobs programados</span>
+<button class="btn btn-outline btn-small" style="float:right;margin-top:-4px" onclick="loadBatchJobs()">🔄 Actualizar</button>
+</h2>
+<p style="font-size:13px;color:var(--muted);margin:-8px 0 16px;max-width:820px">
+Jobs operativos (score diario, cobranza, reactivación). <strong>Vista previa</strong> no persiste ni envía WhatsApp.
+La ejecución real requiere contraseña y queda en el historial.
+</p>
+<div id="batchJobsList"><div class="empty">Cargando procesos…</div></div>
+</div>
+<div class="section">
+<h2>Historial de ejecuciones</h2>
+<div class="filters">
+<select id="batchRunsFilter" onchange="loadBatchRuns()"><option value="">Todos los jobs</option></select>
+</div>
+<div class="table-wrap">
+<table class="batch-runs-table">
+<thead><tr><th>Inicio</th><th>Job</th><th>Estado</th><th>Modo</th><th>Procesados</th><th>OK</th><th>Usuario</th><th></th></tr></thead>
+<tbody id="batchRunsBody"><tr><td colspan="8" class="empty">Sin ejecuciones aún.</td></tr></tbody>
+</table>
+</div>
+</div>
+</div>
+
+<!-- SOPORTE WA -->
 <div id="view-soporte" style="display:none">
 
 
@@ -653,7 +714,9 @@ y genera el SQL de alta. <em>Analizar</em> no toca la base; <em>Cargar seleccion
 </div>
 </div>
 
-</div>
+</div><!-- /container -->
+</div><!-- /bo-main -->
+</div><!-- /app-layout -->
 
 <div id="modalContainer"></div>
 <div id="toastContainer"></div>
@@ -705,7 +768,7 @@ function readOnlyBlocked(){
 }
 
 function isReadOnlyAllowedPost(path){
-  return /\/(preview|revalidate|credit-model\/process)$/.test(path);
+  return /\/(preview|revalidate|credit-model\/process|batch\/[^/]+\/run)$/.test(path);
 }
 
 function login(){
@@ -733,6 +796,8 @@ function login(){
       applyReadOnlyUi();
       refreshAll();
       if(location.hash === '#soporte') showTab('soporte');
+      else if(location.hash === '#procesos') showTab('procesos');
+      else if(location.hash === '#creditmodel') showTab('creditmodel');
     })
     .catch(function(e){document.getElementById('loginError').textContent = e.message});
 }
@@ -773,17 +838,36 @@ function apiPatch(path, body){
   }).then(function(r){ return r.json().then(function(d){ return {ok:r.ok,d:d}; }); });
 }
 
+var MAIN_TABS = ['dashboard','bodegas','pagos','cobranzas','scoring','pedidos','vendedores'];
+var SIDEBAR_NAV = ['procesos','soporte','creditmodel'];
+var ALL_VIEWS = MAIN_TABS.concat(SIDEBAR_NAV);
+
 function showTab(name){
-  var active = document.querySelector('.tab.active');
-  var activeId = active ? active.id.replace('tab-','') : null;
+  var activeTab = document.querySelector('.tab.active');
+  var activeNav = document.querySelector('.bo-nav-item.active');
+  var activeId = activeTab ? activeTab.id.replace('tab-','') : (activeNav ? activeNav.id.replace('nav-','') : null);
   if(activeId === name) return;
 
-  ['dashboard','bodegas','pagos','cobranzas','scoring','creditmodel','pedidos','vendedores','soporte'].forEach(function(t){
+  ALL_VIEWS.forEach(function(t){
     var el = document.getElementById('view-'+t);
     if(el) el.style.display = (t===name ? 'block':'none');
     var tb = document.getElementById('tab-'+t);
     if(tb) tb.classList.toggle('active', t===name);
+    var nav = document.getElementById('nav-'+t);
+    if(nav) nav.classList.toggle('active', t===name);
   });
+  if(SIDEBAR_NAV.indexOf(name) >= 0){
+    MAIN_TABS.forEach(function(t){
+      var tb = document.getElementById('tab-'+t);
+      if(tb) tb.classList.remove('active');
+    });
+  }
+  if(MAIN_TABS.indexOf(name) >= 0){
+    SIDEBAR_NAV.forEach(function(t){
+      var nav = document.getElementById('nav-'+t);
+      if(nav) nav.classList.remove('active');
+    });
+  }
 
   var labels = {
     dashboard: 'Cargando dashboard…',
@@ -794,19 +878,20 @@ function showTab(name){
     creditmodel: 'Listo para analizar Excel…',
     pedidos: 'Cargando pedidos…',
     vendedores: 'Cargando vendedores…',
-    soporte: 'Cargando inbox WhatsApp…'
+    soporte: 'Cargando inbox WhatsApp…',
+    procesos: 'Cargando procesos batch…'
   };
   var loaders = {
     dashboard: refreshAll,
     bodegas: loadBodegas,
     pagos: loadPagos,
-    dashboard: function(){ loadGMV('mes'); },
     cobranzas: loadCobranzas,
     scoring: function(){ return loadScoring(false); },
     creditmodel: function(){ return Promise.resolve(); },
     pedidos: loadPedidos,
     vendedores: loadVendedores,
-    soporte: loadSoporteInbox
+    soporte: loadSoporteInbox,
+    procesos: loadBatchCenter
   };
   var loadFn = loaders[name];
   if(!loadFn){
@@ -1246,11 +1331,13 @@ function renderScoringKpis(d){
 }
 
 function openBodegaFromScoring(id){
-  ['dashboard','bodegas','pagos','cobranzas','scoring','creditmodel','pedidos','vendedores','soporte'].forEach(function(t){
+  ALL_VIEWS.forEach(function(t){
     var el = document.getElementById('view-'+t);
     if(el) el.style.display = (t === 'bodegas' ? 'block' : 'none');
     var tb = document.getElementById('tab-'+t);
     if(tb) tb.classList.toggle('active', t === 'bodegas');
+    var nav = document.getElementById('nav-'+t);
+    if(nav) nav.classList.remove('active');
   });
   openBodegaDetail(id);
 }
@@ -1259,23 +1346,27 @@ function renderScoringTable(rows){
   var body = document.getElementById('scoringBody');
   if(!body) return;
   if(!rows || !rows.length){
-    body.innerHTML = '<tr><td colspan="11" class="empty">Sin bodegas en este filtro.</td></tr>';
+    body.innerHTML = '<tr><td colspan="13" class="empty">Sin bodegas en este filtro.</td></tr>';
     return;
   }
   body.innerHTML = rows.map(function(r, i){
     var bd = r.breakdown || {};
     var accent = scoreAccent(r.grade || 'C');
     var prev = r.scoring_anterior != null ? Math.round(r.scoring_anterior) : '—';
+    var alta = r.scoring_alta != null ? r.scoring_alta : '—';
+    var lineaAlta = r.linea_alta != null ? ('S/'+Number(r.linea_alta).toFixed(0)) : '—';
     return '<tr class="clickable" onclick="openBodegaFromScoring(\''+r.bodega_id+'\')">'+
       '<td>'+(i+1)+'</td>'+
       '<td><strong>'+escAttr(r.nombre)+'</strong><div style="font-size:11px;color:var(--muted)">'+escAttr(r.distrito||'')+'</div></td>'+
       '<td><span style="font-weight:800;color:'+accent+'">'+r.score+'</span></td>'+
+      '<td>'+alta+'</td>'+
+      '<td>'+lineaAlta+'</td>'+
+      '<td>S/'+Number(r.linea_disponible||0).toFixed(0)+' / S/'+Number(r.linea_aprobada||0).toFixed(0)+'</td>'+
       '<td><span class="badge" style="border-color:'+accent+';color:'+accent+'">'+escAttr(r.grade)+' · '+escAttr(r.label||'')+'</span></td>'+
       '<td>'+(bd.pagos != null ? bd.pagos : '—')+'</td>'+
       '<td>'+(bd.actividad != null ? bd.actividad : '—')+'</td>'+
       '<td>'+(bd.engagement != null ? bd.engagement : '—')+'</td>'+
       '<td>'+(bd.credito != null ? bd.credito : '—')+'</td>'+
-      '<td>S/'+Number(r.linea_disponible||0).toFixed(2)+' / S/'+Number(r.linea_aprobada||0).toFixed(2)+'</td>'+
       '<td>'+prev+'</td>'+
       '<td><button type="button" class="btn btn-outline btn-small" onclick="event.stopPropagation();openBodegaFromScoring(\''+r.bodega_id+'\')">Perfil</button></td>'+
     '</tr>';
@@ -1315,15 +1406,156 @@ function ejecutarScoringModel(){
 function exportScoringCSV(){
   var rows = scoringData && scoringData.bodegas;
   if(!rows || !rows.length){ showToast('Calcula el score primero','error'); return; }
-  var out = [['Rank','Bodega','Distrito','Score','Grado','Pagos','Actividad','WhatsApp','Credito','Linea disp','Linea aprob','Scoring BD anterior','Telefono','Estado']];
+  var out = [['Rank','Bodega','Distrito','Score hoy','Score alta','Linea alta','Linea disp','Linea aprob','Grado','Pagos','Actividad','WhatsApp','Credito','Scoring BD','Telefono','Estado']];
   rows.forEach(function(r, i){
     var bd = r.breakdown || {};
     out.push([
-      i+1, r.nombre||'', r.distrito||'', r.score||0, r.grade||'', bd.pagos||'', bd.actividad||'', bd.engagement||'', bd.credito||'',
-      r.linea_disponible||0, r.linea_aprobada||0, r.scoring_anterior != null ? r.scoring_anterior : '', r.telefono_whatsapp||'', r.estado||''
+      i+1, r.nombre||'', r.distrito||'', r.score||0, r.scoring_alta != null ? r.scoring_alta : '',
+      r.linea_alta != null ? r.linea_alta : '',
+      r.linea_disponible||0, r.linea_aprobada||0, r.grade||'', bd.pagos||'', bd.actividad||'', bd.engagement||'', bd.credito||'',
+      r.scoring_anterior != null ? r.scoring_anterior : '', r.telefono_whatsapp||'', r.estado||''
     ]);
   });
   downloadCSV(out,'score_bodegas');
+}
+
+var batchJobsData = [];
+
+function batchStatusBadge(status){
+  var s = (status || 'unknown').toLowerCase();
+  return '<span class="batch-status '+escAttr(s)+'">'+escAttr(s)+'</span>';
+}
+
+function formatBatchWhen(iso){
+  if(!iso) return '—';
+  try { return new Date(iso).toLocaleString('es-PE'); } catch(e){ return iso; }
+}
+
+function renderBatchJobs(jobs){
+  var el = document.getElementById('batchJobsList');
+  if(!el) return;
+  if(!jobs || !jobs.length){
+    el.innerHTML = '<div class="empty">Sin procesos registrados.</div>';
+    return;
+  }
+  el.innerHTML = jobs.map(function(j){
+    var lr = j.ultima_ejecucion || {};
+    var st = lr.status ? batchStatusBadge(lr.status) : '<span style="color:var(--muted);font-size:12px">Sin ejecutar</span>';
+    var wa = j.afecta_whatsapp ? '<span class="badge" style="margin-left:6px;border-color:var(--orange);color:var(--orange)">WA</span>' : '';
+    return '<div class="batch-job-card">'+
+      '<div class="batch-job-head">'+
+        '<div><div class="batch-job-title">'+escAttr(j.nombre)+wa+'</div>'+
+        '<div class="batch-job-meta">'+escAttr(j.descripcion)+'<br><span style="opacity:.85">Sugerido: '+escAttr(j.frecuencia_sugerida)+'</span></div></div>'+
+        '<div style="text-align:right">'+st+
+          '<div style="font-size:11px;color:var(--muted);margin-top:6px">'+formatBatchWhen(lr.started_at)+'</div>'+
+        '</div>'+
+      '</div>'+
+      '<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">'+
+        (j.permite_dry_run ? '<button type="button" class="btn btn-outline btn-small" onclick="runBatchJob(\''+j.id+'\',true)">👁 Vista previa</button>' : '')+
+        '<button type="button" class="btn btn-green btn-small bo-write" onclick="runBatchJob(\''+j.id+'\',false)">▶ Ejecutar</button>'+
+        '<button type="button" class="btn btn-outline btn-small" onclick="filterBatchRuns(\''+j.id+'\')">Ver historial</button>'+
+      '</div></div>';
+  }).join('');
+  var sel = document.getElementById('batchRunsFilter');
+  if(sel && sel.options.length <= 1){
+    sel.innerHTML = '<option value="">Todos los jobs</option>'+jobs.map(function(j){
+      return '<option value="'+escAttr(j.id)+'">'+escAttr(j.nombre)+'</option>';
+    }).join('');
+  }
+}
+
+function renderBatchRuns(runs){
+  var body = document.getElementById('batchRunsBody');
+  if(!body) return;
+  if(!runs || !runs.length){
+    body.innerHTML = '<tr><td colspan="8" class="empty">Sin ejecuciones aún.</td></tr>';
+    return;
+  }
+  body.innerHTML = runs.map(function(r){
+    var stats = r.stats || {};
+    return '<tr>'+
+      '<td>'+formatBatchWhen(r.started_at)+'</td>'+
+      '<td><code>'+escAttr(r.job_id)+'</code></td>'+
+      '<td>'+batchStatusBadge(r.status)+'</td>'+
+      '<td>'+(r.dry_run ? 'preview' : 'real')+'</td>'+
+      '<td>'+(stats.processed != null ? stats.processed : '—')+'</td>'+
+      '<td>'+(stats.ok != null ? stats.ok : '—')+'</td>'+
+      '<td style="font-size:11px">'+escAttr(r.user_email||'')+'</td>'+
+      '<td>'+(r.error ? '<span style="color:var(--red);font-size:11px">'+escAttr(String(r.error).slice(0,40))+'</span>' : '')+'</td>'+
+    '</tr>';
+  }).join('');
+}
+
+function loadBatchJobs(){
+  return api('/api/backoffice/batch/jobs').then(function(d){
+    batchJobsData = d.jobs || [];
+    renderBatchJobs(batchJobsData);
+    return d;
+  });
+}
+
+function loadBatchRuns(){
+  var jobId = document.getElementById('batchRunsFilter') ? document.getElementById('batchRunsFilter').value : '';
+  var path = '/api/backoffice/batch/runs?limit=50';
+  if(jobId) path += '&job_id='+encodeURIComponent(jobId);
+  return api(path).then(function(d){
+    renderBatchRuns(d.runs || []);
+    return d;
+  });
+}
+
+function loadBatchCenter(){
+  return Promise.all([loadBatchJobs(), loadBatchRuns()]).then(function(){ return null; });
+}
+
+function filterBatchRuns(jobId){
+  var sel = document.getElementById('batchRunsFilter');
+  if(sel) sel.value = jobId || '';
+  loadBatchRuns();
+  var el = document.getElementById('batchRunsBody');
+  if(el && el.scrollIntoView) el.scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+
+function runBatchJob(jobId, dryRun){
+  if(!dryRun && isReadOnly()){ showToast('Solo lectura','error'); return; }
+  if(dryRun){
+    showPanelLoader('Vista previa del proceso…', true);
+    apiPost('/api/backoffice/batch/'+encodeURIComponent(jobId)+'/run', {dry_run:true, comentario:'dry-run', password:''})
+      .then(function(x){
+        hidePanelLoader();
+        if(!x.ok){ showToast((x.d && x.d.detail) || 'Error','error'); return; }
+        showToast('Preview: '+(x.d.processed||0)+' procesados','success');
+        loadBatchCenter();
+      }).catch(function(e){ hidePanelLoader(); showToast(e.message,'error'); });
+    return;
+  }
+  document.getElementById('modalContainer').innerHTML =
+    '<div class="modal-overlay open" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:480px"><h3>▶ Ejecutar proceso</h3>'+
+    '<p style="font-size:13px;color:var(--muted);margin-bottom:12px">Job: <code>'+escAttr(jobId)+'</code></p>'+
+    '<div class="modal-field"><label>Comentario (mín. 8 caracteres)</label><input id="batchRunComentario" class="input" value="Ejecución manual desde backoffice"></div>'+
+    '<div class="modal-field"><label>Contraseña</label><input type="password" id="batchRunPass" class="input"></div>'+
+    '<div class="modal-actions"><button class="btn btn-outline" onclick="closeModal()">Cancelar</button>'+
+    '<button class="btn btn-green" onclick="confirmBatchRun(\''+jobId+'\')">Ejecutar</button></div></div></div>';
+  window._batchRunJobId = jobId;
+}
+
+function confirmBatchRun(jobId){
+  var pass = (document.getElementById('batchRunPass')||{}).value || '';
+  var com = (document.getElementById('batchRunComentario')||{}).value || '';
+  if(com.trim().length < 8){ showToast('Comentario mínimo 8 caracteres','error'); return; }
+  if(!pass){ showToast('Ingresa contraseña','error'); return; }
+  closeModal();
+  showPanelLoader('Ejecutando proceso…', true);
+  var mode = window.MODE_FILTER || localStorage.getItem('circa_mode') || 'real';
+  apiPost('/api/backoffice/batch/'+encodeURIComponent(jobId)+'/run', {
+    dry_run: false, password: pass, comentario: com, test: mode
+  }).then(function(x){
+    hidePanelLoader();
+    if(!x.ok){ showToast((x.d && x.d.detail) || 'Error al ejecutar','error'); return; }
+    showToast('Listo: '+(x.d.ok||0)+' OK / '+(x.d.processed||0)+' proc.','success');
+    loadBatchCenter();
+    if(jobId === 'score_bodegas_diario') loadScoring(false);
+  }).catch(function(e){ hidePanelLoader(); showToast(e.message,'error'); });
 }
 
 var creditModelData = null;
@@ -1597,6 +1829,8 @@ function notifyPinResult(msg, type){
       applyReadOnlyUi();
       refreshAll();
       if(location.hash === '#soporte') showTab('soporte');
+      else if(location.hash === '#procesos') showTab('procesos');
+      else if(location.hash === '#creditmodel') showTab('creditmodel');
     }).catch(function(){ sessionStorage.clear(); localStorage.removeItem('circa_bo_token'); });
   }
 })();
@@ -1673,6 +1907,7 @@ function reloadActiveTab(){
   if(id === 'cobranzas') return loadCobranzas();
   if(id === 'scoring') return loadScoring(false);
   if(id === 'creditmodel') return Promise.resolve();
+  if(id === 'procesos') return loadBatchCenter();
   if(id === 'pedidos') return loadPedidos();
   if(id === 'bodegas') return loadBodegas();
   if(id === 'vendedores') return loadVendedores();

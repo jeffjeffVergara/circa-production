@@ -23,6 +23,7 @@ from pydantic import BaseModel
 
 from app.services import db
 from app.services.backoffice_auth import get_backoffice_user, get_backoffice_writer, verify_reauth_password
+from app.services.bodega_onboarding_snapshot import onboarding_alta_fields
 
 logger = logging.getLogger("circa.import_dimax")
 
@@ -348,6 +349,7 @@ async def import_dimax_confirm_handler(
             "estado": "inactivo",
             "linea_aprobada": body.linea_aprobada,
             "linea_disponible": 0,
+            **onboarding_alta_fields(body.linea_aprobada),
         }
         result = db.sb.table("bodegas").insert(insert_data).execute()
         if result.data:

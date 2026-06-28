@@ -28,6 +28,8 @@ def test_batch_scores_and_persist_flag():
         "linea_aprobada": 500,
         "linea_disponible": 500,
         "scoring": 0,
+        "scoring_alta": 90,
+        "linea_alta": 500,
         "distrito": "Lima",
     }
 
@@ -52,6 +54,8 @@ def test_batch_scores_and_persist_flag():
 
     assert preview["total"] == 1
     assert preview["bodegas"][0]["score"] >= 0
+    assert preview["bodegas"][0]["scoring_alta"] == 90
+    assert preview["bodegas"][0]["linea_alta"] == 500
     assert preview["persistido"] is False
     assert saved["persistido"] is True
     assert saved["actualizadas"] == 1

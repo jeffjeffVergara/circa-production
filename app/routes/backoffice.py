@@ -28,6 +28,7 @@ from app.services.backoffice_auth import (
     verify_reauth_password,
 )
 from app.services.distribuidor_routing import DIMAX_DISTRIBUIDOR_ID, ZOOM_DISTRIBUIDOR_ID
+from app.services.bodega_onboarding_snapshot import onboarding_alta_fields
 from app.services import dimax_bodega_excel as dimax_bod
 from app.services import excel_import as xls
 from app.services.preventa_excel import match_bodega_por_nombre, parse_preventa_excel
@@ -391,6 +392,7 @@ def _insert_bodega_record(
         "es_test": es_test,
         "solo_dni_sin_ruc": solo_dni_sin_ruc,
         "en_piloto": True,
+        **onboarding_alta_fields(DEFAULT_LINEA_APROBADA),
     }
     db.sb.table("bodegas").insert(payload).execute()
     return bodega_id, payload
@@ -1276,6 +1278,71 @@ async def credit_model_load(
         comment=body.comentario.strip(),
         after={"ok": result.get("ok"), "fallo": result.get("fallo")},
     )
+    return result
+
+
+class BatchRunRequest(BaseModel):
+    dry_run: bool = False
+    test: Optional[str] = None
+    comentario: str = Field(default="dry-run", min_length=1, max_length=500)
+    password: str = Field(default="")
+
+
+@router.get("/batch/jobs")
+async def batch_jobs_list(user: dict = Depends(get_backoffice_user)):
+    from app.services.batch_jobs.runner import list_jobs_with_status
+
+    return {"jobs": list_jobs_with_status()}
+
+
+@router.get("/batch/runs")
+async def batch_runs_list(
+    job_id: Optional[str] = None,
+    limit: int = 40,
+    user: dict = Depends(get_backoffice_user),
+):
+    from app.services.batch_jobs.runner import fetch_runs
+
+    return {"runs": fetch_runs(job_id=job_id, limit=min(limit, 100))}
+
+
+@router.post("/batch/{job_id}/run")
+async def batch_job_run(
+    job_id: str,
+    body: BatchRunRequest,
+    user: dict = Depends(get_backoffice_user),
+):
+    from app.services.batch_jobs.runner import run_batch_job
+
+    if not body.dry_run:
+        if user.get("role") == "viewer":
+            raise HTTPException(status_code=403, detail="Solo lectura: usa dry-run o pide acceso de escritura")
+        if len(body.comentario.strip()) < 8:
+            raise HTTPException(status_code=400, detail="Comentario mínimo 8 caracteres")
+        verify_reauth_password(body.password)
+
+    try:
+        result = await run_batch_job(
+            job_id,
+            test=body.test,
+            dry_run=body.dry_run,
+            user_email=user.get("email", ""),
+            comment=body.comentario.strip() if not body.dry_run else "dry-run",
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+    if not body.dry_run and user.get("role") != "viewer":
+        log_action(
+            user=user,
+            action="batch_run",
+            entity_type="batch",
+            entity_id=job_id,
+            comment=body.comentario.strip(),
+            after=result,
+        )
     return result
 
 

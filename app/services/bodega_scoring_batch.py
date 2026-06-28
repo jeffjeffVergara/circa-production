@@ -21,7 +21,7 @@ def _chunked(ids: list[str]) -> list[list[str]]:
 def _fetch_bodegas(test: Optional[str]) -> list[dict[str, Any]]:
     q = db.sb.table("bodegas").select(
         "id, razon_social, nombre_comercial, representante_legal, telefono_whatsapp,"
-        "estado, es_test, linea_aprobada, linea_disponible, scoring, distrito"
+        "estado, es_test, linea_aprobada, linea_disponible, scoring, scoring_alta, linea_alta, distrito"
     )
     if test == "real":
         q = q.eq("es_test", False)
@@ -135,6 +135,10 @@ def run_bodega_scoring_batch(
             or b.get("representante_legal")
             or "?"
         )
+        linea_alta = b.get("linea_alta")
+        scoring_alta = b.get("scoring_alta")
+        score_hoy = score_payload["score"]
+
         results.append({
             "bodega_id": bid,
             "nombre": nombre,
@@ -144,8 +148,10 @@ def run_bodega_scoring_batch(
             "distrito": b.get("distrito"),
             "linea_aprobada": float(b.get("linea_aprobada") or 0),
             "linea_disponible": float(b.get("linea_disponible") or 0),
+            "linea_alta": float(linea_alta) if linea_alta is not None else None,
+            "scoring_alta": int(float(scoring_alta)) if scoring_alta is not None else None,
             "scoring_anterior": float(b.get("scoring") or 0) if b.get("scoring") is not None else None,
-            "score": score_payload["score"],
+            "score": score_hoy,
             "grade": grade,
             "label": score_payload.get("label"),
             "breakdown": score_payload.get("breakdown") or {},

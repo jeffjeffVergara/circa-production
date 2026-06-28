@@ -12,6 +12,7 @@ from openpyxl import Workbook, load_workbook
 from app.routes import distribuidor as dist
 from app.services import db
 from app.services.backoffice_audit import log_action
+from app.services.bodega_onboarding_snapshot import onboarding_alta_fields
 from app.services.distribuidor_routing import DIMAX_DISTRIBUIDOR_ID, ZOOM_DISTRIBUIDOR_ID
 
 # ── Plantillas: encabezados ───────────────────────────────────────
@@ -341,6 +342,7 @@ def import_bodegas_rows(
                 "linea_disponible": 0,
                 "distribuidor_id": dist_id,
                 "en_piloto": True,
+                **onboarding_alta_fields(normalized["linea_aprobada"]),
             }
             payload.pop("fila", None)
             payload.pop("provincia", None)  # columna no existe en bodegas (solo preview/UI)
