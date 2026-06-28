@@ -332,6 +332,18 @@ tr:hover td{background:var(--card-hover)}
 .batch-status.partial{background:rgba(249,115,22,.15);color:var(--orange)}
 .batch-status.running{background:rgba(96,165,250,.15);color:var(--blue-light)}
 .batch-runs-table{font-size:12px}
+
+/* Score bodegas tabla */
+.scoring-table thead th{vertical-align:bottom}
+.scoring-th-sort{cursor:pointer;user-select:none;white-space:nowrap}
+.scoring-th-sort:hover{color:var(--text)}
+.scoring-sort-ind{font-size:10px;margin-left:2px;opacity:.7}
+.scoring-filter-row th{padding:6px 4px 10px;border-bottom:1px solid var(--border)}
+.scoring-col-filter{width:100%;min-width:52px;padding:5px 6px;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);font-size:11px;box-sizing:border-box}
+.scoring-col-filter:focus{outline:none;border-color:var(--blue)}
+.scoring-col-filter::placeholder{color:var(--muted);opacity:.75}
+.scoring-col-filter--grade{min-width:44px}
+.btn:disabled,.btn[disabled]{opacity:.42;cursor:not-allowed}
 </style>
 </head>
 <body>
@@ -484,23 +496,51 @@ tr:hover td{background:var(--card-hover)}
 <h2>🎯 Score de bodegas
 <span style="font-size:12px;color:var(--muted);font-weight:400" id="scoringInfoLine">modelo operativo Circa</span>
 <span style="float:right;display:flex;gap:8px;margin-top:-4px">
-<button class="btn btn-outline btn-small" onclick="loadScoring(false)">👁 Vista previa</button>
-<button class="btn btn-green btn-small bo-write" onclick="ejecutarScoringModel()">▶ Ejecutar y guardar</button>
+<button type="button" class="btn btn-green btn-small bo-write" disabled title="En definición">▶ Ejecutar y guardar</button>
 <button class="btn btn-outline btn-small" onclick="exportScoringCSV()">📥 CSV</button>
 </span>
 </h2>
 <p style="font-size:13px;color:var(--muted);margin:-8px 0 16px;max-width:820px">
 Calcula un score 0–100 por bodega: <strong>pagos 40%</strong>, <strong>actividad 30%</strong>, <strong>WhatsApp 15%</strong>, <strong>crédito 15%</strong>.
 <strong>Score hoy</strong> es el modelo operativo en vivo. <strong>Score alta</strong> y <strong>línea alta</strong> son el snapshot al dar de alta (proxy según tier DIMAX).
-<em>Ejecutar y guardar</em> persiste el score hoy en <code>scoring</code> (menú LÍNEA del bot).
+Pasa el cursor sobre cada columna para ver su significado. Usa los filtros debajo de los encabezados o haz clic en un encabezado para ordenar.
 </p>
 <div id="scoringKpis" class="kpi-grid" style="margin-bottom:16px"></div>
 <div class="table-wrap">
-<table>
-<thead><tr>
-<th>#</th><th>Bodega</th><th>Score hoy</th><th>Score alta</th><th>Línea alta</th><th>Línea hoy</th><th>Grado</th><th>Pagos</th><th>Actividad</th><th>WA</th><th>Crédito</th><th>Scoring BD</th><th></th>
-</tr></thead>
-<tbody id="scoringBody"><tr><td colspan="13" class="empty">Abre esta pestaña o pulsa Vista previa.</td></tr></tbody>
+<table class="scoring-table">
+<thead>
+<tr class="scoring-head-row">
+<th>#</th>
+<th class="scoring-th-sort" data-sort="nombre" onclick="sortScoringCol('nombre')" title="Nombre comercial y distrito de la bodega">Bodega <span class="scoring-sort-ind" data-sort-ind="nombre"></span></th>
+<th class="scoring-th-sort" data-sort="score" onclick="sortScoringCol('score')" title="Score operativo 0–100 en vivo. Combina pagos (40%), actividad (30%), WA (15%) y crédito (15%).">Score hoy <span class="scoring-sort-ind" data-sort-ind="score"></span></th>
+<th class="scoring-th-sort" data-sort="scoring_alta" onclick="sortScoringCol('scoring_alta')" title="Snapshot del score al momento del alta (proxy según tier DIMAX).">Score alta <span class="scoring-sort-ind" data-sort-ind="scoring_alta"></span></th>
+<th class="scoring-th-sort" data-sort="linea_alta" onclick="sortScoringCol('linea_alta')" title="Línea de crédito asignada cuando se dio de alta la bodega.">Línea alta <span class="scoring-sort-ind" data-sort-ind="linea_alta"></span></th>
+<th class="scoring-th-sort" data-sort="linea" onclick="sortScoringCol('linea')" title="Línea disponible y aprobada hoy (S/ disp / S/ aprob).">Línea hoy <span class="scoring-sort-ind" data-sort-ind="linea"></span></th>
+<th class="scoring-th-sort" data-sort="grade" onclick="sortScoringCol('grade')" title="Grado derivado del score: A Excelente (≥85), B Bueno (≥70), C Regular (≥55), D En riesgo (&lt;55).">Grado <span class="scoring-sort-ind" data-sort-ind="grade"></span></th>
+<th class="scoring-th-sort" data-sort="pagos" onclick="sortScoringCol('pagos')" title="Sub-score 0–100: puntualidad en pedidos financiados (pagados vs vencidos). Peso 40% del score total.">Pagos <span class="scoring-sort-ind" data-sort-ind="pagos"></span></th>
+<th class="scoring-th-sort" data-sort="actividad" onclick="sortScoringCol('actividad')" title="Sub-score 0–100: frecuencia y recencia de compras. Peso 30% del score total.">Actividad <span class="scoring-sort-ind" data-sort-ind="actividad"></span></th>
+<th class="scoring-th-sort" data-sort="engagement" onclick="sortScoringCol('engagement')" title="Sub-score 0–100: engagement WhatsApp (mensajes de la bodega vs mensajes de Circa). Peso 15% del score total.">WA <span class="scoring-sort-ind" data-sort-ind="engagement"></span></th>
+<th class="scoring-th-sort" data-sort="credito" onclick="sortScoringCol('credito')" title="Sub-score 0–100: uso sano de la línea de crédito (penaliza sobregiro). Peso 15% del score total.">Crédito <span class="scoring-sort-ind" data-sort-ind="credito"></span></th>
+<th class="scoring-th-sort" data-sort="scoring_bd" onclick="sortScoringCol('scoring_bd')" title="Último score guardado en la columna scoring de la base de datos.">Scoring BD <span class="scoring-sort-ind" data-sort-ind="scoring_bd"></span></th>
+<th></th>
+</tr>
+<tr class="scoring-filter-row">
+<th></th>
+<th><input type="text" class="scoring-col-filter" data-col="nombre" placeholder="Buscar…" oninput="onScoringFilterInput()" autocomplete="off"></th>
+<th><input type="text" class="scoring-col-filter" data-col="score" placeholder="≥" oninput="onScoringFilterInput()" autocomplete="off"></th>
+<th><input type="text" class="scoring-col-filter" data-col="scoring_alta" placeholder="≥" oninput="onScoringFilterInput()" autocomplete="off"></th>
+<th><input type="text" class="scoring-col-filter" data-col="linea_alta" placeholder="≥" oninput="onScoringFilterInput()" autocomplete="off"></th>
+<th><input type="text" class="scoring-col-filter" data-col="linea" placeholder="≥" oninput="onScoringFilterInput()" autocomplete="off"></th>
+<th><input type="text" class="scoring-col-filter scoring-col-filter--grade" data-col="grade" placeholder="A–D" oninput="onScoringFilterInput()" autocomplete="off"></th>
+<th><input type="text" class="scoring-col-filter" data-col="pagos" placeholder="≥" oninput="onScoringFilterInput()" autocomplete="off"></th>
+<th><input type="text" class="scoring-col-filter" data-col="actividad" placeholder="≥" oninput="onScoringFilterInput()" autocomplete="off"></th>
+<th><input type="text" class="scoring-col-filter" data-col="engagement" placeholder="≥" oninput="onScoringFilterInput()" autocomplete="off"></th>
+<th><input type="text" class="scoring-col-filter" data-col="credito" placeholder="≥" oninput="onScoringFilterInput()" autocomplete="off"></th>
+<th><input type="text" class="scoring-col-filter" data-col="scoring_bd" placeholder="≥" oninput="onScoringFilterInput()" autocomplete="off"></th>
+<th></th>
+</tr>
+</thead>
+<tbody id="scoringBody"><tr><td colspan="13" class="empty">Abre esta pestaña para cargar el score.</td></tr></tbody>
 </table>
 </div>
 </div>
@@ -969,7 +1009,7 @@ function showTab(name){
     bodegas: loadBodegas,
     pagos: loadPagos,
     cobranzas: loadCobranzas,
-    scoring: function(){ return loadScoring(false); },
+    scoring: function(){ return loadScoring(); },
     creditmodel: function(){ return Promise.resolve(); },
     pedidos: loadPedidos,
     vendedores: loadVendedores,
@@ -1395,6 +1435,111 @@ function exportCobranzasCSV(){
 }
 
 var scoringData = null;
+var scoringSort = { col: 'score', dir: 'desc' };
+var scoringFilters = {};
+var scoringFilterTimer = null;
+
+var SCORING_COL_VALUE = {
+  nombre: function(r){ return (r.nombre||'')+' '+(r.distrito||''); },
+  score: function(r){ return r.score; },
+  scoring_alta: function(r){ return r.scoring_alta; },
+  linea_alta: function(r){ return r.linea_alta; },
+  linea: function(r){ return r.linea_disponible; },
+  grade: function(r){ return r.grade; },
+  pagos: function(r){ return (r.breakdown||{}).pagos; },
+  actividad: function(r){ return (r.breakdown||{}).actividad; },
+  engagement: function(r){ return (r.breakdown||{}).engagement; },
+  credito: function(r){ return (r.breakdown||{}).credito; },
+  scoring_bd: function(r){ return r.scoring_anterior; }
+};
+
+var SCORING_NUMERIC_COLS = { score:1, scoring_alta:1, linea_alta:1, linea:1, pagos:1, actividad:1, engagement:1, credito:1, scoring_bd:1 };
+
+function readScoringFilters(){
+  scoringFilters = {};
+  document.querySelectorAll('.scoring-col-filter').forEach(function(inp){
+    var col = inp.getAttribute('data-col');
+    var v = (inp.value || '').trim();
+    if(col && v) scoringFilters[col] = v;
+  });
+}
+
+function matchScoringFilter(val, filter, col){
+  if(!filter) return true;
+  var s = String(val == null || val === '' ? '' : val);
+  if(SCORING_NUMERIC_COLS[col] && /^\d+(\.\d+)?$/.test(filter)){
+    var n = parseFloat(filter);
+    var vn = parseFloat(val);
+    if(isNaN(vn)) return false;
+    return vn >= n;
+  }
+  return s.toLowerCase().indexOf(filter.toLowerCase()) >= 0;
+}
+
+function getScoringDisplayRows(){
+  var rows = (scoringData && scoringData.bodegas) ? scoringData.bodegas.slice() : [];
+  readScoringFilters();
+  rows = rows.filter(function(r){
+    return Object.keys(scoringFilters).every(function(col){
+      var fn = SCORING_COL_VALUE[col];
+      if(!fn) return true;
+      return matchScoringFilter(fn(r), scoringFilters[col], col);
+    });
+  });
+  var col = scoringSort.col;
+  var dir = scoringSort.dir === 'asc' ? 1 : -1;
+  var getter = SCORING_COL_VALUE[col] || SCORING_COL_VALUE.score;
+  rows.sort(function(a, b){
+    var va = getter(a);
+    var vb = getter(b);
+    if(col === 'grade'){
+      var order = { A: 4, B: 3, C: 2, D: 1 };
+      va = order[va] || 0;
+      vb = order[vb] || 0;
+    } else if(col === 'nombre'){
+      va = String(va || '').toLowerCase();
+      vb = String(vb || '').toLowerCase();
+      return va < vb ? -dir : va > vb ? dir : 0;
+    } else {
+      va = va == null || va === '' ? -Infinity : Number(va);
+      vb = vb == null || vb === '' ? -Infinity : Number(vb);
+    }
+    if(va < vb) return -dir;
+    if(va > vb) return dir;
+    return 0;
+  });
+  return rows;
+}
+
+function updateScoringSortIndicators(){
+  document.querySelectorAll('.scoring-sort-ind').forEach(function(el){
+    var col = el.getAttribute('data-sort-ind');
+    if(col === scoringSort.col){
+      el.textContent = scoringSort.dir === 'asc' ? '▲' : '▼';
+    } else {
+      el.textContent = '';
+    }
+  });
+}
+
+function sortScoringCol(col){
+  if(scoringSort.col === col){
+    scoringSort.dir = scoringSort.dir === 'asc' ? 'desc' : 'asc';
+  } else {
+    scoringSort.col = col;
+    scoringSort.dir = (col === 'nombre') ? 'asc' : 'desc';
+  }
+  updateScoringSortIndicators();
+  renderScoringTable();
+}
+
+function onScoringFilterInput(){
+  if(scoringFilterTimer) clearTimeout(scoringFilterTimer);
+  scoringFilterTimer = setTimeout(function(){
+    scoringFilterTimer = null;
+    renderScoringTable();
+  }, 180);
+}
 
 function renderScoringKpis(d){
   var g = d.resumen_grados || {};
@@ -1409,7 +1554,10 @@ function renderScoringKpis(d){
   var info = document.getElementById('scoringInfoLine');
   if(info){
     var when = d.ejecutado_at ? new Date(d.ejecutado_at).toLocaleString('es-PE') : '';
-    info.textContent = (d.persistido ? 'Guardado en BD · ' : 'Vista previa · ') + when;
+    var shown = getScoringDisplayRows().length;
+    var total = d.total || (d.bodegas && d.bodegas.length) || 0;
+    var filt = shown < total ? ' · '+shown+' visibles' : '';
+    info.textContent = (d.persistido ? 'Guardado en BD · ' : 'Modelo en vivo · ') + when + filt;
   }
 }
 
@@ -1428,11 +1576,15 @@ function openBodegaFromScoring(id){
   openBodegaDetail(id);
 }
 
-function renderScoringTable(rows){
+function renderScoringTable(){
   var body = document.getElementById('scoringBody');
   if(!body) return;
-  if(!rows || !rows.length){
-    body.innerHTML = '<tr><td colspan="13" class="empty">Sin bodegas en este filtro.</td></tr>';
+  var rows = getScoringDisplayRows();
+  if(scoringData) renderScoringKpis(scoringData);
+  updateScoringSortIndicators();
+  if(!rows.length){
+    var hasData = scoringData && scoringData.bodegas && scoringData.bodegas.length;
+    body.innerHTML = '<tr><td colspan="13" class="empty">'+(hasData ? 'Sin bodegas con estos filtros.' : 'Sin bodegas en este filtro.')+'</td></tr>';
     return;
   }
   body.innerHTML = rows.map(function(r, i){
@@ -1459,12 +1611,11 @@ function renderScoringTable(rows){
   }).join('');
 }
 
-function loadScoring(persist){
+function loadScoring(){
   return api('/api/backoffice/scoring').then(function(d){
     scoringData = d;
     renderScoringKpis(d);
-    renderScoringTable(d.bodegas || []);
-    if(persist) showToast('Score calculado (vista previa)','success');
+    renderScoringTable();
     return d;
   }).catch(function(e){
     showToast('Error al calcular score: '+e.message,'error');
@@ -1472,26 +1623,12 @@ function loadScoring(persist){
 }
 
 function ejecutarScoringModel(){
-  if(isReadOnly()){ showToast('Solo lectura: no puedes ejecutar el modelo','error'); return; }
-  if(!confirm('¿Ejecutar el modelo y guardar scoring en todas las bodegas del filtro actual (Reales/Pruebas)?')) return;
-  showPanelLoader('Ejecutando modelo de score…');
-  var mode = window.MODE_FILTER || localStorage.getItem('circa_mode') || 'real';
-  apiPost('/api/backoffice/scoring/ejecutar?test='+encodeURIComponent(mode), {}).then(function(x){
-    hidePanelLoader();
-    if(!x.ok){ showToast((x.d && x.d.detail) || 'No se pudo ejecutar','error'); return; }
-    scoringData = x.d;
-    renderScoringKpis(x.d);
-    renderScoringTable(x.d.bodegas || []);
-    showToast('Score guardado en '+((x.d && x.d.actualizadas) || 0)+' bodegas','success');
-  }).catch(function(e){
-    hidePanelLoader();
-    showToast('Error: '+e.message,'error');
-  });
+  showToast('Ejecutar y guardar está en definición','error');
 }
 
 function exportScoringCSV(){
-  var rows = scoringData && scoringData.bodegas;
-  if(!rows || !rows.length){ showToast('Calcula el score primero','error'); return; }
+  var rows = getScoringDisplayRows();
+  if(!rows.length){ showToast('No hay filas para exportar','error'); return; }
   var out = [['Rank','Bodega','Distrito','Score hoy','Score alta','Linea alta','Linea disp','Linea aprob','Grado','Pagos','Actividad','WhatsApp','Credito','Scoring BD','Telefono','Estado']];
   rows.forEach(function(r, i){
     var bd = r.breakdown || {};
@@ -1640,7 +1777,7 @@ function confirmBatchRun(jobId){
     if(!x.ok){ showToast((x.d && x.d.detail) || 'Error al ejecutar','error'); return; }
     showToast('Listo: '+(x.d.ok||0)+' OK / '+(x.d.processed||0)+' proc.','success');
     loadBatchCenter();
-    if(jobId === 'score_bodegas_diario') loadScoring(false);
+    if(jobId === 'score_bodegas_diario') loadScoring();
   }).catch(function(e){ hidePanelLoader(); showToast(e.message,'error'); });
 }
 
@@ -1993,7 +2130,7 @@ function reloadActiveTab(){
   if(id === 'pagos') return loadPagos();
   if(id === 'dashboard') loadGMV(_gmvPeriodoActual || 'mes');
   if(id === 'cobranzas') return loadCobranzas();
-  if(id === 'scoring') return loadScoring(false);
+  if(id === 'scoring') return loadScoring();
   if(id === 'creditmodel') return Promise.resolve();
   if(id === 'procesos') return loadBatchCenter();
   if(id === 'pedidos') return loadPedidos();
