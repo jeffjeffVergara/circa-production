@@ -4,7 +4,7 @@ import os
 os.environ.setdefault("SUPABASE_URL", "http://localhost")
 os.environ.setdefault("SUPABASE_SERVICE_KEY", "test-key")
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.services.batch_jobs.registry import JOBS_BY_ID
 from app.services.batch_jobs.runner import list_jobs_with_status, run_batch_job
@@ -25,8 +25,18 @@ def test_list_jobs_with_status_empty_runs():
 
 
 def test_run_score_job_dry_run():
-    with patch("app.services.batch_jobs.score_diario.run_bodega_scoring_batch") as mock_score:
-        mock_score.return_value = {"total": 2, "bodegas": [], "actualizadas": 0, "resumen_grados": {}}
+    preview_payload = {
+        "job_id": "score_bodegas_diario",
+        "total": 2,
+        "items": [],
+        "con_telefono": 0,
+        "note": "test",
+    }
+    with patch(
+        "app.services.batch_jobs.preview.preview_score_bodegas",
+        new_callable=AsyncMock,
+        return_value=preview_payload,
+    ):
         with patch("app.services.batch_jobs.runner._create_run", return_value="run-1"):
             with patch("app.services.batch_jobs.runner._finish_run"):
                 result = asyncio.run(run_batch_job(
@@ -36,4 +46,3 @@ def test_run_score_job_dry_run():
                 ))
     assert result["dry_run"] is True
     assert result["processed"] == 2
-    mock_score.assert_called_once_with(test="real", persist=False)

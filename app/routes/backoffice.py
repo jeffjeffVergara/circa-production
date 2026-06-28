@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 import httpx
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, UploadFile
 from fastapi.responses import Response
 from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
@@ -1288,6 +1288,101 @@ class BatchRunRequest(BaseModel):
     password: str = Field(default="")
 
 
+class BatchScheduleBody(BaseModel):
+    job_id: str
+    label: Optional[str] = None
+    activo: bool = True
+    frecuencia: str = Field(default="daily")
+    hour: int = Field(default=6, ge=0, le=23)
+    minute: int = Field(default=0, ge=0, le=59)
+    interval_hours: Optional[int] = Field(default=None, ge=1, le=24)
+    weekdays: list[int] = Field(default_factory=list)
+    test_filter: str = Field(default="real")
+
+
+@router.get("/batch/schedules")
+async def batch_schedules_list(user: dict = Depends(get_backoffice_user)):
+    from app.services.batch_jobs.schedules import FREQ_LABELS, list_schedules
+
+    return {"schedules": list_schedules(), "frecuencias": FREQ_LABELS}
+
+
+@router.post("/batch/schedules")
+async def batch_schedule_create(
+    body: BatchScheduleBody,
+    user: dict = Depends(get_backoffice_writer),
+):
+    from app.services.batch_jobs.schedules import create_schedule
+
+    try:
+        row = create_schedule(body.model_dump(), user_email=user.get("email", ""))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+    log_action(
+        user=user,
+        action="batch_schedule_create",
+        entity_type="batch_schedule",
+        entity_id=row.get("id"),
+        comment=body.label or body.job_id,
+        after=row,
+    )
+    return row
+
+
+@router.patch("/batch/schedules/{schedule_id}")
+async def batch_schedule_update(
+    schedule_id: str,
+    body: BatchScheduleBody,
+    user: dict = Depends(get_backoffice_writer),
+):
+    from app.services.batch_jobs.schedules import update_schedule
+
+    try:
+        row = update_schedule(schedule_id, body.model_dump())
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+    return row
+
+
+@router.delete("/batch/schedules/{schedule_id}")
+async def batch_schedule_delete(
+    schedule_id: str,
+    user: dict = Depends(get_backoffice_writer),
+):
+    from app.services.batch_jobs.schedules import delete_schedule
+
+    try:
+        delete_schedule(schedule_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+    return {"ok": True}
+
+
+@router.post("/batch/schedules/run-due")
+async def batch_schedules_run_due(user: dict = Depends(get_backoffice_writer)):
+    """Ejecuta programaciones vencidas (prueba manual o respaldo del cron)."""
+    from app.services.batch_jobs.schedules import run_due_schedules
+
+    return await run_due_schedules()
+
+
+@router.post("/batch/schedules/tick")
+async def batch_schedules_tick(
+    x_cron_secret: Optional[str] = Header(None, alias="X-Cron-Secret"),
+):
+    """Endpoint para cron externo (cada 5–15 min). Requiere BATCH_CRON_SECRET."""
+    secret = os.getenv("BATCH_CRON_SECRET", "").strip()
+    if not secret or not x_cron_secret or not secrets.compare_digest(x_cron_secret, secret):
+        raise HTTPException(status_code=401, detail="X-Cron-Secret inválido")
+    from app.services.batch_jobs.schedules import run_due_schedules
+
+    return await run_due_schedules()
+
+
 @router.get("/batch/jobs")
 async def batch_jobs_list(user: dict = Depends(get_backoffice_user)):
     from app.services.batch_jobs.runner import list_jobs_with_status
@@ -1304,6 +1399,23 @@ async def batch_runs_list(
     from app.services.batch_jobs.runner import fetch_runs
 
     return {"runs": fetch_runs(job_id=job_id, limit=min(limit, 100))}
+
+
+@router.get("/batch/{job_id}/preview")
+async def batch_job_preview(
+    job_id: str,
+    test: Optional[str] = None,
+    user: dict = Depends(get_backoffice_user),
+):
+    from app.services.batch_jobs.runner import preview_batch_job
+
+    mode = test or "real"
+    try:
+        return await preview_batch_job(job_id, test=mode)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/batch/{job_id}/run")

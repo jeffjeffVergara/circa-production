@@ -40,6 +40,17 @@ async def run(
     dry_run: bool = False,
     **_kwargs,
 ) -> dict[str, Any]:
+    if dry_run:
+        from app.services.batch_jobs.preview import preview_score_bodegas
+
+        preview = await preview_score_bodegas(test=test)
+        return {
+            "processed": preview["total"],
+            "ok": preview["total"],
+            "failed": 0,
+            "errors": [],
+            "details": preview,
+        }
     result = run_bodega_scoring_batch(test=test, persist=not dry_run)
     rows = result.get("bodegas") or []
     historial = _persist_daily_scores(rows, dry_run=dry_run)

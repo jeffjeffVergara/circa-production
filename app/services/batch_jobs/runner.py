@@ -171,3 +171,13 @@ async def run_batch_job(
         payload["run_id"] = run_id
     payload["status"] = status
     return payload
+
+
+async def preview_batch_job(
+    job_id: str,
+    *,
+    test: Optional[str] = "real",
+) -> dict[str, Any]:
+    from app.services.batch_jobs.preview import build_preview
+
+    return await build_preview(job_id, test=test)

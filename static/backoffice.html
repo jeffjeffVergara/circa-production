@@ -332,6 +332,14 @@ tr:hover td{background:var(--card-hover)}
 .batch-status.partial{background:rgba(249,115,22,.15);color:var(--orange)}
 .batch-status.running{background:rgba(96,165,250,.15);color:var(--blue-light)}
 .batch-runs-table{font-size:12px}
+.batch-schedule-card{background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:10px;display:grid;grid-template-columns:1fr auto;gap:12px;align-items:start}
+.batch-schedule-card.inactive{opacity:.55}
+.batch-schedule-meta{font-size:12px;color:var(--muted);line-height:1.45;margin-top:4px}
+.batch-schedule-actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.batch-weekdays{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.batch-weekday-label{display:flex;align-items:center;gap:4px;font-size:12px;color:var(--muted);cursor:pointer}
+.batch-freq-fields{display:none;margin-top:10px}
+.batch-freq-fields.open{display:block}
 
 /* Score bodegas tabla */
 .scoring-table thead th{vertical-align:bottom}
@@ -734,10 +742,25 @@ y genera el SQL de alta. <em>Analizar</em> no toca la base; <em>Cargar seleccion
 <button class="btn btn-outline btn-small" style="float:right;margin-top:-4px" onclick="loadBatchJobs()">🔄 Actualizar</button>
 </h2>
 <p style="font-size:13px;color:var(--muted);margin:-8px 0 16px;max-width:820px">
-Jobs operativos (score diario, cobranza, reactivación). <strong>Vista previa</strong> no persiste ni envía WhatsApp.
+Jobs operativos (score diario, cobranza, reactivación). <strong>Vista previa</strong> lista bodegas, teléfonos y acciones que se aplicarían según el modo Reales/Pruebas del header — sin persistir ni enviar WhatsApp.
 La ejecución real requiere contraseña y queda en el historial.
 </p>
 <div id="batchJobsList"><div class="empty">Cargando procesos…</div></div>
+</div>
+<div class="section">
+<h2>🗓 Programación automática
+<button type="button" class="btn btn-green btn-small bo-write" style="float:right;margin-top:-4px" onclick="openBatchScheduleModal()">+ Nueva programación</button>
+</h2>
+<p style="font-size:13px;color:var(--muted);margin:-8px 0 12px;max-width:820px">
+Define hora, día o frecuencia para cada proceso. Un cron externo debe llamar
+<code>POST /api/backoffice/batch/schedules/tick</code> cada 5–15 min con header <code>X-Cron-Secret</code>
+(configura <code>BATCH_CRON_SECRET</code> en el servidor). También puedes ejecutar vencidas manualmente para pruebas.
+</p>
+<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+<button type="button" class="btn btn-outline btn-small bo-write" onclick="runDueBatchSchedules()">▶ Ejecutar vencidas ahora</button>
+<button type="button" class="btn btn-outline btn-small" onclick="loadBatchSchedules()">🔄 Actualizar</button>
+</div>
+<div id="batchSchedulesList"><div class="empty">Cargando programaciones…</div></div>
 </div>
 <div class="section">
 <h2>Historial de ejecuciones</h2>
@@ -1674,7 +1697,7 @@ function renderBatchJobs(jobs){
         '</div>'+
       '</div>'+
       '<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">'+
-        (j.permite_dry_run ? '<button type="button" class="btn btn-outline btn-small" onclick="runBatchJob(\''+j.id+'\',true)">👁 Vista previa</button>' : '')+
+        (j.permite_dry_run ? '<button type="button" class="btn btn-outline btn-small" onclick="previewBatchJob(\''+j.id+'\')">👁 Vista previa</button>' : '')+
         '<button type="button" class="btn btn-green btn-small bo-write" onclick="runBatchJob(\''+j.id+'\',false)">▶ Ejecutar</button>'+
         '<button type="button" class="btn btn-outline btn-small" onclick="filterBatchRuns(\''+j.id+'\')">Ver historial</button>'+
       '</div></div>';
@@ -1728,7 +1751,216 @@ function loadBatchRuns(){
 }
 
 function loadBatchCenter(){
-  return Promise.all([loadBatchJobs(), loadBatchRuns()]).then(function(){ return null; });
+  return Promise.all([loadBatchJobs(), loadBatchSchedules(), loadBatchRuns()]).then(function(){ return null; });
+}
+
+var batchSchedulesData = [];
+var batchFrecuencias = {};
+
+function formatScheduleWhen(iso){
+  if(!iso) return '—';
+  try { return new Date(iso).toLocaleString('es-PE', {dateStyle:'short', timeStyle:'short'}); } catch(e){ return iso; }
+}
+
+function renderBatchSchedules(schedules){
+  var el = document.getElementById('batchSchedulesList');
+  if(!el) return;
+  if(!schedules || !schedules.length){
+    el.innerHTML = '<div class="empty">Sin programaciones. Crea una para automatizar un proceso.</div>';
+    return;
+  }
+  el.innerHTML = schedules.map(function(s){
+    var active = s.activo !== false;
+    var testLbl = s.test_filter === 'test' ? '<span class="import-badge warn">PRUEBAS</span>' : '<span class="import-badge ok">REALES</span>';
+    var st = s.last_run_status ? batchStatusBadge(s.last_run_status) : '—';
+    return '<div class="batch-schedule-card'+(active?'':' inactive')+'">'+
+      '<div>'+
+        '<div style="font-weight:700;font-size:14px">'+escAttr(s.label || s.job_nombre || s.job_id)+' '+testLbl+'</div>'+
+        '<div class="batch-schedule-meta">'+
+          '<code>'+escAttr(s.job_id)+'</code> · '+escAttr(s.descripcion_cron || s.frecuencia_label || '')+
+        '</div>'+
+        '<div class="batch-schedule-meta">Próxima: <strong>'+formatScheduleWhen(s.next_run_at)+'</strong> · Última: '+formatScheduleWhen(s.last_run_at)+' '+st+'</div>'+
+      '</div>'+
+      '<div class="batch-schedule-actions">'+
+        '<button type="button" class="btn btn-outline btn-small bo-write" onclick="toggleBatchSchedule(\''+s.id+'\','+(!active)+')">'+(active?'Pausar':'Activar')+'</button>'+
+        '<button type="button" class="btn btn-outline btn-small bo-write" onclick="openBatchScheduleModal(\''+s.id+'\')">Editar</button>'+
+        '<button type="button" class="btn btn-outline btn-small bo-write" onclick="deleteBatchSchedule(\''+s.id+'\')">Eliminar</button>'+
+      '</div></div>';
+  }).join('');
+}
+
+function loadBatchSchedules(){
+  return api('/api/backoffice/batch/schedules').then(function(d){
+    batchSchedulesData = d.schedules || [];
+    batchFrecuencias = d.frecuencias || {};
+    renderBatchSchedules(batchSchedulesData);
+    return d;
+  }).catch(function(){
+    var el = document.getElementById('batchSchedulesList');
+    if(el) el.innerHTML = '<div class="empty">No se pudo cargar (¿migración batch_schedules aplicada?).</div>';
+  });
+}
+
+function updateBatchScheduleFreqFields(){
+  var freq = (document.getElementById('bsFrecuencia')||{}).value || 'daily';
+  document.querySelectorAll('.batch-freq-fields').forEach(function(el){
+    el.classList.toggle('open', el.getAttribute('data-freq') === freq);
+  });
+}
+
+function openBatchScheduleModal(editId){
+  if(!batchJobsData.length){
+    loadBatchJobs().then(function(){ openBatchScheduleModal(editId); });
+    return;
+  }
+  var existing = editId ? batchSchedulesData.find(function(s){ return s.id === editId; }) : null;
+  var jobOpts = (batchJobsData || []).map(function(j){
+    return '<option value="'+escAttr(j.id)+'"'+(existing && existing.job_id===j.id ? ' selected':'')+'>'+escAttr(j.nombre)+'</option>';
+  }).join('');
+  var wd = existing && existing.weekdays ? existing.weekdays : [0,1,2,3,4];
+  var dayNames = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
+  var wdHtml = dayNames.map(function(name, i){
+    var checked = wd.indexOf(i) >= 0 ? ' checked' : '';
+    return '<label class="batch-weekday-label"><input type="checkbox" class="bsWeekday" value="'+i+'"'+checked+'> '+name+'</label>';
+  }).join('');
+
+  document.getElementById('modalContainer').innerHTML =
+    '<div class="modal-overlay open" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:520px">'+
+    '<h3>'+(existing ? 'Editar programación' : 'Nueva programación')+'</h3>'+
+    '<div class="modal-field"><label>Nombre (opcional)</label><input id="bsLabel" class="input" placeholder="Ej. Score diario 6am" value="'+escAttr(existing ? (existing.label||'') : '')+'"></div>'+
+    '<div class="modal-field"><label>Proceso</label><select id="bsJob" class="input">'+jobOpts+'</select></div>'+
+    '<div class="modal-field"><label>Datos a procesar</label><select id="bsTest" class="input">'+
+      '<option value="real"'+( !existing || existing.test_filter!=='test' ? ' selected':'')+'>Solo bodegas reales</option>'+
+      '<option value="test"'+(existing && existing.test_filter==='test' ? ' selected':'')+'>Solo bodegas de prueba</option>'+
+    '</select></div>'+
+    '<div class="modal-field"><label>Frecuencia</label><select id="bsFrecuencia" class="input" onchange="updateBatchScheduleFreqFields()">'+
+      '<option value="hourly"'+(existing && existing.frecuencia==='hourly'?' selected':'')+'>Cada hora</option>'+
+      '<option value="every_n_hours"'+(existing && existing.frecuencia==='every_n_hours'?' selected':'')+'>Cada N horas</option>'+
+      '<option value="daily"'+( !existing || existing.frecuencia==='daily' ? ' selected':'')+'>Diario</option>'+
+      '<option value="weekly"'+(existing && existing.frecuencia==='weekly'?' selected':'')+'>Semanal</option>'+
+    '</select></div>'+
+    '<div class="batch-freq-fields" data-freq="hourly"><div class="modal-field"><label>Minuto de la hora (0–59)</label><input id="bsMinuteHourly" type="number" min="0" max="59" class="input" value="'+(existing ? existing.minute : 0)+'"></div></div>'+
+    '<div class="batch-freq-fields" data-freq="every_n_hours">'+
+      '<div class="modal-field"><label>Cada cuántas horas</label><select id="bsInterval" class="input">'+
+        [1,2,3,4,6,8,12].map(function(n){
+          var sel = existing && existing.interval_hours===n ? ' selected' : (!existing && n===6 ? ' selected' : '');
+          return '<option value="'+n+'"'+sel+'>'+n+' h</option>';
+        }).join('')+
+      '</select></div>'+
+      '<div class="modal-field" style="display:grid;grid-template-columns:1fr 1fr;gap:10px">'+
+        '<div><label>Hora ancla</label><input id="bsHourN" type="number" min="0" max="23" class="input" value="'+(existing ? existing.hour : 6)+'"></div>'+
+        '<div><label>Minuto</label><input id="bsMinuteN" type="number" min="0" max="59" class="input" value="'+(existing ? existing.minute : 0)+'"></div>'+
+      '</div></div>'+
+    '<div class="batch-freq-fields" data-freq="daily">'+
+      '<div class="modal-field" style="display:grid;grid-template-columns:1fr 1fr;gap:10px">'+
+        '<div><label>Hora (Lima)</label><input id="bsHourDaily" type="number" min="0" max="23" class="input" value="'+(existing ? existing.hour : 6)+'"></div>'+
+        '<div><label>Minuto</label><input id="bsMinuteDaily" type="number" min="0" max="59" class="input" value="'+(existing ? existing.minute : 0)+'"></div>'+
+      '</div></div>'+
+    '<div class="batch-freq-fields" data-freq="weekly">'+
+      '<div class="batch-weekdays">'+wdHtml+'</div>'+
+      '<div class="modal-field" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px">'+
+        '<div><label>Hora (Lima)</label><input id="bsHourWeekly" type="number" min="0" max="23" class="input" value="'+(existing ? existing.hour : 6)+'"></div>'+
+        '<div><label>Minuto</label><input id="bsMinuteWeekly" type="number" min="0" max="59" class="input" value="'+(existing ? existing.minute : 0)+'"></div>'+
+      '</div></div>'+
+    '<div class="modal-actions">'+
+      '<button class="btn btn-outline" onclick="closeModal()">Cancelar</button>'+
+      '<button class="btn btn-green" onclick="saveBatchSchedule(\''+(editId||'')+'\')">Guardar</button>'+
+    '</div></div></div>';
+  updateBatchScheduleFreqFields();
+}
+
+function collectBatchScheduleBody(){
+  var freq = document.getElementById('bsFrecuencia').value;
+  var body = {
+    job_id: document.getElementById('bsJob').value,
+    label: (document.getElementById('bsLabel').value || '').trim() || null,
+    test_filter: document.getElementById('bsTest').value,
+    frecuencia: freq,
+    activo: true
+  };
+  if(freq === 'hourly'){
+    body.minute = parseInt(document.getElementById('bsMinuteHourly').value, 10) || 0;
+    body.hour = 0;
+  } else if(freq === 'every_n_hours'){
+    body.interval_hours = parseInt(document.getElementById('bsInterval').value, 10) || 6;
+    body.hour = parseInt(document.getElementById('bsHourN').value, 10) || 0;
+    body.minute = parseInt(document.getElementById('bsMinuteN').value, 10) || 0;
+  } else if(freq === 'daily'){
+    body.hour = parseInt(document.getElementById('bsHourDaily').value, 10) || 6;
+    body.minute = parseInt(document.getElementById('bsMinuteDaily').value, 10) || 0;
+  } else if(freq === 'weekly'){
+    body.hour = parseInt(document.getElementById('bsHourWeekly').value, 10) || 6;
+    body.minute = parseInt(document.getElementById('bsMinuteWeekly').value, 10) || 0;
+    body.weekdays = Array.from(document.querySelectorAll('.bsWeekday:checked')).map(function(c){ return parseInt(c.value, 10); });
+    if(!body.weekdays.length){ showToast('Selecciona al menos un día','error'); return null; }
+  }
+  return body;
+}
+
+function saveBatchSchedule(editId){
+  if(isReadOnly()){ showToast('Solo lectura','error'); return; }
+  var body = collectBatchScheduleBody();
+  if(!body) return;
+  var path = editId ? '/api/backoffice/batch/schedules/'+encodeURIComponent(editId) : '/api/backoffice/batch/schedules';
+  var method = editId ? 'PATCH' : 'POST';
+  fetch(path, {method: method, headers: authHeaders({'Content-Type':'application/json'}), body: JSON.stringify(body)})
+    .then(function(r){ return r.json().then(function(d){ return {ok:r.ok,d:d}; }); })
+    .then(function(x){
+      if(!x.ok){ showToast((x.d && x.d.detail) || 'Error al guardar','error'); return; }
+      closeModal();
+      showToast('Programación guardada','success');
+      loadBatchSchedules();
+    }).catch(function(e){ showToast(e.message,'error'); });
+}
+
+function toggleBatchSchedule(id, activo){
+  if(isReadOnly()){ showToast('Solo lectura','error'); return; }
+  var s = batchSchedulesData.find(function(x){ return x.id === id; });
+  if(!s) return;
+  var body = {
+    job_id: s.job_id,
+    label: s.label,
+    frecuencia: s.frecuencia,
+    hour: s.hour,
+    minute: s.minute,
+    interval_hours: s.interval_hours,
+    weekdays: s.weekdays || [],
+    test_filter: s.test_filter,
+    activo: activo
+  };
+  fetch('/api/backoffice/batch/schedules/'+encodeURIComponent(id), {
+    method:'PATCH', headers: authHeaders({'Content-Type':'application/json'}), body: JSON.stringify(body)
+  }).then(function(r){ return r.json().then(function(d){ return {ok:r.ok,d:d}; }); })
+    .then(function(x){
+      if(!x.ok){ showToast('Error al actualizar','error'); return; }
+      loadBatchSchedules();
+    });
+}
+
+function deleteBatchSchedule(id){
+  if(isReadOnly()){ showToast('Solo lectura','error'); return; }
+  if(!confirm('¿Eliminar esta programación?')) return;
+  fetch('/api/backoffice/batch/schedules/'+encodeURIComponent(id), {method:'DELETE', headers: authHeaders()})
+    .then(function(r){
+      if(!r.ok) throw new Error('No se pudo eliminar');
+      showToast('Programación eliminada','success');
+      loadBatchSchedules();
+    }).catch(function(e){ showToast(e.message,'error'); });
+}
+
+function runDueBatchSchedules(){
+  if(isReadOnly()){ showToast('Solo lectura','error'); return; }
+  if(!confirm('¿Ejecutar ahora todas las programaciones vencidas?')) return;
+  showPanelLoader('Ejecutando programaciones vencidas…', true);
+  apiPost('/api/backoffice/batch/schedules/run-due', {})
+    .then(function(x){
+      hidePanelLoader();
+      if(!x.ok){ showToast((x.d && x.d.detail) || 'Error','error'); return; }
+      var n = (x.d.executed || []).length;
+      var err = (x.d.errors || []).length;
+      showToast('Vencidas: '+n+' ejecutadas'+(err ? ', '+err+' errores' : ''), err ? 'error' : 'success');
+      loadBatchCenter();
+    }).catch(function(e){ hidePanelLoader(); showToast(e.message,'error'); });
 }
 
 function filterBatchRuns(jobId){
@@ -1739,22 +1971,77 @@ function filterBatchRuns(jobId){
   if(el && el.scrollIntoView) el.scrollIntoView({behavior:'smooth',block:'nearest'});
 }
 
+function previewBatchJob(jobId){
+  showPanelLoader('Cargando vista previa…', true);
+  var mode = window.MODE_FILTER || localStorage.getItem('circa_mode') || 'real';
+  api('/api/backoffice/batch/'+encodeURIComponent(jobId)+'/preview?test='+encodeURIComponent(mode))
+    .then(function(p){
+      hidePanelLoader();
+      showBatchPreviewModal(jobId, p);
+    })
+    .catch(function(e){
+      hidePanelLoader();
+      showToast('Error en vista previa: '+e.message,'error');
+    });
+}
+
+function showBatchPreviewModal(jobId, p){
+  p = p || {};
+  var rows = p.items || [];
+  var testLbl = p.test_filter === 'test' ? 'Pruebas' : 'Reales';
+  var tableRows = rows.length ? rows.map(function(it, i){
+    var testBadge = it.es_test ? '<span class="import-badge warn">TEST</span> ' : '';
+    return '<tr><td>'+(i+1)+'</td>'+
+      '<td>'+testBadge+escAttr(it.bodega_nombre||'—')+'</td>'+
+      '<td class="mono">'+escAttr(it.telefono||'—')+'</td>'+
+      '<td style="font-size:12px;line-height:1.4">'+escAttr(it.detalle||'')+'</td>'+
+      '<td style="font-size:11px;color:var(--muted);line-height:1.35">'+escAttr(it.accion||'')+'</td></tr>';
+  }).join('') : '<tr><td colspan="5" class="empty">Ningún destinatario con el filtro actual.</td></tr>';
+
+  var execBtn = isReadOnly() ? '' :
+    '<button type="button" class="btn btn-green" onclick="closeModal();runBatchJob(\''+escAttr(jobId)+'\',false)">▶ Ejecutar</button>';
+
+  document.getElementById('modalContainer').innerHTML =
+    '<div class="modal-overlay open" onclick="if(event.target===this)closeModal()">'+
+    '<div class="modal-box">'+
+      '<div class="modal-head">'+
+        '<div><h2>👁 Vista previa — '+escAttr(p.nombre||jobId)+'</h2>'+
+        '<div class="sub">Simulación · no se envían mensajes ni se guardan cambios</div></div>'+
+        '<button type="button" class="modal-close" onclick="closeModal()" aria-label="Cerrar">×</button>'+
+      '</div>'+
+      '<div class="modal-body">'+
+        '<p style="font-size:13px;color:var(--muted);margin-bottom:12px;line-height:1.5">'+escAttr(p.note||'')+
+        ' · Modo <strong>'+escAttr(testLbl)+'</strong>'+
+        (p.afecta_whatsapp ? ' · <span style="color:var(--orange)">Afecta WhatsApp al ejecutar</span>' : '')+
+        '</p>'+
+        '<div class="import-summary">'+
+          '<span>Total: <strong>'+(p.total||0)+'</strong></span>'+
+          '<span>Con teléfono WA: <strong>'+(p.con_telefono||0)+'</strong></span>'+
+          (p.truncated ? '<span class="sum-warn">Mostrando '+p.mostrando+' de '+p.total+'</span>' : '')+
+        '</div>'+
+        '<div class="import-preview-wrap" style="max-height:min(52vh,480px)">'+
+          '<table class="import-preview-table"><thead><tr>'+
+            '<th>#</th><th>Bodega</th><th>Teléfono WA</th><th>Detalle</th><th>Acción al ejecutar</th>'+
+          '</tr></thead><tbody>'+tableRows+'</tbody></table>'+
+        '</div>'+
+        '<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px;flex-wrap:wrap">'+
+          '<button type="button" class="btn btn-outline" onclick="closeModal()">Cerrar</button>'+
+          execBtn+
+        '</div>'+
+      '</div>'+
+    '</div></div>';
+}
+
 function runBatchJob(jobId, dryRun){
   if(!dryRun && isReadOnly()){ showToast('Solo lectura','error'); return; }
   if(dryRun){
-    showPanelLoader('Vista previa del proceso…', true);
-    apiPost('/api/backoffice/batch/'+encodeURIComponent(jobId)+'/run', {dry_run:true, comentario:'dry-run', password:''})
-      .then(function(x){
-        hidePanelLoader();
-        if(!x.ok){ showToast((x.d && x.d.detail) || 'Error','error'); return; }
-        showToast('Preview: '+(x.d.processed||0)+' procesados','success');
-        loadBatchCenter();
-      }).catch(function(e){ hidePanelLoader(); showToast(e.message,'error'); });
+    previewBatchJob(jobId);
     return;
   }
   document.getElementById('modalContainer').innerHTML =
     '<div class="modal-overlay open" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:480px"><h3>▶ Ejecutar proceso</h3>'+
     '<p style="font-size:13px;color:var(--muted);margin-bottom:12px">Job: <code>'+escAttr(jobId)+'</code></p>'+
+    '<p style="font-size:12px;color:var(--muted);margin-bottom:12px">Revisa la <button type="button" class="btn btn-outline btn-small" onclick="previewBatchJob(\''+escAttr(jobId)+'\')">vista previa</button> antes de confirmar.</p>'+
     '<div class="modal-field"><label>Comentario (mín. 8 caracteres)</label><input id="batchRunComentario" class="input" value="Ejecución manual desde backoffice"></div>'+
     '<div class="modal-field"><label>Contraseña</label><input type="password" id="batchRunPass" class="input"></div>'+
     '<div class="modal-actions"><button class="btn btn-outline" onclick="closeModal()">Cancelar</button>'+

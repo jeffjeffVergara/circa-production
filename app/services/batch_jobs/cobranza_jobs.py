@@ -14,12 +14,15 @@ async def run_recordatorios(
     **_kwargs,
 ) -> dict[str, Any]:
     if dry_run:
+        from app.services.batch_jobs.preview import preview_recordatorios
+
+        preview = await preview_recordatorios(test=test)
         return {
-            "processed": 0,
-            "ok": 0,
+            "processed": preview["total"],
+            "ok": preview["total"],
             "failed": 0,
             "errors": [],
-            "details": {"dry_run": True, "note": "No se enviaron mensajes WhatsApp."},
+            "details": preview,
         }
     count = await send_pending_reminders()
     return {
@@ -38,12 +41,15 @@ async def run_marcar_vencidos(
     **_kwargs,
 ) -> dict[str, Any]:
     if dry_run:
+        from app.services.batch_jobs.preview import preview_marcar_vencidos
+
+        preview = await preview_marcar_vencidos(test=test)
         return {
-            "processed": 0,
-            "ok": 0,
+            "processed": preview["total"],
+            "ok": preview["total"],
             "failed": 0,
             "errors": [],
-            "details": {"dry_run": True, "note": "No se actualizó financiamientos."},
+            "details": preview,
         }
     overdue = await check_overdue_loans()
     n = len(overdue)
