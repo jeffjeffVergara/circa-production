@@ -27,7 +27,7 @@ async def run_recordatorios(
             "errors": [],
             "details": preview,
         }
-    count = await send_pending_reminders(recordatorio_ids=selected_ids)
+    count = await send_pending_reminders(recordatorio_ids=selected_ids, test=test)
     return {
         "processed": count,
         "ok": count,

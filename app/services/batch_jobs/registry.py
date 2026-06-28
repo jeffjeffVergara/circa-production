@@ -62,11 +62,11 @@ JOB_DEFINITIONS: list[BatchJobDef] = [
     BatchJobDef(
         id="recordatorios_cobranza",
         nombre="Recordatorios de cobranza",
-        descripcion="Envía recordatorios de pago WhatsApp pendientes (tabla recordatorios).",
+        descripcion="Envía recordatorios WhatsApp a pedidos con crédito pendiente (mismo criterio que Cobranzas).",
         frecuencia_sugerida="Diario / cada hora",
         afecta_whatsapp=True,
         permite_dry_run=True,
-        soporta_test_filter=False,
+        soporta_test_filter=True,
         handler=_HANDLERS["recordatorios_cobranza"],
     ),
     BatchJobDef(

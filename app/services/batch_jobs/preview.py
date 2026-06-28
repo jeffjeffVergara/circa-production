@@ -99,6 +99,14 @@ async def preview_score_bodegas(*, test: Optional[str] = "real") -> dict[str, An
             "score": r.get("score"),
             "grade": r.get("grade"),
             "accion": "Guardar score en bodegas.scoring + snapshot diario",
+            "mensaje_tipo": "db_action",
+            "mensaje_preview": (
+                f"No envía WhatsApp.\n\n"
+                f"Bodega: {r.get('nombre')}\n"
+                f"Acción: actualizar bodegas.scoring → {r.get('score')} ({r.get('grade')})\n"
+                f"Snapshot diario en bodega_scoring_diario\n"
+                f"Línea disponible calculada: S/{float(r.get('linea_disponible') or 0):.0f}"
+            ),
         })
     note = (
         f"Modo {'pruebas' if test == 'test' else 'reales' if test == 'real' else 'todos'}: "
@@ -108,58 +116,13 @@ async def preview_score_bodegas(*, test: Optional[str] = "real") -> dict[str, An
 
 
 async def preview_recordatorios(*, test: Optional[str] = None) -> dict[str, Any]:
-    hoy = date.today().isoformat()
-    reminders = (
-        db.sb.table("recordatorios")
-        .select(
-            "id, pedido_id, tipo, fecha_envio, "
-            "pedidos(numero, bodega_id, bodegas(telefono_whatsapp, nombre_comercial, es_test))"
-        )
-        .eq("enviado", False)
-        .lte("fecha_envio", hoy)
-        .execute()
-        .data
-        or []
+    from app.services.cobranza_recordatorios import list_recordatorio_preview_items
+
+    items = list_recordatorio_preview_items(test=test)
+    note = (
+        f"Pedidos con botón Recordatorio en Cobranzas (entregado/pago reportado, crédito pendiente): "
+        f"{len(items)} destinatario(s)."
     )
-    items: list[dict[str, Any]] = []
-    for rem in reminders:
-        pedido = rem.get("pedidos") or {}
-        bodega = pedido.get("bodegas") or {}
-        telefono = bodega.get("telefono_whatsapp") or ""
-        fin_rows = (
-            db.sb.table("financiamientos")
-            .select("monto_total, fecha_vencimiento, estado")
-            .eq("pedido_id", rem["pedido_id"])
-            .in_("estado", ["activo", "vencido"])
-            .limit(1)
-            .execute()
-            .data
-            or []
-        )
-        if not fin_rows:
-            continue
-        fin = fin_rows[0]
-        if not telefono:
-            detalle = f"Pedido {pedido.get('numero', '')} · {rem.get('tipo', '')} — sin teléfono WA"
-        else:
-            venc = datetime.strptime(fin["fecha_vencimiento"], "%Y-%m-%d").date()
-            dias = (venc - date.today()).days
-            detalle = (
-                f"Pedido {pedido.get('numero', '')} · {rem.get('tipo', '')} · "
-                f"S/{float(fin['monto_total']):.2f} · vence en {dias}d"
-            )
-        items.append({
-            "item_id": str(rem["id"]),
-            "recordatorio_id": rem["id"],
-            "bodega_id": pedido.get("bodega_id"),
-            "bodega_nombre": bodega.get("nombre_comercial") or "—",
-            "telefono": telefono or None,
-            "es_test": bool(bodega.get("es_test")),
-            "detalle": detalle,
-            "accion": "Enviar recordatorio WhatsApp" if telefono else "Omitido (sin teléfono)",
-        })
-    items = _filter_es_test(items, test)
-    note = f"Recordatorios pendientes con fecha ≤ hoy: {len(items)} destinatario(s) potencial(es)."
     if test:
         note += f" Filtro: solo bodegas {'de prueba' if test == 'test' else 'reales'}."
     return _wrap("recordatorios_cobranza", items, test=test, note=note)
@@ -194,6 +157,14 @@ async def preview_marcar_vencidos(*, test: Optional[str] = None) -> dict[str, An
                 f"S/{float(fin.get('monto_total') or 0):.2f} · venció {fin.get('fecha_vencimiento')}"
             ),
             "accion": "Cambiar financiamiento activo → vencido",
+            "mensaje_tipo": "db_action",
+            "mensaje_preview": (
+                f"No envía WhatsApp.\n\n"
+                f"Bodega: {b.get('nombre_comercial') or '—'}\n"
+                f"Pedido: {(fin.get('pedidos') or {}).get('numero', '')}\n"
+                f"Acción: financiamiento {fin['id'][:8]}… activo → vencido\n"
+                f"Monto: S/{float(fin.get('monto_total') or 0):.2f}"
+            ),
         })
     items = _filter_es_test(items, test)
     note = f"Financiamientos activos con fecha vencida: {len(items)}."
@@ -204,12 +175,14 @@ async def preview_marcar_vencidos(*, test: Optional[str] = None) -> dict[str, An
 
 async def preview_placeholder(job_id: str, *, test: Optional[str] = None) -> dict[str, Any]:
     job = JOBS_BY_ID[job_id]
-    return _wrap(
-        job_id,
-        [],
-        test=test,
-        note=f"{job.nombre}: implementación pendiente; no hay destinatarios simulados aún.",
-    )
+    note = f"{job.nombre}: implementación pendiente; no hay destinatarios simulados aún."
+    out = _wrap(job_id, [], test=test, note=note)
+    if job.afecta_whatsapp:
+        out["mensaje_ejemplo"] = (
+            "Cuando este proceso esté implementado, aquí verás la plantilla Meta, "
+            "el número de destino y las variables antes de enviar."
+        )
+    return out
 
 
 _HANDLERS = {

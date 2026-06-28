@@ -12,7 +12,6 @@ import logging
 from datetime import datetime, date, timedelta
 from typing import Optional
 from app.services import db, meta_client
-from app.services.financing import generate_reminders_schedule
 from app.services.fees import total_pagar_desde_pedido
 
 logger = logging.getLogger("circa.cobranza")
@@ -216,62 +215,16 @@ async def check_overdue_loans(
 async def send_pending_reminders(
     *,
     recordatorio_ids: Optional[list[str]] = None,
+    test: Optional[str] = None,
 ) -> int:
     """
-    Send payment reminders that are due today.
-    Called periodically (e.g., every hour or daily).
-    
-    Returns count of reminders sent.
+    Envía recordatorios de cobranza (mismo criterio que pestaña Cobranzas).
+    recordatorio_ids conserva el nombre del parámetro batch; son pedido_id.
     """
-    hoy = date.today().isoformat()
-    allowed = {str(x) for x in recordatorio_ids} if recordatorio_ids else None
-    count = 0
-    
-    # Find unsent reminders due today
-    reminders = db.sb.table("recordatorios").select(
-        "*, pedidos(numero, bodega_id, bodegas(telefono_whatsapp))"
-    ).eq("enviado", False).lte("fecha_envio", hoy).execute().data
-    
-    for rem in reminders:
-        if allowed is not None and str(rem.get("id")) not in allowed:
-            continue
-        pedido = rem.get("pedidos", {})
-        bodega = pedido.get("bodegas", {})
-        telefono = bodega.get("telefono_whatsapp", "")
-        
-        if not telefono:
-            continue
-        
-        # Get the financiamiento for this order
-        fin = db.sb.table("financiamientos").select("*").eq(
-            "pedido_id", rem["pedido_id"]
-        ).in_("estado", ["activo", "vencido"]).limit(1).execute().data
-        
-        if not fin:
-            continue
-        
-        fin = fin[0]
-        venc = datetime.strptime(fin["fecha_vencimiento"], "%Y-%m-%d").date()
-        dias_restantes = (venc - date.today()).days
-        
-        # Send reminder
-        await meta_client.send_reminder(
-            to=telefono,
-            order_number=pedido.get("numero", ""),
-            monto=fin["monto_total"],
-            dias_restantes=dias_restantes,
-        )
-        
-        # Mark as sent
-        db.sb.table("recordatorios").update({
-            "enviado": True,
-            "enviado_at": datetime.utcnow().isoformat(),
-        }).eq("id", rem["id"]).execute()
-        
-        count += 1
-        logger.info(f"Reminder sent: {pedido.get('numero', '')} — {rem['tipo']} ({dias_restantes}d)")
-    
-    return count
+    from app.services.cobranza_recordatorios import send_recordatorios_batch
+
+    result = await send_recordatorios_batch(pedido_ids=recordatorio_ids, test=test)
+    return int(result.get("sent") or 0)
 
 
 async def get_pending_payments(bodega_id: str) -> list[dict]:

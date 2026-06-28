@@ -669,116 +669,17 @@ async def admin_analytics_resumen(
 async def admin_send_cobranza(pedido_id: str, admin: bool = Depends(verify_admin)):
     """Envia el recordatorio de pago al bodeguero usando la plantilla aprobada de
     Meta que corresponde al dia de cobranza (2 / 4 / 6 dias desde el despacho)."""
-    from datetime import datetime, timezone, timedelta
+    from app.services.cobranza_recordatorios import send_recordatorio_pedido
 
-    rows = _sb_get("pedidos", {"select": "*", "id": f"eq.{pedido_id}"})
-    if not rows:
-        raise HTTPException(status_code=404, detail="Pedido no encontrado")
-    ped = rows[0]
-    bid = ped.get("bodega_id", "")
-
-    # ── Datos de la bodega ──
-    try:
-        b_rows = _sb_get("bodegas", {
-            "select": "telefono_whatsapp,nombre_comercial,representante_nombre_corto,linea_aprobada",
-            "id": f"eq.{bid}"})
-        bodega = b_rows[0] if b_rows else {}
-    except Exception:
-        bodega = {}
-    tel = bodega.get("telefono_whatsapp", "")
-    if not tel:
-        raise HTTPException(status_code=400, detail="Bodega sin telefono")
-
-    # ── Valores para las variables de la plantilla ──
-    monto_fin = float(ped.get("monto_financiado") or 0)
-    fee = float(ped.get("fee_monto") or 0)
-    cuota = float(ped.get("monto_total_credito") or 0) or round(monto_fin + fee, 2)
-    if cuota <= 0:
-        raise HTTPException(status_code=400, detail="Este pedido no tiene saldo financiado por cobrar")
-    linea = float(bodega.get("linea_aprobada") or 0)
-    nombre = (bodega.get("representante_nombre_corto") or bodega.get("nombre_comercial") or "").strip()
-
-    # Fecha de vencimiento (entrega + plazo). Se normaliza a DD/MM/AAAA.
-    plazo = ped.get("plazo_dias") or 7
-    vence_str = ped.get("fecha_vencimiento") or ""
-    fecha_entregado = ped.get("fecha_entregado") or ped.get("created_at")
-    if not vence_str and fecha_entregado:
-        try:
-            fe = datetime.fromisoformat(fecha_entregado.replace("Z", "+00:00"))
-            vence_str = (fe + timedelta(days=plazo)).strftime("%d/%m/%Y")
-        except Exception:
-            vence_str = ""
-    try:
-        if vence_str and len(vence_str) == 10 and vence_str[4] == "-":
-            vence_str = datetime.fromisoformat(vence_str).strftime("%d/%m/%Y")
-    except Exception:
-        pass
-
-    # ── Elegir plantilla segun dias transcurridos desde el despacho ──
-    fecha_ref = ped.get("fecha_despachado") or ped.get("fecha_entregado") or ped.get("created_at")
-    dias = 0
-    if fecha_ref:
-        try:
-            fr = datetime.fromisoformat(fecha_ref.replace("Z", "+00:00"))
-            dias = (datetime.now(timezone.utc) - fr).days
-        except Exception:
-            dias = 0
-    if dias <= 3:
-        tkey = "dia2"
-    elif dias <= 5:
-        tkey = "dia4"
-    else:
-        tkey = "dia6"
-    tpl = COBRANZA_TEMPLATES[tkey]
-
-    # ── Armar las variables en el orden EXACTO de la plantilla elegida ──
-    valores = {
-        "nombre": nombre or "estimado cliente",
-        "cuota": _fmt_monto(cuota),
-        "vence": vence_str or "tu fecha de vencimiento",
-        "linea": _fmt_monto(linea),
-    }
-    variables = [valores[v] for v in tpl["vars"]]
-
-    resultado = _send_wa_template(tel, tpl["name"], variables)
-    if not resultado.get("ok"):
-        raise HTTPException(status_code=502, detail=f"Meta rechazo el envio: {resultado.get('error')}")
-
-    # ── Registrar el envio para tener seguimiento (tabla messages) ──
-    wamid = ""
-    try:
-        wamid = ((resultado.get("response") or {}).get("messages") or [{}])[0].get("id", "")
-    except Exception:
-        wamid = ""
-    try:
-        from app.services.analytics import track_message
-        track_message(
-            telefono=tel,
-            direction="outbound",
-            bodega_id=bid,
-            message_id=wamid,
-            message_type="cobranza_recordatorio",
-            template_name=tpl["name"],
-            content=f"Recordatorio de cobranza ({tkey}) - pedido {ped.get('numero','')}",
-            metadata={
-                "pedido_id": pedido_id,
-                "numero": ped.get("numero", ""),
-                "dia": tkey,
-                "dias_desde_despacho": dias,
-            },
-            measure_response_latency=False,
-        )
-    except Exception as e:
-        import logging
-        logging.getLogger("circa").error(f"[cobranza track_message] {e}")
-
-    return {
-        "ok": True,
-        "enviado_a": tel,
-        "pedido": ped.get("numero", ""),
-        "plantilla": tpl["name"],
-        "dias_desde_despacho": dias,
-    }
+    result = await send_recordatorio_pedido(pedido_id)
+    if not result.get("ok"):
+        err = str(result.get("error") or "")
+        if "no encontrado" in err.lower():
+            raise HTTPException(status_code=404, detail=err)
+        if any(x in err.lower() for x in ("sin telefono", "no elegible", "no tiene saldo")):
+            raise HTTPException(status_code=400, detail=err)
+        raise HTTPException(status_code=502, detail=err)
+    return result
 
 # ===================== COBRANZAS =====================
 

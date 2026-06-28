@@ -333,6 +333,12 @@ tr:hover td{background:var(--card-hover)}
 .batch-job-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
 .batch-job-title{font-weight:700;font-size:14px}
 .batch-job-meta{font-size:12px;color:var(--muted);margin-top:6px;line-height:1.45}
+.batch-msg-preview{background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:12px 14px;font-size:12px;line-height:1.55;white-space:pre-wrap;word-break:break-word;max-height:220px;overflow:auto}
+.batch-msg-preview.empty{color:var(--muted);font-style:italic;text-align:center;padding:20px}
+.batch-msg-preview-head{font-weight:600;margin-bottom:8px;font-size:13px}
+.batch-preview-row{cursor:pointer}
+.batch-preview-row.focused{background:rgba(96,165,250,.1)}
+.batch-preview-row:hover{background:rgba(255,255,255,.03)}
 .batch-status{display:inline-block;padding:2px 8px;border-radius:8px;font-size:10px;font-weight:700;text-transform:uppercase}
 .batch-status.ok{background:rgba(16,185,129,.15);color:var(--green)}
 .batch-status.failed{background:rgba(239,68,68,.15);color:var(--red)}
@@ -1714,8 +1720,8 @@ function renderBatchJobs(jobs){
         '</div>'+
       '</div>'+
       '<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">'+
-        (j.permite_dry_run ? '<button type="button" class="btn btn-outline btn-small" onclick="previewBatchJob(\''+j.id+'\')">👁 Vista previa</button>' : '')+
-        '<button type="button" class="btn btn-green btn-small bo-write" onclick="previewBatchJob(\''+j.id+'\')">▶ Ejecutar</button>'+
+        (j.permite_dry_run ? '<button type="button" class="btn btn-outline btn-small" onclick="openBatchPreview(\''+j.id+'\',\'prueba\')">🧪 Prueba</button>' : '')+
+        '<button type="button" class="btn btn-green btn-small bo-write" onclick="openBatchPreview(\''+j.id+'\',\'ejecutar\')">▶ Ejecutar</button>'+
         '<button type="button" class="btn btn-outline btn-small" onclick="filterBatchRuns(\''+j.id+'\')">Ver historial</button>'+
       '</div></div>';
   }).join('');
@@ -1988,19 +1994,22 @@ function filterBatchRuns(jobId){
   if(el && el.scrollIntoView) el.scrollIntoView({behavior:'smooth',block:'nearest'});
 }
 
-function previewBatchJob(jobId){
-  showPanelLoader('Cargando vista previa…', true);
-  var mode = window.MODE_FILTER || localStorage.getItem('circa_mode') || 'real';
-  api('/api/backoffice/batch/'+encodeURIComponent(jobId)+'/preview?test='+encodeURIComponent(mode))
+function openBatchPreview(jobId, mode){
+  mode = mode || 'ejecutar';
+  showPanelLoader(mode === 'prueba' ? 'Cargando modo prueba…' : 'Cargando destinatarios…', true);
+  var testMode = mode === 'prueba' ? 'test' : (window.MODE_FILTER || localStorage.getItem('circa_mode') || 'real');
+  api('/api/backoffice/batch/'+encodeURIComponent(jobId)+'/preview?test='+encodeURIComponent(testMode))
     .then(function(p){
       hidePanelLoader();
       window._batchPreviewState = {
         jobId: jobId,
+        mode: mode,
         data: p,
-        selected: {}
+        selected: {},
+        focusItemId: null
       };
       (p.items || []).forEach(function(it){
-        if(it.item_id) window._batchPreviewState.selected[String(it.item_id)] = true;
+        if(mode === 'ejecutar' && it.item_id) window._batchPreviewState.selected[String(it.item_id)] = true;
       });
       showBatchPreviewModal(jobId, p);
     })
@@ -2008,6 +2017,54 @@ function previewBatchJob(jobId){
       hidePanelLoader();
       showToast('Error en vista previa: '+e.message,'error');
     });
+}
+
+function previewBatchJob(jobId){
+  openBatchPreview(jobId, 'ejecutar');
+}
+
+function batchPreviewFindItem(itemId){
+  var st = window._batchPreviewState;
+  if(!st || !st.data) return null;
+  return (st.data.items || []).find(function(it){ return String(it.item_id) === String(itemId); }) || null;
+}
+
+function showBatchMessagePreview(item){
+  var panel = document.getElementById('batchMsgPreview');
+  if(!panel) return;
+  var st = window._batchPreviewState;
+  if(!item && st && st.data && st.data.mensaje_ejemplo){
+    panel.innerHTML = '<div class="batch-msg-preview">'+escAttr(st.data.mensaje_ejemplo)+'</div>';
+    return;
+  }
+  if(!item){
+    var hint = st && st.mode === 'prueba'
+      ? 'Marca una bodega o teléfono en la tabla para ver el mensaje o la acción que se ejecutará.'
+      : 'Haz clic en una fila para ver el mensaje o la acción.';
+    panel.innerHTML = '<div class="batch-msg-preview empty">'+hint+'</div>';
+    return;
+  }
+  var tipo = item.mensaje_tipo === 'whatsapp_template'
+    ? '<span class="import-badge warn">WhatsApp</span>'
+    : '<span class="import-badge ok">Sin WA</span>';
+  var head = '<div class="batch-msg-preview-head">'+tipo+' '+escAttr(item.bodega_nombre||'—');
+  if(item.telefono) head += ' · <span class="mono">'+escAttr(item.telefono)+'</span>';
+  head += '</div>';
+  var body = item.mensaje_preview
+    ? escAttr(item.mensaje_preview)
+    : escAttr(item.accion || item.detalle || 'Sin vista previa de mensaje.');
+  panel.innerHTML = '<div class="batch-msg-preview">'+head+'<div style="margin-top:8px">'+body+'</div></div>';
+}
+
+function focusBatchPreviewRow(itemId){
+  var st = window._batchPreviewState;
+  if(!st) return;
+  st.focusItemId = String(itemId);
+  var rows = document.querySelectorAll('#batchPreviewBody tr.batch-preview-row');
+  rows.forEach(function(tr){
+    tr.classList.toggle('focused', tr.getAttribute('data-item-id') === st.focusItemId);
+  });
+  showBatchMessagePreview(batchPreviewFindItem(st.focusItemId));
 }
 
 function batchPreviewVisibleItems(){
@@ -2041,6 +2098,7 @@ function onBatchPreviewCheck(itemId, checked){
   var st = window._batchPreviewState;
   if(!st) return;
   st.selected[String(itemId)] = !!checked;
+  if(checked) focusBatchPreviewRow(itemId);
   updateBatchPreviewSelectionCount();
 }
 
@@ -2067,16 +2125,18 @@ function renderBatchPreviewTableRows(){
   tbody.innerHTML = rows.map(function(it, i){
     var id = String(it.item_id || '');
     var checked = st.selected[id] ? ' checked' : '';
+    var focused = st.focusItemId === id ? ' focused' : '';
     var testBadge = it.es_test ? '<span class="import-badge warn">TEST</span> ' : '';
     var vendCol = hasVend ? '<td>'+escAttr(it.vendedor_nombre||'—')+'</td>' : '';
-    return '<tr>'+
-      '<td><input type="checkbox" class="batch-preview-chk" data-item-id="'+escAttr(id)+'"'+checked+' onchange="onBatchPreviewCheck(\''+escAttr(id)+'\', this.checked)"></td>'+
+    var verBtn = '<button type="button" class="btn btn-outline btn-small" style="padding:2px 8px;font-size:11px" onclick="event.stopPropagation();focusBatchPreviewRow(\''+escAttr(id)+'\')">Ver</button>';
+    return '<tr class="batch-preview-row'+focused+'" data-item-id="'+escAttr(id)+'" onclick="focusBatchPreviewRow(\''+escAttr(id)+'\')">'+
+      '<td onclick="event.stopPropagation()"><input type="checkbox" class="batch-preview-chk" data-item-id="'+escAttr(id)+'"'+checked+' onchange="onBatchPreviewCheck(\''+escAttr(id)+'\', this.checked)"></td>'+
       '<td>'+(i+1)+'</td>'+
       '<td>'+testBadge+escAttr(it.bodega_nombre||'—')+'</td>'+
       '<td class="mono">'+escAttr(it.telefono||'—')+'</td>'+
       vendCol+
       '<td style="font-size:12px;line-height:1.4">'+escAttr(it.detalle||'')+'</td>'+
-      '<td style="font-size:11px;color:var(--muted);line-height:1.35">'+escAttr(it.accion||'')+'</td>'+
+      '<td style="font-size:11px">'+verBtn+'</td>'+
     '</tr>';
   }).join('');
 }
@@ -2106,8 +2166,10 @@ function openBatchRunConfirm(){
 
 function showBatchPreviewModal(jobId, p){
   p = p || (window._batchPreviewState && window._batchPreviewState.data) || {};
+  var st = window._batchPreviewState || {};
+  var isPrueba = st.mode === 'prueba';
   var sel = p.selection || {};
-  var testLbl = p.test_filter === 'test' ? 'Pruebas' : 'Reales';
+  var testLbl = isPrueba ? 'Pruebas (bodegas test)' : (p.test_filter === 'test' ? 'Pruebas' : 'Reales');
   var hasVend = (p.items || []).some(function(it){ return it.vendedor_nombre; });
   var vendTh = hasVend ? '<th>Vendedor</th>' : '';
   var vendSearch = hasVend && sel.search_vendedor
@@ -2115,14 +2177,21 @@ function showBatchPreviewModal(jobId, p){
     : '';
 
   var execBtn = isReadOnly() ? '' :
-    '<button type="button" class="btn btn-green" id="batchPreviewExecBtn" onclick="openBatchRunConfirm()">▶ Ejecutar seleccionados</button>';
+    '<button type="button" class="btn btn-green" id="batchPreviewExecBtn" onclick="openBatchRunConfirm()">'+
+      (isPrueba ? '▶ Enviar a seleccionados' : '▶ Ejecutar seleccionados')+
+    '</button>';
+
+  var title = isPrueba ? '🧪 Modo prueba' : '▶ Ejecutar proceso';
+  var sub = isPrueba
+    ? 'Elige bodega o teléfono y revisa el mensaje antes de enviar'
+    : 'Confirma destinatarios y ejecuta el proceso';
 
   document.getElementById('modalContainer').innerHTML =
     '<div class="modal-overlay open" onclick="if(event.target===this)closeModal()">'+
-    '<div class="modal-box">'+
+    '<div class="modal-box" style="max-width:980px">'+
       '<div class="modal-head">'+
-        '<div><h2>👁 Vista previa — '+escAttr(p.nombre||jobId)+'</h2>'+
-        '<div class="sub">Elige bodegas, teléfonos o destinatarios antes de ejecutar</div></div>'+
+        '<div><h2>'+title+' — '+escAttr(p.nombre||jobId)+'</h2>'+
+        '<div class="sub">'+sub+'</div></div>'+
         '<button type="button" class="modal-close" onclick="closeModal()" aria-label="Cerrar">×</button>'+
       '</div>'+
       '<div class="modal-body">'+
@@ -2143,13 +2212,15 @@ function showBatchPreviewModal(jobId, p){
           '<button type="button" class="btn btn-outline btn-small" onclick="toggleBatchPreviewAll(true)">Todos</button>'+
           '<button type="button" class="btn btn-outline btn-small" onclick="toggleBatchPreviewAll(false)">Ninguno</button>'+
         '</div>'+
-        '<div class="import-preview-wrap" style="max-height:min(52vh,480px)">'+
+        '<div class="import-preview-wrap" style="max-height:min(38vh,360px)">'+
           '<table class="import-preview-table"><thead><tr>'+
-            '<th style="width:32px"><input type="checkbox" checked onchange="toggleBatchPreviewAll(this.checked)" title="Seleccionar visibles"></th>'+
-            '<th>#</th><th>Bodega</th><th>Teléfono WA</th>'+vendTh+'<th>Detalle</th><th>Acción</th>'+
+            '<th style="width:32px"><input type="checkbox"'+(isPrueba ? '' : ' checked')+' onchange="toggleBatchPreviewAll(this.checked)" title="Seleccionar visibles"></th>'+
+            '<th>#</th><th>Bodega</th><th>Teléfono WA</th>'+vendTh+'<th>Detalle</th><th>Mensaje</th>'+
           '</tr></thead><tbody id="batchPreviewBody"></tbody></table>'+
         '</div>'+
+        '<div id="batchMsgPreview" style="margin-top:12px"></div>'+
         '<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px;flex-wrap:wrap">'+
+          (isPrueba ? '<button type="button" class="btn btn-outline" onclick="openBatchPreview(\''+escAttr(jobId)+'\',\'ejecutar\')">Cambiar a modo ejecutar</button>' : '')+
           '<button type="button" class="btn btn-outline" onclick="closeModal()">Cerrar</button>'+
           execBtn+
         '</div>'+
@@ -2157,14 +2228,15 @@ function showBatchPreviewModal(jobId, p){
     '</div></div>';
   renderBatchPreviewTableRows();
   updateBatchPreviewSelectionCount();
+  if(isPrueba && (p.items||[]).length){
+    focusBatchPreviewRow((p.items[0].item_id));
+  } else {
+    showBatchMessagePreview(null);
+  }
 }
 
 function runBatchJob(jobId, dryRun){
-  if(dryRun){
-    previewBatchJob(jobId);
-    return;
-  }
-  previewBatchJob(jobId);
+  openBatchPreview(jobId, dryRun ? 'prueba' : 'ejecutar');
 }
 
 function confirmBatchRun(jobId){
@@ -2176,7 +2248,8 @@ function confirmBatchRun(jobId){
   if(!selected.length){ showToast('Selecciona al menos un destinatario','error'); return; }
   closeModal();
   showPanelLoader('Ejecutando proceso…', true);
-  var mode = window.MODE_FILTER || localStorage.getItem('circa_mode') || 'real';
+  var st = window._batchPreviewState || {};
+  var mode = st.mode === 'prueba' ? 'test' : (window.MODE_FILTER || localStorage.getItem('circa_mode') || 'real');
   apiPost('/api/backoffice/batch/'+encodeURIComponent(jobId)+'/run', {
     dry_run: false, password: pass, comentario: com, test: mode, selected_ids: selected
   }).then(function(x){
