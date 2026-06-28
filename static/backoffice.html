@@ -28,8 +28,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:var(--bg
 body.bo-readonly .bo-write{display:none!important}
 .header-right{display:flex;gap:10px;align-items:center}
 .container{padding:24px;max-width:1600px;margin:0 auto}
-.tabs{display:flex;gap:4px;background:var(--card);padding:4px;border-radius:10px;margin-bottom:20px;border:1px solid var(--border)}
-.tab{flex:1;padding:10px 16px;background:transparent;border:none;color:var(--muted);font-size:14px;font-weight:600;cursor:pointer;border-radius:8px;transition:all .2s}
+.tabs{display:flex;gap:4px;background:var(--card);padding:4px;border-radius:10px;margin-bottom:20px;border:1px solid var(--border);width:100%;flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.tab{flex:1 1 0;min-width:max-content;padding:10px 14px;background:transparent;border:none;color:var(--muted);font-size:13px;font-weight:600;cursor:pointer;border-radius:8px;transition:all .2s;white-space:nowrap}
 .tab.active{background:var(--blue);color:#fff}
 .tab:hover:not(.active){background:var(--border);color:var(--text)}
 .kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin-bottom:24px}
@@ -306,9 +306,13 @@ tr:hover td{background:var(--card-hover)}
 .bo-nav-item:hover{background:var(--card-hover);color:var(--text);border-color:var(--border)}
 .bo-nav-item.active{background:rgba(37,99,235,.18);color:var(--blue-light);border-color:rgba(37,99,235,.45)}
 .bo-main{flex:1;min-width:0;display:flex;flex-direction:column}
-.bo-main .container{padding:20px 24px;max-width:none;flex:1}
+.bo-main .container{padding:20px 24px;max-width:none;flex:1;width:100%;display:flex;flex-direction:column;box-sizing:border-box}
+.bo-main .container > [id^="view-"]{width:100%;flex:1;min-width:0;box-sizing:border-box}
+.bo-main .container .section{width:100%;box-sizing:border-box}
+.bo-main .container .table-wrap{width:100%}
 .app-layout.sidebar-collapsed .bo-sidebar{width:0;border-right-color:transparent}
 .app-layout.tools-view #mainTabsBar{display:none}
+#mainTabsBar{flex-shrink:0}
 #sidebarToggle{min-width:108px}
 @media(max-width:1024px){
   .app-layout{flex-direction:column}
@@ -586,8 +590,6 @@ y genera el SQL de alta. <em>Analizar</em> no toca la base; <em>Cargar seleccion
 </table>
 </div>
 </div>
-</div>
-
 </div>
 
 <!-- BODEGAS TAB -->
