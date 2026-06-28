@@ -90,12 +90,16 @@ def run_bodega_scoring_batch(
     *,
     test: Optional[str] = "real",
     persist: bool = False,
+    bodega_ids: Optional[list[str]] = None,
 ) -> dict[str, Any]:
     """
     Calcula score 0–100 para cada bodega (modelo operativo en bodega_score.py).
     Si persist=True, escribe el resultado en bodegas.scoring.
     """
     bodegas = _fetch_bodegas(test)
+    if bodega_ids:
+        allowed = {str(x) for x in bodega_ids}
+        bodegas = [b for b in bodegas if str(b.get("id")) in allowed]
     if not bodegas:
         return {
             "modelo": "circa_operativo_v1",

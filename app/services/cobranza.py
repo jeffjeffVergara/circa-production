@@ -10,6 +10,7 @@ Handles:
 """
 import logging
 from datetime import datetime, date, timedelta
+from typing import Optional
 from app.services import db, meta_client
 from app.services.financing import generate_reminders_schedule
 from app.services.fees import total_pagar_desde_pedido
@@ -161,7 +162,10 @@ async def confirm_payment(financiamiento_id: str, monto_pagado: float = None,
     }
 
 
-async def check_overdue_loans() -> list[dict]:
+async def check_overdue_loans(
+    *,
+    financiamiento_ids: Optional[list[str]] = None,
+) -> list[dict]:
     """
     Check for overdue financiamientos and update their status.
     Called periodically (e.g., daily cron job).
@@ -175,8 +179,11 @@ async def check_overdue_loans() -> list[dict]:
         "*, pedidos(numero), bodegas(telefono_whatsapp, nombre_comercial)"
     ).eq("estado", "activo").lt("fecha_vencimiento", hoy).execute().data
     
+    allowed = {str(x) for x in financiamiento_ids} if financiamiento_ids else None
     results = []
     for fin in overdue:
+        if allowed is not None and str(fin.get("id")) not in allowed:
+            continue
         # Mark as overdue
         db.sb.table("financiamientos").update({
             "estado": "vencido",
@@ -206,7 +213,10 @@ async def check_overdue_loans() -> list[dict]:
     return results
 
 
-async def send_pending_reminders() -> int:
+async def send_pending_reminders(
+    *,
+    recordatorio_ids: Optional[list[str]] = None,
+) -> int:
     """
     Send payment reminders that are due today.
     Called periodically (e.g., every hour or daily).
@@ -214,6 +224,7 @@ async def send_pending_reminders() -> int:
     Returns count of reminders sent.
     """
     hoy = date.today().isoformat()
+    allowed = {str(x) for x in recordatorio_ids} if recordatorio_ids else None
     count = 0
     
     # Find unsent reminders due today
@@ -222,6 +233,8 @@ async def send_pending_reminders() -> int:
     ).eq("enviado", False).lte("fecha_envio", hoy).execute().data
     
     for rem in reminders:
+        if allowed is not None and str(rem.get("id")) not in allowed:
+            continue
         pedido = rem.get("pedidos", {})
         bodega = pedido.get("bodegas", {})
         telefono = bodega.get("telefono_whatsapp", "")

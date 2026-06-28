@@ -11,12 +11,15 @@ async def run_recordatorios(
     *,
     dry_run: bool = False,
     test: Optional[str] = None,
+    selected_ids: Optional[list[str]] = None,
     **_kwargs,
 ) -> dict[str, Any]:
     if dry_run:
         from app.services.batch_jobs.preview import preview_recordatorios
+        from app.services.batch_jobs.selection import filter_preview_items
 
         preview = await preview_recordatorios(test=test)
+        preview = filter_preview_items(preview, selected_ids)
         return {
             "processed": preview["total"],
             "ok": preview["total"],
@@ -24,7 +27,7 @@ async def run_recordatorios(
             "errors": [],
             "details": preview,
         }
-    count = await send_pending_reminders()
+    count = await send_pending_reminders(recordatorio_ids=selected_ids)
     return {
         "processed": count,
         "ok": count,
@@ -38,12 +41,15 @@ async def run_marcar_vencidos(
     *,
     dry_run: bool = False,
     test: Optional[str] = None,
+    selected_ids: Optional[list[str]] = None,
     **_kwargs,
 ) -> dict[str, Any]:
     if dry_run:
         from app.services.batch_jobs.preview import preview_marcar_vencidos
+        from app.services.batch_jobs.selection import filter_preview_items
 
         preview = await preview_marcar_vencidos(test=test)
+        preview = filter_preview_items(preview, selected_ids)
         return {
             "processed": preview["total"],
             "ok": preview["total"],
@@ -51,7 +57,7 @@ async def run_marcar_vencidos(
             "errors": [],
             "details": preview,
         }
-    overdue = await check_overdue_loans()
+    overdue = await check_overdue_loans(financiamiento_ids=selected_ids)
     n = len(overdue)
     return {
         "processed": n,

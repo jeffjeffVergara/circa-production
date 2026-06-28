@@ -118,6 +118,7 @@ async def run_batch_job(
     trigger: str = "manual",
     user_email: str = "",
     comment: str = "",
+    selected_ids: Optional[list[str]] = None,
 ) -> dict[str, Any]:
     job = JOBS_BY_ID.get(job_id)
     if not job:
@@ -140,6 +141,8 @@ async def run_batch_job(
         kwargs: dict[str, Any] = {"dry_run": dry_run}
         if job.soporta_test_filter:
             kwargs["test"] = test
+        if selected_ids:
+            kwargs["selected_ids"] = [str(x) for x in selected_ids]
         result = await job.handler(**kwargs)
     except Exception as exc:
         if run_id:
@@ -165,6 +168,7 @@ async def run_batch_job(
         "failed": failed,
         "errors": result.get("errors") or [],
         "details": result.get("details") or {},
+        "selected_count": len(selected_ids) if selected_ids else None,
     }
     if run_id:
         _finish_run(run_id, status=status, stats=payload, error=None)

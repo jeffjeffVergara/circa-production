@@ -48,7 +48,14 @@ body.bo-readonly .bo-write{display:none!important}
 .dist-header{background:var(--card-hover);padding:14px 18px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .dist-name{font-weight:700;font-size:15px;color:var(--blue-light)}
 .dist-total{color:var(--green);font-weight:700;font-size:16px}
-.dist-body{padding:14px 18px}
+.dist-body{padding:0}
+.table-wrap-pagos{border-top:1px solid var(--border);background:var(--bg)}
+.table-pagos-dist{width:100%}
+.table-pagos-dist th,.table-pagos-dist td{font-size:13px;vertical-align:middle}
+.table-pagos-dist .pagos-col-monto{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+.table-pagos-dist .pagos-col-circa{color:var(--blue-light);font-weight:600}
+.table-pagos-dist .pagos-col-actions{text-align:right;white-space:nowrap;width:140px}
+.table-pagos-dist .pagos-paid{display:inline-flex;align-items:center;gap:4px;color:var(--green);font-size:12px;font-weight:600;white-space:nowrap}
 .pedido-row{display:grid;grid-template-columns:100px 1fr 1fr 120px 120px;gap:12px;padding:10px 0;border-top:1px solid var(--border);align-items:center}
 .pedido-row:first-child{border-top:none}
 .pedido-num{color:var(--blue-light);font-weight:600}
@@ -742,7 +749,7 @@ y genera el SQL de alta. <em>Analizar</em> no toca la base; <em>Cargar seleccion
 <button class="btn btn-outline btn-small" style="float:right;margin-top:-4px" onclick="loadBatchJobs()">🔄 Actualizar</button>
 </h2>
 <p style="font-size:13px;color:var(--muted);margin:-8px 0 16px;max-width:820px">
-Jobs operativos (score diario, cobranza, reactivación). <strong>Vista previa</strong> lista bodegas, teléfonos y acciones que se aplicarían según el modo Reales/Pruebas del header — sin persistir ni enviar WhatsApp.
+Jobs operativos (score diario, cobranza, reactivación). <strong>Vista previa / Ejecutar</strong> muestra destinatarios con checkboxes: elige bodegas, teléfonos WA o vendedor antes de confirmar.
 La ejecución real requiere contraseña y queda en el historial.
 </p>
 <div id="batchJobsList"><div class="empty">Cargando procesos…</div></div>
@@ -1186,15 +1193,25 @@ function loadPagos(){
     allPagos.forEach(function(g){
       if(!g.pedidos.length) return;
       var dist = g.distribuidor || {};
-      html += '<div class="dist-group"><div class="dist-header"><div><div class="dist-name">'+(dist.nombre_comercial||'?')+'</div><div style="color:var(--muted);font-size:12px">RUC: '+(dist.ruc||'-')+' · '+g.pedidos.length+' pedidos</div></div><div class="dist-total">S/'+g.total_financiado.toFixed(2)+' <span style="font-size:11px;color:var(--muted)">a transferir</span></div></div><div class="dist-body">';
+      html += '<div class="dist-group"><div class="dist-header"><div><div class="dist-name">'+(dist.nombre_comercial||'?')+'</div><div style="color:var(--muted);font-size:12px">RUC: '+(dist.ruc||'-')+' · '+g.pedidos.length+' pedidos</div></div><div class="dist-total">S/'+g.total_financiado.toFixed(2)+' <span style="font-size:11px;color:var(--muted)">a transferir</span></div></div>';
+      html += '<div class="dist-body"><div class="table-wrap table-wrap-pagos"><table class="table-pagos-dist"><thead><tr>';
+      html += '<th>Pedido</th><th>Bodega</th><th class="pagos-col-monto">Total pedido</th><th class="pagos-col-monto">Circa paga</th><th>Estado</th><th class="pagos-col-actions">Pago distribuidor</th>';
+      html += '</tr></thead><tbody>';
       g.pedidos.forEach(function(p){
         var b = p.bodega || {};
         var pagoDistBtn = p.circa_pagado_dist_at
-            ? '<span style="color:var(--green);font-size:11px">✓ Pagado '+fmtFechaCorta(p.circa_pagado_dist_at)+'</span>'
-            : '<button class="btn btn-green btn-small bo-write" onclick="event.stopPropagation();marcarPagoDistribuidor(\''+p.id+'\')">✓ Marcar pagado</button>';
-        html += '<div class="pedido-row"><div class="pedido-num">'+(p.numero||'-')+'</div><div>'+(b.nombre_comercial||'?')+'</div><div style="color:var(--muted);font-size:12px">Total: S/'+(p.monto_productos||0)+'</div><div style="color:var(--blue-light);font-weight:600">S/'+(p.monto_financiado||0)+'</div><div><span class="badge badge-'+p.estado+'">'+p.estado+'</span></div><div>'+pagoDistBtn+'</div></div>';
+            ? '<span class="pagos-paid">✓ Pagado '+fmtFechaCorta(p.circa_pagado_dist_at)+'</span>'
+            : '<button type="button" class="btn btn-green btn-small bo-write" onclick="marcarPagoDistribuidor(\''+p.id+'\')">Marcar pagado</button>';
+        html += '<tr>'+
+          '<td class="pedido-num">'+(p.numero||'-')+'</td>'+
+          '<td>'+escAttr(b.nombre_comercial||'?')+'</td>'+
+          '<td class="pagos-col-monto">S/'+Number(p.monto_productos||0).toFixed(2)+'</td>'+
+          '<td class="pagos-col-monto pagos-col-circa">S/'+Number(p.monto_financiado||0).toFixed(2)+'</td>'+
+          '<td><span class="badge badge-'+escAttr(p.estado||'')+'">'+escAttr(p.estado||'')+'</span></td>'+
+          '<td class="pagos-col-actions">'+pagoDistBtn+'</td>'+
+        '</tr>';
       });
-      html += '</div></div>';
+      html += '</tbody></table></div></div></div>';
     });
     document.getElementById('pagosList').innerHTML = html || '<div class="empty">No hay pagos pendientes</div>';
   });
@@ -1698,7 +1715,7 @@ function renderBatchJobs(jobs){
       '</div>'+
       '<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">'+
         (j.permite_dry_run ? '<button type="button" class="btn btn-outline btn-small" onclick="previewBatchJob(\''+j.id+'\')">👁 Vista previa</button>' : '')+
-        '<button type="button" class="btn btn-green btn-small bo-write" onclick="runBatchJob(\''+j.id+'\',false)">▶ Ejecutar</button>'+
+        '<button type="button" class="btn btn-green btn-small bo-write" onclick="previewBatchJob(\''+j.id+'\')">▶ Ejecutar</button>'+
         '<button type="button" class="btn btn-outline btn-small" onclick="filterBatchRuns(\''+j.id+'\')">Ver historial</button>'+
       '</div></div>';
   }).join('');
@@ -1977,6 +1994,14 @@ function previewBatchJob(jobId){
   api('/api/backoffice/batch/'+encodeURIComponent(jobId)+'/preview?test='+encodeURIComponent(mode))
     .then(function(p){
       hidePanelLoader();
+      window._batchPreviewState = {
+        jobId: jobId,
+        data: p,
+        selected: {}
+      };
+      (p.items || []).forEach(function(it){
+        if(it.item_id) window._batchPreviewState.selected[String(it.item_id)] = true;
+      });
       showBatchPreviewModal(jobId, p);
     })
     .catch(function(e){
@@ -1985,44 +2010,144 @@ function previewBatchJob(jobId){
     });
 }
 
-function showBatchPreviewModal(jobId, p){
-  p = p || {};
-  var rows = p.items || [];
-  var testLbl = p.test_filter === 'test' ? 'Pruebas' : 'Reales';
-  var tableRows = rows.length ? rows.map(function(it, i){
+function batchPreviewVisibleItems(){
+  var st = window._batchPreviewState;
+  if(!st || !st.data) return [];
+  var qB = (document.getElementById('batchPreviewFiltroBodega')||{}).value || '';
+  var qT = (document.getElementById('batchPreviewFiltroTel')||{}).value || '';
+  var qV = (document.getElementById('batchPreviewFiltroVend')||{}).value || '';
+  qB = qB.trim().toLowerCase();
+  qT = qT.trim().toLowerCase();
+  qV = qV.trim().toLowerCase();
+  return (st.data.items || []).filter(function(it){
+    if(qB && String(it.bodega_nombre||'').toLowerCase().indexOf(qB) < 0) return false;
+    if(qT && String(it.telefono||'').toLowerCase().indexOf(qT) < 0) return false;
+    if(qV && String(it.vendedor_nombre||'').toLowerCase().indexOf(qV) < 0) return false;
+    return true;
+  });
+}
+
+function updateBatchPreviewSelectionCount(){
+  var st = window._batchPreviewState;
+  var el = document.getElementById('batchPreviewSelCount');
+  if(!st || !el) return;
+  var n = Object.keys(st.selected).filter(function(k){ return st.selected[k]; }).length;
+  el.textContent = n + ' seleccionado(s)';
+  var btn = document.getElementById('batchPreviewExecBtn');
+  if(btn) btn.textContent = '▶ Ejecutar '+n+' seleccionado(s)';
+}
+
+function onBatchPreviewCheck(itemId, checked){
+  var st = window._batchPreviewState;
+  if(!st) return;
+  st.selected[String(itemId)] = !!checked;
+  updateBatchPreviewSelectionCount();
+}
+
+function toggleBatchPreviewAll(checked){
+  var st = window._batchPreviewState;
+  if(!st) return;
+  batchPreviewVisibleItems().forEach(function(it){
+    if(it.item_id) st.selected[String(it.item_id)] = !!checked;
+  });
+  renderBatchPreviewTableRows();
+  updateBatchPreviewSelectionCount();
+}
+
+function renderBatchPreviewTableRows(){
+  var tbody = document.getElementById('batchPreviewBody');
+  var st = window._batchPreviewState;
+  if(!tbody || !st) return;
+  var rows = batchPreviewVisibleItems();
+  var hasVend = (st.data.items || []).some(function(it){ return it.vendedor_nombre; });
+  if(!rows.length){
+    tbody.innerHTML = '<tr><td colspan="'+(hasVend ? 7 : 6)+'" class="empty">Ningún destinatario con estos filtros.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = rows.map(function(it, i){
+    var id = String(it.item_id || '');
+    var checked = st.selected[id] ? ' checked' : '';
     var testBadge = it.es_test ? '<span class="import-badge warn">TEST</span> ' : '';
-    return '<tr><td>'+(i+1)+'</td>'+
+    var vendCol = hasVend ? '<td>'+escAttr(it.vendedor_nombre||'—')+'</td>' : '';
+    return '<tr>'+
+      '<td><input type="checkbox" class="batch-preview-chk" data-item-id="'+escAttr(id)+'"'+checked+' onchange="onBatchPreviewCheck(\''+escAttr(id)+'\', this.checked)"></td>'+
+      '<td>'+(i+1)+'</td>'+
       '<td>'+testBadge+escAttr(it.bodega_nombre||'—')+'</td>'+
       '<td class="mono">'+escAttr(it.telefono||'—')+'</td>'+
+      vendCol+
       '<td style="font-size:12px;line-height:1.4">'+escAttr(it.detalle||'')+'</td>'+
-      '<td style="font-size:11px;color:var(--muted);line-height:1.35">'+escAttr(it.accion||'')+'</td></tr>';
-  }).join('') : '<tr><td colspan="5" class="empty">Ningún destinatario con el filtro actual.</td></tr>';
+      '<td style="font-size:11px;color:var(--muted);line-height:1.35">'+escAttr(it.accion||'')+'</td>'+
+    '</tr>';
+  }).join('');
+}
+
+function getBatchSelectedIds(){
+  var st = window._batchPreviewState;
+  if(!st) return [];
+  return Object.keys(st.selected).filter(function(k){ return st.selected[k]; });
+}
+
+function openBatchRunConfirm(){
+  var st = window._batchPreviewState;
+  if(!st) return;
+  var ids = getBatchSelectedIds();
+  if(!ids.length){ showToast('Selecciona al menos un destinatario','error'); return; }
+  if(isReadOnly()){ showToast('Solo lectura','error'); return; }
+  window._batchSelectedIds = ids;
+  var jobId = st.jobId;
+  document.getElementById('modalContainer').innerHTML =
+    '<div class="modal-overlay open" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:480px"><h3>▶ Ejecutar proceso</h3>'+
+    '<p style="font-size:13px;color:var(--muted);margin-bottom:12px">Job: <code>'+escAttr(jobId)+'</code> · <strong>'+ids.length+'</strong> destinatario(s)</p>'+
+    '<div class="modal-field"><label>Comentario (mín. 8 caracteres)</label><input id="batchRunComentario" class="input" value="Ejecución selectiva desde backoffice"></div>'+
+    '<div class="modal-field"><label>Contraseña</label><input type="password" id="batchRunPass" class="input"></div>'+
+    '<div class="modal-actions"><button class="btn btn-outline" onclick="closeModal();showBatchPreviewModal(\''+escAttr(jobId)+'\', window._batchPreviewState.data)">← Volver</button>'+
+    '<button class="btn btn-green" onclick="confirmBatchRun(\''+escAttr(jobId)+'\')">Confirmar</button></div></div></div>';
+}
+
+function showBatchPreviewModal(jobId, p){
+  p = p || (window._batchPreviewState && window._batchPreviewState.data) || {};
+  var sel = p.selection || {};
+  var testLbl = p.test_filter === 'test' ? 'Pruebas' : 'Reales';
+  var hasVend = (p.items || []).some(function(it){ return it.vendedor_nombre; });
+  var vendTh = hasVend ? '<th>Vendedor</th>' : '';
+  var vendSearch = hasVend && sel.search_vendedor
+    ? '<input type="text" id="batchPreviewFiltroVend" class="scoring-col-filter" placeholder="'+escAttr(sel.search_vendedor)+'" oninput="renderBatchPreviewTableRows()" autocomplete="off">'
+    : '';
 
   var execBtn = isReadOnly() ? '' :
-    '<button type="button" class="btn btn-green" onclick="closeModal();runBatchJob(\''+escAttr(jobId)+'\',false)">▶ Ejecutar</button>';
+    '<button type="button" class="btn btn-green" id="batchPreviewExecBtn" onclick="openBatchRunConfirm()">▶ Ejecutar seleccionados</button>';
 
   document.getElementById('modalContainer').innerHTML =
     '<div class="modal-overlay open" onclick="if(event.target===this)closeModal()">'+
     '<div class="modal-box">'+
       '<div class="modal-head">'+
         '<div><h2>👁 Vista previa — '+escAttr(p.nombre||jobId)+'</h2>'+
-        '<div class="sub">Simulación · no se envían mensajes ni se guardan cambios</div></div>'+
+        '<div class="sub">Elige bodegas, teléfonos o destinatarios antes de ejecutar</div></div>'+
         '<button type="button" class="modal-close" onclick="closeModal()" aria-label="Cerrar">×</button>'+
       '</div>'+
       '<div class="modal-body">'+
-        '<p style="font-size:13px;color:var(--muted);margin-bottom:12px;line-height:1.5">'+escAttr(p.note||'')+
+        '<p style="font-size:13px;color:var(--muted);margin-bottom:12px;line-height:1.5">'+escAttr(sel.hint || p.note || '')+
         ' · Modo <strong>'+escAttr(testLbl)+'</strong>'+
-        (p.afecta_whatsapp ? ' · <span style="color:var(--orange)">Afecta WhatsApp al ejecutar</span>' : '')+
+        (p.afecta_whatsapp ? ' · <span style="color:var(--orange)">Afecta WhatsApp</span>' : '')+
         '</p>'+
         '<div class="import-summary">'+
           '<span>Total: <strong>'+(p.total||0)+'</strong></span>'+
+          '<span id="batchPreviewSelCount">0 seleccionado(s)</span>'+
           '<span>Con teléfono WA: <strong>'+(p.con_telefono||0)+'</strong></span>'+
           (p.truncated ? '<span class="sum-warn">Mostrando '+p.mostrando+' de '+p.total+'</span>' : '')+
         '</div>'+
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:center">'+
+          '<input type="text" id="batchPreviewFiltroBodega" class="scoring-col-filter" style="flex:1;min-width:140px" placeholder="'+escAttr(sel.search_bodega||'Filtrar bodega…')+'" oninput="renderBatchPreviewTableRows()" autocomplete="off">'+
+          '<input type="text" id="batchPreviewFiltroTel" class="scoring-col-filter" style="flex:1;min-width:120px" placeholder="'+escAttr(sel.search_telefono||'Filtrar teléfono…')+'" oninput="renderBatchPreviewTableRows()" autocomplete="off">'+
+          vendSearch+
+          '<button type="button" class="btn btn-outline btn-small" onclick="toggleBatchPreviewAll(true)">Todos</button>'+
+          '<button type="button" class="btn btn-outline btn-small" onclick="toggleBatchPreviewAll(false)">Ninguno</button>'+
+        '</div>'+
         '<div class="import-preview-wrap" style="max-height:min(52vh,480px)">'+
           '<table class="import-preview-table"><thead><tr>'+
-            '<th>#</th><th>Bodega</th><th>Teléfono WA</th><th>Detalle</th><th>Acción al ejecutar</th>'+
-          '</tr></thead><tbody>'+tableRows+'</tbody></table>'+
+            '<th style="width:32px"><input type="checkbox" checked onchange="toggleBatchPreviewAll(this.checked)" title="Seleccionar visibles"></th>'+
+            '<th>#</th><th>Bodega</th><th>Teléfono WA</th>'+vendTh+'<th>Detalle</th><th>Acción</th>'+
+          '</tr></thead><tbody id="batchPreviewBody"></tbody></table>'+
         '</div>'+
         '<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px;flex-wrap:wrap">'+
           '<button type="button" class="btn btn-outline" onclick="closeModal()">Cerrar</button>'+
@@ -2030,23 +2155,16 @@ function showBatchPreviewModal(jobId, p){
         '</div>'+
       '</div>'+
     '</div></div>';
+  renderBatchPreviewTableRows();
+  updateBatchPreviewSelectionCount();
 }
 
 function runBatchJob(jobId, dryRun){
-  if(!dryRun && isReadOnly()){ showToast('Solo lectura','error'); return; }
   if(dryRun){
     previewBatchJob(jobId);
     return;
   }
-  document.getElementById('modalContainer').innerHTML =
-    '<div class="modal-overlay open" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:480px"><h3>▶ Ejecutar proceso</h3>'+
-    '<p style="font-size:13px;color:var(--muted);margin-bottom:12px">Job: <code>'+escAttr(jobId)+'</code></p>'+
-    '<p style="font-size:12px;color:var(--muted);margin-bottom:12px">Revisa la <button type="button" class="btn btn-outline btn-small" onclick="previewBatchJob(\''+escAttr(jobId)+'\')">vista previa</button> antes de confirmar.</p>'+
-    '<div class="modal-field"><label>Comentario (mín. 8 caracteres)</label><input id="batchRunComentario" class="input" value="Ejecución manual desde backoffice"></div>'+
-    '<div class="modal-field"><label>Contraseña</label><input type="password" id="batchRunPass" class="input"></div>'+
-    '<div class="modal-actions"><button class="btn btn-outline" onclick="closeModal()">Cancelar</button>'+
-    '<button class="btn btn-green" onclick="confirmBatchRun(\''+jobId+'\')">Ejecutar</button></div></div></div>';
-  window._batchRunJobId = jobId;
+  previewBatchJob(jobId);
 }
 
 function confirmBatchRun(jobId){
@@ -2054,11 +2172,13 @@ function confirmBatchRun(jobId){
   var com = (document.getElementById('batchRunComentario')||{}).value || '';
   if(com.trim().length < 8){ showToast('Comentario mínimo 8 caracteres','error'); return; }
   if(!pass){ showToast('Ingresa contraseña','error'); return; }
+  var selected = window._batchSelectedIds || getBatchSelectedIds();
+  if(!selected.length){ showToast('Selecciona al menos un destinatario','error'); return; }
   closeModal();
   showPanelLoader('Ejecutando proceso…', true);
   var mode = window.MODE_FILTER || localStorage.getItem('circa_mode') || 'real';
   apiPost('/api/backoffice/batch/'+encodeURIComponent(jobId)+'/run', {
-    dry_run: false, password: pass, comentario: com, test: mode
+    dry_run: false, password: pass, comentario: com, test: mode, selected_ids: selected
   }).then(function(x){
     hidePanelLoader();
     if(!x.ok){ showToast((x.d && x.d.detail) || 'Error al ejecutar','error'); return; }

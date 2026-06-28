@@ -1286,6 +1286,7 @@ class BatchRunRequest(BaseModel):
     test: Optional[str] = None
     comentario: str = Field(default="dry-run", min_length=1, max_length=500)
     password: str = Field(default="")
+    selected_ids: Optional[list[str]] = Field(default=None, max_length=500)
 
 
 class BatchScheduleBody(BaseModel):
@@ -1432,6 +1433,8 @@ async def batch_job_run(
         if len(body.comentario.strip()) < 8:
             raise HTTPException(status_code=400, detail="Comentario mínimo 8 caracteres")
         verify_reauth_password(body.password)
+        if body.selected_ids is not None and len(body.selected_ids) == 0:
+            raise HTTPException(status_code=400, detail="Selecciona al menos un destinatario")
 
     try:
         result = await run_batch_job(
@@ -1440,6 +1443,7 @@ async def batch_job_run(
             dry_run=body.dry_run,
             user_email=user.get("email", ""),
             comment=body.comentario.strip() if not body.dry_run else "dry-run",
+            selected_ids=body.selected_ids,
         )
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e

@@ -49,8 +49,8 @@ def test_preview_marcar_vencidos_filters_test():
         )
         preview = asyncio.run(preview_marcar_vencidos(test="real"))
     assert preview["total"] == 1
-    assert preview["items"][0]["bodega_nombre"] == "Real SA"
     assert preview["items"][0]["telefono"] == "999111222"
+    assert preview["items"][0]["item_id"] == "f1"
 
 
 def test_preview_score_job():
@@ -72,4 +72,5 @@ def test_preview_score_job():
         preview = asyncio.run(build_preview("score_bodegas_diario", test="real"))
     assert preview["total"] == 1
     assert preview["items"][0]["telefono"] == "987654321"
+    assert preview["items"][0]["item_id"] == "b1"
     assert "Score 80" in preview["items"][0]["detalle"]

@@ -8,8 +8,39 @@ from typing import Any, Optional
 from app.services import db
 from app.services.bodega_scoring_batch import run_bodega_scoring_batch
 from app.services.batch_jobs.registry import JOBS_BY_ID
+from app.services.batch_jobs.selection import get_selection_meta
 
 _PREVIEW_LIMIT = 500
+
+
+def _fetch_vendedores_por_bodega(bodega_ids: list[str]) -> dict[str, dict[str, Any]]:
+    if not bodega_ids:
+        return {}
+    out: dict[str, dict[str, Any]] = {}
+    chunk = 80
+    for i in range(0, len(bodega_ids), chunk):
+        part = bodega_ids[i : i + chunk]
+        try:
+            rows = (
+                db.sb.table("bodega_vendedores")
+                .select("bodega_id, vendedores(nombre, codigo, telefono_whatsapp)")
+                .in_("bodega_id", part)
+                .eq("activo", True)
+                .execute()
+                .data
+                or []
+            )
+        except Exception:
+            rows = []
+        for row in rows:
+            bid = row.get("bodega_id")
+            if not bid or bid in out:
+                continue
+            v = row.get("vendedores") or {}
+            if isinstance(v, list):
+                v = v[0] if v else {}
+            out[bid] = v
+    return out
 
 
 def _filter_es_test(items: list[dict[str, Any]], test: Optional[str]) -> list[dict[str, Any]]:
@@ -39,19 +70,27 @@ def _wrap(job_id: str, items: list[dict[str, Any]], *, test: Optional[str], note
         "con_telefono": wa_count,
         "note": note,
         "items": shown,
+        "selection": get_selection_meta(job_id),
     }
 
 
 async def preview_score_bodegas(*, test: Optional[str] = "real") -> dict[str, Any]:
     result = run_bodega_scoring_batch(test=test, persist=False)
+    bodegas = result.get("bodegas") or []
+    vendedores = _fetch_vendedores_por_bodega([r.get("bodega_id") for r in bodegas if r.get("bodega_id")])
     items = []
-    for r in result.get("bodegas") or []:
+    for r in bodegas:
         prev = r.get("scoring_anterior")
         prev_txt = f"{int(prev)}" if prev is not None else "—"
+        bid = r.get("bodega_id")
+        vend = vendedores.get(bid) or {}
+        vnombre = vend.get("nombre") or vend.get("codigo") or ""
         items.append({
-            "bodega_id": r.get("bodega_id"),
+            "item_id": str(bid),
+            "bodega_id": bid,
             "bodega_nombre": r.get("nombre"),
             "telefono": r.get("telefono_whatsapp"),
+            "vendedor_nombre": vnombre or None,
             "es_test": bool(r.get("es_test")),
             "detalle": (
                 f"Score {r.get('score')} ({r.get('grade')}) · "
@@ -110,6 +149,8 @@ async def preview_recordatorios(*, test: Optional[str] = None) -> dict[str, Any]
                 f"S/{float(fin['monto_total']):.2f} · vence en {dias}d"
             )
         items.append({
+            "item_id": str(rem["id"]),
+            "recordatorio_id": rem["id"],
             "bodega_id": pedido.get("bodega_id"),
             "bodega_nombre": bodega.get("nombre_comercial") or "—",
             "telefono": telefono or None,
@@ -142,6 +183,8 @@ async def preview_marcar_vencidos(*, test: Optional[str] = None) -> dict[str, An
     for fin in overdue:
         b = fin.get("bodegas") or {}
         items.append({
+            "item_id": str(fin["id"]),
+            "financiamiento_id": fin["id"],
             "bodega_id": fin.get("bodega_id"),
             "bodega_nombre": b.get("nombre_comercial") or "—",
             "telefono": b.get("telefono_whatsapp"),
