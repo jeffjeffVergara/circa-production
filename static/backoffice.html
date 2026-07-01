@@ -682,7 +682,9 @@ y genera el SQL de alta. <em>Analizar</em> no toca la base; <em>Cargar seleccion
 <option value="">Supervisor: todos</option>
 </select>
 <select id="bodegasFiltroGrupo" onchange="loadBodegas()" style="padding:9px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px">
-<option value="">Grupo: todos</option>
+<option value="">Tipo: todos</option>
+<option value="bodega">Bodega</option>
+<option value="mercado">Mercado</option>
 </select>
 <select id="bodegasFiltroEnrolada" onchange="loadBodegas()" style="padding:9px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px">
 <option value="">Enrolada: todos</option>
@@ -702,7 +704,16 @@ y genera el SQL de alta. <em>Analizar</em> no toca la base; <em>Cargar seleccion
 </select>
 <select id="bodegasFiltroLinea" onchange="loadBodegas()" style="padding:9px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px">
 <option value="">Línea: todos</option>
-<option value="true">Sin usar</option>
+<option value="usando">Usando</option>
+<option value="sin_usar">Sin usar</option>
+</select>
+<select id="bodegasFiltroFaseBot" onchange="loadBodegas()" style="padding:9px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px">
+<option value="">Fase bot: todos</option>
+<option value="menu">menu</option>
+<option value="sin_sesion">sin_sesion</option>
+<option value="catalogo">catalogo</option>
+<option value="carrito">carrito</option>
+<option value="onboarding">onboarding</option>
 </select>
 <button class="btn btn-outline btn-small" onclick="clearBodegaFilters()" title="Limpiar filtros">✕</button>
 <button class="btn btn-green btn-small" onclick="exportBodegasCSV()">📥 Excel</button>
@@ -2766,6 +2777,7 @@ function clearBodegaFilters(){
   document.getElementById('bodegasFiltroPedido').value='';
   document.getElementById('bodegasFiltroMora').value='';
   document.getElementById('bodegasFiltroLinea').value='';
+  document.getElementById('bodegasFiltroFaseBot').value='';
   loadBodegas();
 }
 
@@ -2819,17 +2831,20 @@ function loadBodegas(){
   var con_pedido = (document.getElementById('bodegasFiltroPedido')||{}).value || '';
   var moraFilt = (document.getElementById('bodegasFiltroMora')||{}).value || '';
   var lineaFilt = (document.getElementById('bodegasFiltroLinea')||{}).value || '';
+  var faseBotFilt = (document.getElementById('bodegasFiltroFaseBot')||{}).value || '';
 
   var url = '/api/backoffice/bodegas-ops?';
   if(search) url += 'search='+encodeURIComponent(search)+'&';
   if(estado) url += 'estado='+estado+'&';
   if(vendedor) url += 'vendedor='+encodeURIComponent(vendedor)+'&';
   if(supervisor) url += 'supervisor='+encodeURIComponent(supervisor)+'&';
-  if(grupo) url += 'grupo='+encodeURIComponent(grupo)+'&';
+  if(grupo) url += 'tipo='+encodeURIComponent(grupo)+'&';
   if(enrolada) url += 'enrolada='+enrolada+'&';
   if(con_pedido) url += 'con_pedido='+con_pedido+'&';
   if(moraFilt) url += 'mora='+moraFilt+'&';
-  if(lineaFilt) url += 'linea_sin_uso='+lineaFilt+'&';
+  if(lineaFilt === 'usando') url += 'linea_usando=si&';
+  else if(lineaFilt === 'sin_usar') url += 'linea_usando=no&';
+  if(faseBotFilt) url += 'fase_bot='+encodeURIComponent(faseBotFilt)+'&';
 
   return api(url).then(function(d){
     var bodegas = d.bodegas || [];
@@ -2845,7 +2860,7 @@ function loadBodegas(){
       var f = d.filtros_disponibles;
       _populateFilterDropdown('bodegasFiltroVendedor', f.vendedores||[]);
       _populateFilterDropdown('bodegasFiltroSupervisor', f.supervisores||[], function(s){ return s.length>25 ? s.slice(0,22)+'...' : s; });
-      _populateFilterDropdown('bodegasFiltroGrupo', f.grupos||[]);
+      // grupo replaced by tipo
     }
 
     if(!bodegas.length){

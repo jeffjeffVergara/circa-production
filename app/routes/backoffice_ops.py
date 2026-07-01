@@ -34,6 +34,9 @@ async def bodegas_ops_handler(
     con_pedido: Optional[str] = None,
     linea_sin_uso: Optional[str] = None,
     mora: Optional[str] = None,
+    fase_bot: Optional[str] = None,
+    tipo: Optional[str] = None,
+    linea_usando: Optional[str] = None,
     user: dict = Depends(get_backoffice_user),
 ):
     q = db.sb.table("bodegas").select(
@@ -164,6 +167,7 @@ async def bodegas_ops_handler(
             "saldo": round(ps.get("saldo", 0), 2), "dias_mora": ps.get("dias_mora", 0),
             "monto_vencido": round(ps.get("monto_vencido", 0), 2),
             "created_at": b.get("created_at", ""),
+            "tipo": "mercado" if "MERCADO" in (vdata.get("grupo") or "").upper() else "bodega",
         })
 
     if search:
@@ -193,6 +197,16 @@ async def bodegas_ops_handler(
         result = [r for r in result if r["saldo"] > 0 and r["dias_mora"] == 0]
     elif mora == "sin_deuda":
         result = [r for r in result if r["saldo"] == 0]
+    if fase_bot:
+        result = [r for r in result if r["fase_bot"] == fase_bot]
+    if tipo == "bodega":
+        result = [r for r in result if r["tipo"] == "bodega"]
+    elif tipo == "mercado":
+        result = [r for r in result if r["tipo"] == "mercado"]
+    if linea_usando == "si":
+        result = [r for r in result if r["linea_usada"] > 0 and r["enrolada"]]
+    elif linea_usando == "no":
+        result = [r for r in result if r["linea_aprobada"] > 0 and r["linea_usada"] == 0 and r["enrolada"]]
 
     total = len(result)
     activas = sum(1 for r in result if r["estado"] == "activo")
