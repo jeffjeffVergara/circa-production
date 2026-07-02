@@ -120,12 +120,51 @@ def generar_sql(b: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def patch_sql_linea(sql_inserts: str, linea_aprobada: int) -> str:
+    """Reemplaza linea_aprobada, linea_alta y scoring_alta en el INSERT de bodegas."""
+    import re
+
+    linea = max(1, int(linea_aprobada))
+    alta = onboarding_alta_fields(linea)
+    nueva = (
+        f"false, true, 'inactivo', {linea}, 0, "
+        f"{int(alta['linea_alta'])}, {int(alta['scoring_alta'])}"
+    )
+    patched, n = re.subn(
+        r"false, true, 'inactivo', \d+, 0, \d+, \d+",
+        nueva,
+        sql_inserts,
+        count=1,
+    )
+    if n != 1:
+        raise ValueError("No se pudo actualizar la línea en el SQL de la bodega")
+    return patched
+
+
+def sql_block_from_parts(
+    *,
+    razon_social: str,
+    linea_aprobada: int,
+    linea_7d: float,
+    sql_inserts: str,
+    sql_verificacion: str,
+) -> str:
+    cab = (
+        "-- ====================================================\n"
+        "-- Bodega: %s\n"
+        "-- Linea aprobada: S/%d  (modelo: consumo 7d = S/%.2f)\n"
+        "-- ====================================================\n"
+        % (razon_social.strip(), int(linea_aprobada), float(linea_7d or 0))
+    )
+    return cab + "BEGIN;\n\n" + sql_inserts + "\n\n" + sql_verificacion + "\n\nCOMMIT;\n"
+
+
 def sql_para_archivo(b: dict[str, Any]) -> str:
     s = b["sql"]
-    cab = ("-- ====================================================\n"
-           "-- Bodega: %s\n"
-           "-- Linea aprobada: S/%d  (modelo: consumo 7d = S/%.2f)\n"
-           "-- ====================================================\n"
-           % (str(b["cliente"].get("RazonSocial", "")).strip(),
-              b["analisis"]["tier"], b["analisis"]["linea_7d"]))
-    return cab + "BEGIN;\n\n" + s["inserts"] + "\n\n" + s["verificacion"] + "\n\nCOMMIT;\n"
+    return sql_block_from_parts(
+        razon_social=str(b["cliente"].get("RazonSocial", "")),
+        linea_aprobada=int(b["analisis"]["tier"]),
+        linea_7d=float(b["analisis"]["linea_7d"]),
+        sql_inserts=s["inserts"],
+        sql_verificacion=s["verificacion"],
+    )

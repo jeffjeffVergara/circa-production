@@ -74,6 +74,8 @@ def serialize_bodega(b: dict[str, Any]) -> dict[str, Any]:
         "avisos": b["avisos"],
         "necesita_revision": bool(b["avisos"]["revisar"]),
         "tier": a["tier"],
+        "tier_modelo": a["tier"],
+        "linea_7d": round(float(a["linea_7d"]), 2),
         "mensaje": b["mensaje"],
         "reporte_ficha": _ficha_resumen(b),
         "sql_block": sql_para_archivo(b),
@@ -149,15 +151,48 @@ def process_files(
     }
 
 
+def apply_linea_to_load_item(item: dict[str, Any]) -> dict[str, Any]:
+    """Aplica linea_aprobada opcional al SQL de carga."""
+    from app.services.credit_model.sql_generator import patch_sql_linea, sql_block_from_parts
+
+    out = dict(item)
+    linea = out.get("linea_aprobada")
+    if linea is None:
+        return out
+    linea = int(linea)
+    if linea < 1:
+        raise ValueError("La línea debe ser mayor a 0")
+    inserts = patch_sql_linea(out["sql_inserts"], linea)
+    out["sql_inserts"] = inserts
+    out["tier"] = linea
+    out["sql_block"] = sql_block_from_parts(
+        razon_social=out.get("razon_social") or "",
+        linea_aprobada=linea,
+        linea_7d=float(out.get("linea_7d") or 0),
+        sql_inserts=inserts,
+        sql_verificacion=out["sql_verificacion"],
+    )
+    return out
+
+
 def record_from_load_item(item: dict[str, Any]) -> dict[str, Any]:
     """Reconstruye registro mínimo para db_loader desde payload del front."""
+    item = apply_linea_to_load_item(item)
     necesita = bool(item.get("necesita_revision"))
     confirmada = bool(item.get("confirmar_revision"))
     revisar: list[str] = []
     if necesita and not confirmada:
         revisar = ["Requiere confirmacion de revision en backoffice"]
+    cliente = item.get("cliente") or {}
+    if not cliente.get("RazonSocial") and item.get("razon_social"):
+        cliente = dict(cliente)
+        cliente["RazonSocial"] = item["razon_social"]
     return {
-        "cliente": {"RazonSocial": item.get("razon_social") or item.get("nombre", "")},
+        "cliente": cliente,
+        "razon_social": item.get("razon_social") or cliente.get("RazonSocial") or "",
+        "telefono": item.get("telefono"),
+        "vendedores": item.get("vendedores") or [],
+        "linea_aprobada": item.get("tier") or item.get("linea_aprobada"),
         "avisos": {"revisar": revisar, "notas": []},
         "_confirmar_revision": confirmada,
         "sql": {

@@ -90,6 +90,56 @@ def test_process_files_api_shape():
     assert row["necesita_revision"] is False or isinstance(row["necesita_revision"], bool)
 
 
+def test_patch_sql_linea_cambia_linea_aprobada():
+    content = _build_dimax_xlsx()
+    raw = process_bytes(content, "t.xlsx")[0]
+    sql = generar_sql(raw)
+    original = sql["inserts"]
+    tier_orig = raw["analisis"]["tier"]
+    nueva_linea = tier_orig + 100 if tier_orig < 400 else 200
+    from app.services.credit_model.sql_generator import patch_sql_linea
+
+    patched = patch_sql_linea(original, nueva_linea)
+    assert patched != original
+    assert f"false, true, 'inactivo', {nueva_linea}, 0," in patched
+
+
+def test_apply_linea_to_load_item():
+    content = _build_dimax_xlsx()
+    from app.services.credit_model.credit_model_service import apply_linea_to_load_item, process_files
+
+    out = process_files([(content, "a.xlsx")])
+    row = out["bodegas"][0]
+    patched = apply_linea_to_load_item({**row, "linea_aprobada": 350})
+    assert patched["tier"] == 350
+    assert "false, true, 'inactivo', 350, 0," in patched["sql_inserts"]
+    assert "Linea aprobada: S/350" in patched["sql_block"]
+
+
+def test_load_bodegas_records_via_supabase_when_no_db_url(monkeypatch):
+    monkeypatch.delenv("CIRCA_DB_URL", raising=False)
+    import app.services.credit_model.db_loader as loader
+
+    record = {
+        "cliente": {"RazonSocial": "Bodega Test SAC", "DNI/RUC": "12345678"},
+        "razon_social": "Bodega Test SAC",
+        "telefono": "+51999988877",
+        "linea_aprobada": 200,
+        "vendedores": [],
+        "avisos": {"revisar": [], "notas": []},
+        "_confirmar_revision": False,
+        "sql": {"inserts": "--", "verificacion": "--", "telefono": "+51999988877"},
+    }
+    monkeypatch.setattr(
+        loader,
+        "ejecutar_bodega_supabase",
+        lambda _r: (True, [("bodega", "Bodega Test SAC", "200", "0", "inactivo")]),
+    )
+    out = loader.load_bodegas_records([record])
+    assert out["ok"] == 1
+    assert out["via"] == "supabase"
+
+
 def test_generar_sql_telefono_e164():
     content = _build_dimax_xlsx(telefono="51942616682")
     raw = process_bytes(content, "t.xlsx")[0]

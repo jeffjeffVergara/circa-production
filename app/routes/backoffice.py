@@ -1233,6 +1233,18 @@ class CreditModelLoadItem(BaseModel):
     sql_verificacion: str = Field(..., min_length=1)
     necesita_revision: bool = False
     confirmar_revision: bool = False
+    linea_aprobada: Optional[int] = Field(default=None, ge=1, le=50000)
+    linea_7d: Optional[float] = None
+    cliente: dict[str, Any] = Field(default_factory=dict)
+    vendedores: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class CreditModelPatchLineaBody(BaseModel):
+    sql_inserts: str = Field(..., min_length=1)
+    sql_verificacion: str = Field(..., min_length=1)
+    razon_social: str = ""
+    linea_aprobada: int = Field(..., ge=1, le=50000)
+    linea_7d: Optional[float] = None
 
 
 class CreditModelLoadRequest(ReauthMixin):
@@ -1256,12 +1268,31 @@ async def credit_model_process(
     return process_files(items)
 
 
+@router.post("/credit-model/patch-linea")
+async def credit_model_patch_linea(
+    body: CreditModelPatchLineaBody,
+    user: dict = Depends(get_backoffice_user),
+):
+    """Actualiza el SQL de alta con una línea de crédito distinta a la sugerida."""
+    from app.services.credit_model.credit_model_service import apply_linea_to_load_item
+
+    try:
+        patched = apply_linea_to_load_item(body.model_dump())
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    return {
+        "linea_aprobada": patched["tier"],
+        "sql_inserts": patched["sql_inserts"],
+        "sql_block": patched.get("sql_block") or "",
+    }
+
+
 @router.post("/credit-model/load")
 async def credit_model_load(
     body: CreditModelLoadRequest,
     user: dict = Depends(get_backoffice_writer),
 ):
-    """Ejecuta SQL de alta de bodega(s) en Postgres (CIRCA_DB_URL)."""
+    """Ejecuta alta de bodega(s) vía Supabase API o Postgres (CIRCA_DB_URL opcional)."""
     verify_reauth_password(body.password)
     from app.services.credit_model.credit_model_service import load_bodegas_from_api
 
