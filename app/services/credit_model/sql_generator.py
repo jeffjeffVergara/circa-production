@@ -120,6 +120,19 @@ def generar_sql(b: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def extract_linea_from_sql_inserts(sql_inserts: str) -> int | None:
+    """Lee linea_aprobada del INSERT de bodegas generado por el modelo."""
+    import re
+
+    m = re.search(
+        r"false,\s*true,\s*'inactivo',\s*(\d+),\s*0,\s*(\d+),\s*(\d+)",
+        sql_inserts or "",
+    )
+    if not m:
+        return None
+    return int(m.group(1))
+
+
 def patch_sql_linea(sql_inserts: str, linea_aprobada: int) -> str:
     """Reemplaza linea_aprobada, linea_alta y scoring_alta en el INSERT de bodegas."""
     import re

@@ -140,6 +140,35 @@ def test_load_bodegas_records_via_supabase_when_no_db_url(monkeypatch):
     assert out["via"] == "supabase"
 
 
+def test_extract_linea_from_sql_inserts():
+    content = _build_dimax_xlsx()
+    raw = process_bytes(content, "t.xlsx")[0]
+    sql = generar_sql(raw)
+    from app.services.credit_model.sql_generator import extract_linea_from_sql_inserts
+
+    linea = extract_linea_from_sql_inserts(sql["inserts"])
+    assert linea == raw["analisis"]["tier"]
+
+
+def test_record_from_load_item_infers_linea_from_sql():
+    content = _build_dimax_xlsx()
+    from app.services.credit_model.credit_model_service import process_files, record_from_load_item
+
+    row = process_files([(content, "a.xlsx")])["bodegas"][0]
+    payload = {
+        "telefono": row["telefono"],
+        "razon_social": row["razon_social"],
+        "sql_inserts": row["sql_inserts"],
+        "sql_verificacion": row["sql_verificacion"],
+        "cliente": row["cliente"],
+        "vendedores": row["vendedores"],
+        "necesita_revision": False,
+        "confirmar_revision": False,
+    }
+    rec = record_from_load_item(payload)
+    assert rec["linea_aprobada"] == row["tier"]
+
+
 def test_generar_sql_telefono_e164():
     content = _build_dimax_xlsx(telefono="51942616682")
     raw = process_bytes(content, "t.xlsx")[0]

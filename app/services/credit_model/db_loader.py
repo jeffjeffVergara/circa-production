@@ -10,6 +10,9 @@ from app.services.credit_model.constants import DB_ENV_VAR, DIMAX_ID
 from app.services.credit_model.helpers import doc_info, titulo
 
 
+from app.services.credit_model.sql_generator import extract_linea_from_sql_inserts
+
+
 def get_db_url() -> str:
     url = os.environ.get(DB_ENV_VAR, "").strip()
     if not url:
@@ -22,6 +25,9 @@ def get_db_url() -> str:
 
 def _linea_aprobada(record: dict[str, Any]) -> int:
     linea = record.get("linea_aprobada") or record.get("tier")
+    if linea is None:
+        sql = (record.get("sql") or {}).get("inserts") or record.get("sql_inserts") or ""
+        linea = extract_linea_from_sql_inserts(sql)
     if linea is None:
         raise ValueError("Falta linea_aprobada en el registro de carga")
     return max(1, int(linea))

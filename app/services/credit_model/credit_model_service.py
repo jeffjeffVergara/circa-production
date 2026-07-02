@@ -153,10 +153,16 @@ def process_files(
 
 def apply_linea_to_load_item(item: dict[str, Any]) -> dict[str, Any]:
     """Aplica linea_aprobada opcional al SQL de carga."""
-    from app.services.credit_model.sql_generator import patch_sql_linea, sql_block_from_parts
+    from app.services.credit_model.sql_generator import (
+        extract_linea_from_sql_inserts,
+        patch_sql_linea,
+        sql_block_from_parts,
+    )
 
     out = dict(item)
     linea = out.get("linea_aprobada")
+    if linea is None:
+        linea = extract_linea_from_sql_inserts(out.get("sql_inserts") or "")
     if linea is None:
         return out
     linea = int(linea)
@@ -165,6 +171,7 @@ def apply_linea_to_load_item(item: dict[str, Any]) -> dict[str, Any]:
     inserts = patch_sql_linea(out["sql_inserts"], linea)
     out["sql_inserts"] = inserts
     out["tier"] = linea
+    out["linea_aprobada"] = linea
     out["sql_block"] = sql_block_from_parts(
         razon_social=out.get("razon_social") or "",
         linea_aprobada=linea,
@@ -177,6 +184,8 @@ def apply_linea_to_load_item(item: dict[str, Any]) -> dict[str, Any]:
 
 def record_from_load_item(item: dict[str, Any]) -> dict[str, Any]:
     """Reconstruye registro mínimo para db_loader desde payload del front."""
+    from app.services.credit_model.sql_generator import extract_linea_from_sql_inserts
+
     item = apply_linea_to_load_item(item)
     necesita = bool(item.get("necesita_revision"))
     confirmada = bool(item.get("confirmar_revision"))
@@ -187,12 +196,17 @@ def record_from_load_item(item: dict[str, Any]) -> dict[str, Any]:
     if not cliente.get("RazonSocial") and item.get("razon_social"):
         cliente = dict(cliente)
         cliente["RazonSocial"] = item["razon_social"]
+    linea = (
+        item.get("linea_aprobada")
+        or item.get("tier")
+        or extract_linea_from_sql_inserts(item.get("sql_inserts") or "")
+    )
     return {
         "cliente": cliente,
         "razon_social": item.get("razon_social") or cliente.get("RazonSocial") or "",
         "telefono": item.get("telefono"),
         "vendedores": item.get("vendedores") or [],
-        "linea_aprobada": item.get("tier") or item.get("linea_aprobada"),
+        "linea_aprobada": linea,
         "avisos": {"revisar": revisar, "notas": []},
         "_confirmar_revision": confirmada,
         "sql": {

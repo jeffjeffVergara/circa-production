@@ -340,8 +340,13 @@ tr:hover td{background:var(--card-hover)}
 .batch-preview-row.focused{background:rgba(96,165,250,.1)}
 .batch-preview-row:hover{background:rgba(255,255,255,.03)}
 .cm-revision-ok{color:var(--green);font-size:12px;font-weight:600}
-.cm-revision-pending label{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--orange);cursor:pointer;white-space:nowrap}
+.cm-revision-cell{min-width:140px}
+.cm-revision-pending{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--orange);cursor:pointer;white-space:nowrap}
+.cm-revision-pending input[type=checkbox]{width:16px;height:16px;min-width:16px;accent-color:var(--orange);cursor:pointer}
 .cm-revision-hint{font-size:10px;color:var(--muted);margin-top:4px;line-height:1.35;max-width:220px}
+.cm-tier-cell{min-width:120px}
+.cm-tier-input{width:88px;padding:6px 8px;font-size:13px}
+#creditModelTableWrap table{min-width:920px}
 .batch-status{display:inline-block;padding:2px 8px;border-radius:8px;font-size:10px;font-weight:700;text-transform:uppercase}
 .batch-status.ok{background:rgba(16,185,129,.15);color:var(--green)}
 .batch-status.failed{background:rgba(239,68,68,.15);color:var(--red)}
@@ -578,7 +583,8 @@ Pasa el cursor sobre cada columna para ver su significado. Usa los filtros debaj
 </h2>
 <p style="font-size:13px;color:var(--muted);margin:-8px 0 16px;max-width:820px">
 Sube uno o más Excel con hojas <strong>Cliente</strong> e <strong>Historial</strong>. El modelo calcula el tier conservador (100–500)
-y genera el SQL de alta. <em>Analizar</em> no toca la base; <em>Cargar seleccionadas</em> registra en Supabase (usa las mismas credenciales del servidor).
+y genera el SQL de alta. Tras analizar, <strong>edita la línea (Tier)</strong> en la tabla y, si el estado es Revisar, marca <strong>Confirmar revisión</strong> en la misma fila antes de cargar.
+<em>Analizar</em> no toca la base; <em>Cargar seleccionadas</em> solo pide comentario y contraseña.
 </p>
 
 <div class="filters" style="margin-bottom:16px;flex-wrap:wrap;gap:10px">
@@ -594,7 +600,7 @@ y genera el SQL de alta. <em>Analizar</em> no toca la base; <em>Cargar seleccion
 <table>
 <thead><tr>
 <th><input type="checkbox" id="creditModelSelectAll" onchange="toggleCreditModelAll(this.checked)"></th>
-<th>Bodega</th><th>Teléfono</th><th>Tier</th><th>Pedidos 6m</th><th>Línea 7d</th><th>Estado</th><th>Confirmar</th><th></th>
+<th>Bodega</th><th>Teléfono</th><th title="Línea de crédito editable">Línea (Tier)</th><th>Pedidos 6m</th><th>Línea 7d</th><th>Estado</th><th title="Obligatorio si el estado es Revisar">Confirmar revisión</th><th></th>
 </tr></thead>
 <tbody id="creditModelBody"></tbody>
 </table>
@@ -2314,12 +2320,26 @@ function creditModelRevisionCell(idx, b){
   var hint = avisos.length
     ? '<div class="cm-revision-hint" title="'+escAttr(avisos.join(' · '))+'">'+escAttr(String(avisos[0]).slice(0,72))+(avisos[0].length>72?'…':'')+'</div>'
     : '';
-  var checked = isCreditModelRevisionOk(idx) ? ' checked' : '';
-  return '<td onclick="event.stopPropagation()">'+
+  var checked = creditModelRevisionConfirmed[idx] ? ' checked' : '';
+  return '<td class="cm-revision-cell" onclick="event.stopPropagation()">'+
     '<label class="cm-revision-pending">'+
       '<input type="checkbox" id="cmRev_'+idx+'"'+checked+' onchange="toggleCreditModelRevisionConfirm('+idx+', this.checked)">'+
-      '<span>Confirmar</span>'+
+      '<span>Confirmar revisión</span>'+
     '</label>'+hint+
+  '</td>';
+}
+
+function creditModelTierCell(idx, b){
+  var linea = getCreditModelLinea(idx);
+  var modelo = getCreditModelLineaModelo(idx);
+  var edited = isCreditModelLineaEdited(idx);
+  return '<td class="cm-tier-cell" onclick="event.stopPropagation()">'+
+    '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">'+
+      '<span style="font-size:11px;color:var(--muted)">S/</span>'+
+      '<input type="number" class="input cm-tier-input" id="cmTier_'+idx+'" value="'+linea+'" min="1" step="50" '+
+        'title="Modelo sugiere S/'+modelo+'" onchange="applyCreditModelLineaIdx('+idx+')" onkeydown="if(event.key===\'Enter\'){event.preventDefault();this.blur();}">'+
+      (edited ? '<span class="import-badge warn" title="Modelo: S/'+modelo+'">editada</span>' : '')+
+    '</div>'+
   '</td>';
 }
 
@@ -2388,15 +2408,11 @@ function renderCreditModelTable(rows){
       ? '<span class="badge" style="border-color:var(--orange);color:var(--orange)">Revisar</span>'
       : '<span class="badge" style="border-color:var(--green);color:var(--green)">Lista</span>';
     var chk = creditModelChecked[idx] ? ' checked' : '';
-    var linea = getCreditModelLinea(idx);
-    var lineaLbl = isCreditModelLineaEdited(idx)
-      ? 'S/'+linea+' <span class="import-badge warn" title="Editada manualmente">editada</span>'
-      : 'S/'+linea;
     return '<tr class="clickable'+(creditModelSelectedIdx===idx?' selected':'')+'">'+
       '<td onclick="event.stopPropagation()"><input type="checkbox" data-cm-idx="'+idx+'"'+chk+' onchange="toggleCreditModelRow('+idx+', this.checked)"></td>'+
       '<td onclick="selectCreditModelRow('+idx+')"><strong>'+escAttr(b.razon_social||'')+'</strong><div style="font-size:11px;color:var(--muted)">'+escAttr(b.archivo||'')+'</div></td>'+
       '<td onclick="selectCreditModelRow('+idx+')">'+escAttr(b.telefono||'')+'</td>'+
-      '<td onclick="selectCreditModelRow('+idx+')">'+lineaLbl+'</td>'+
+      creditModelTierCell(idx, b)+
       '<td onclick="selectCreditModelRow('+idx+')">'+(a.pedidos||'—')+'</td>'+
       '<td onclick="selectCreditModelRow('+idx+')">S/'+Number(a.linea_7d||0).toFixed(2)+'</td>'+
       '<td onclick="selectCreditModelRow('+idx+')">'+estado+'</td>'+
@@ -2481,6 +2497,7 @@ function processCreditModel(){
       creditModelData = x.d;
       creditModelSelectedIdx = -1;
       creditModelChecked = {};
+      creditModelLineOverrides = {};
       creditModelRevisionConfirmed = {};
       var hint = document.getElementById('creditModelFileHint');
       if(hint) hint.textContent = (x.d.total||0)+' bodega(s) de '+inp.files.length+' archivo(s)';
@@ -2493,13 +2510,21 @@ function processCreditModel(){
     .finally(function(){ hidePanelLoader(); });
 }
 
-function applyCreditModelLinea(){
-  var idx = creditModelSelectedIdx;
+function applyCreditModelLineaIdx(idx){
   var rows = creditModelData && creditModelData.bodegas;
   if(!rows || idx < 0 || !rows[idx]) return;
-  var inp = document.getElementById('creditModelLineaEdit');
+  var inp = document.getElementById('cmTier_'+idx);
+  if(!inp && creditModelSelectedIdx === idx){
+    inp = document.getElementById('creditModelLineaEdit');
+  }
   var val = parseInt((inp && inp.value) || '', 10);
-  if(!val || val < 1){ showToast('Ingresa una línea válida','error'); return; }
+  if(!val || val < 1){
+    showToast('Ingresa una línea válida','error');
+    if(inp) inp.value = getCreditModelLinea(idx);
+    return;
+  }
+  var modelo = getCreditModelLineaModelo(idx);
+  if(val === getCreditModelLinea(idx) && val === modelo) return;
   var b = rows[idx];
   showPanelLoader('Actualizando SQL…', true);
   apiPost('/api/backoffice/credit-model/patch-linea', {
@@ -2510,24 +2535,39 @@ function applyCreditModelLinea(){
     linea_7d: b.linea_7d
   }).then(function(x){
     hidePanelLoader();
-    if(!x.ok){ showToast((x.d && x.d.detail) || 'No se pudo actualizar','error'); return; }
+    if(!x.ok){
+      showToast((x.d && x.d.detail) || 'No se pudo actualizar','error');
+      if(inp) inp.value = getCreditModelLinea(idx);
+      return;
+    }
     b.sql_inserts = x.d.sql_inserts;
     b.sql_block = x.d.sql_block;
     b.tier = x.d.linea_aprobada;
     creditModelLineOverrides[idx] = x.d.linea_aprobada;
-    creditModelRevisionConfirmed[idx] = true;
-    var sql = document.getElementById('creditModelPanelSql');
-    if(sql) sql.textContent = b.sql_block || '';
-    var lineaHint = document.getElementById('creditModelLineaHint');
-    if(lineaHint){
-      lineaHint.textContent = 'Sugerida por modelo: S/'+getCreditModelLineaModelo(idx)+' · editada';
+    if(b.necesita_revision && x.d.linea_aprobada !== modelo){
+      creditModelRevisionConfirmed[idx] = true;
+    }
+    if(creditModelSelectedIdx === idx){
+      var sql = document.getElementById('creditModelPanelSql');
+      if(sql) sql.textContent = b.sql_block || '';
+      var lineaInp = document.getElementById('creditModelLineaEdit');
+      if(lineaInp) lineaInp.value = x.d.linea_aprobada;
+      var lineaHint = document.getElementById('creditModelLineaHint');
+      if(lineaHint){
+        lineaHint.textContent = 'Sugerida por modelo: S/'+modelo+(isCreditModelLineaEdited(idx) ? ' · editada' : '');
+      }
     }
     renderCreditModelTable(rows);
     showToast('Línea S/'+x.d.linea_aprobada+' aplicada al SQL','success');
   }).catch(function(e){
     hidePanelLoader();
+    if(inp) inp.value = getCreditModelLinea(idx);
     showToast('Error: '+e.message,'error');
   });
+}
+
+function applyCreditModelLinea(){
+  applyCreditModelLineaIdx(creditModelSelectedIdx);
 }
 
 function openCreditModelLoadModal(){
@@ -2539,13 +2579,13 @@ function openCreditModelLoadModal(){
   var pendientes = picked.filter(function(i){ return rows[i] && rows[i].necesita_revision && !isCreditModelRevisionOk(i); });
   if(pendientes.length){
     var nom = rows[pendientes[0]].razon_social || 'bodega';
-    showToast('Marca «Confirmar» en la lista para: '+nom+(pendientes.length>1?' (+'+(pendientes.length-1)+' más)':''),'error');
+    showToast('Marca «Confirmar revisión» en la tabla para: '+nom+(pendientes.length>1?' (+'+(pendientes.length-1)+' más)':''),'error');
     return;
   }
   document.getElementById('modalContainer').innerHTML =
-    '<div class="modal-overlay open" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:640px"><h3>💾 Cargar bodegas en base</h3>'+
-    '<p style="font-size:13px;color:var(--muted)">Confirma la <strong>línea de crédito</strong> de cada bodega. Luego ingresa comentario y contraseña.</p>'+
-    '<div id="creditModelLoadChecks" style="max-height:240px;overflow:auto;margin:12px 0;font-size:13px"></div>'+
+    '<div class="modal-overlay open" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:520px"><h3>💾 Cargar bodegas en base</h3>'+
+    '<p style="font-size:13px;color:var(--muted)">Revisa el resumen. La línea y la confirmación de revisión se definen en la tabla antes de cargar.</p>'+
+    '<div id="creditModelLoadChecks" style="max-height:200px;overflow:auto;margin:12px 0;font-size:13px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 12px"></div>'+
     '<div class="modal-field"><label>Comentario (mín. 8 caracteres)</label><input id="cmLoadComentario" class="input"></div>'+
     '<div class="modal-field"><label>Contraseña</label><input type="password" id="cmLoadPass" class="input"></div>'+
     '<div class="modal-actions"><button class="btn btn-outline" onclick="closeModal()">Cancelar</button>'+
@@ -2554,17 +2594,12 @@ function openCreditModelLoadModal(){
   if(box){
     box.innerHTML = picked.map(function(i){
       var b = rows[i];
-      var modelo = getCreditModelLineaModelo(i);
       var linea = getCreditModelLinea(i);
-      return '<div style="padding:10px 0;border-bottom:1px solid var(--border)">'+
-        '<div style="font-weight:600;margin-bottom:6px">'+escAttr(b.razon_social)+
-          (b.necesita_revision ? ' <span class="import-badge ok">Revisión OK</span>' : '')+
-        '</div>'+
-        '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">'+
-          '<label style="font-size:12px;color:var(--muted)">Línea S/</label>'+
-          '<input type="number" class="input" id="cmLinea_'+i+'" value="'+linea+'" min="1" step="50" style="width:110px">'+
-          '<span style="font-size:11px;color:var(--muted)">modelo: S/'+modelo+'</span>'+
-        '</div>'+
+      var rev = b.necesita_revision
+        ? (isCreditModelRevisionOk(i) ? '<span class="import-badge ok">Revisión confirmada</span>' : '<span class="import-badge warn">Sin confirmar</span>')
+        : '';
+      return '<div style="padding:6px 0;border-bottom:1px solid var(--border)">'+
+        '<strong>'+escAttr(b.razon_social)+'</strong> · S/'+linea+' '+rev+
       '</div>';
     }).join('');
   }
@@ -2583,17 +2618,16 @@ function submitCreditModelLoad(){
     var i = picked[j];
     var b = rows[i];
     if(!b) continue;
-    var lineaInp = document.getElementById('cmLinea_'+i);
-    var lineaVal = lineaInp ? parseInt(lineaInp.value, 10) : getCreditModelLinea(i);
+    var lineaVal = getCreditModelLinea(i);
     if(!lineaVal || lineaVal < 1){
       showToast('Línea inválida para: '+b.razon_social,'error');
       return;
     }
     var confirmar = false;
     if(b.necesita_revision){
-      confirmar = isCreditModelRevisionOk(i) || lineaVal !== getCreditModelLineaModelo(i);
+      confirmar = isCreditModelRevisionOk(i);
       if(!confirmar){
-        showToast('Marca «Confirmar» en la lista para: '+b.razon_social,'error');
+        showToast('Marca «Confirmar revisión» en la tabla para: '+b.razon_social,'error');
         return;
       }
     }
@@ -2605,6 +2639,7 @@ function submitCreditModelLoad(){
       necesita_revision: b.necesita_revision,
       confirmar_revision: confirmar,
       linea_aprobada: lineaVal,
+      tier: lineaVal,
       linea_7d: b.linea_7d,
       cliente: b.cliente || {},
       vendedores: b.vendedores || []

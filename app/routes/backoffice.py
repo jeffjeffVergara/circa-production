@@ -1298,6 +1298,8 @@ async def credit_model_load(
 
     try:
         result = load_bodegas_from_api([b.model_dump() for b in body.bodegas])
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
     except RuntimeError as e:
         raise HTTPException(status_code=503, detail=str(e)) from e
 
