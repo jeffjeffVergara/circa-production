@@ -347,6 +347,23 @@ tr:hover td{background:var(--card-hover)}
 .cm-tier-cell{min-width:120px}
 .cm-tier-input{width:88px;padding:6px 8px;font-size:13px}
 #creditModelTableWrap table{min-width:920px}
+.cm-detail-card{background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:14px}
+.cm-detail-title{font-size:15px;font-weight:700;margin-bottom:4px}
+.cm-detail-meta{font-size:12px;color:var(--muted);margin-bottom:12px}
+.cm-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:14px}
+.cm-metric{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px 12px}
+.cm-metric-label{font-size:10px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);margin-bottom:4px}
+.cm-metric-value{font-size:15px;font-weight:700}
+.cm-obs-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.cm-obs-item{padding:10px 12px;border-radius:8px;font-size:13px;line-height:1.45;border:1px solid var(--border)}
+.cm-obs-item.warn{background:rgba(249,115,22,.08);border-color:rgba(249,115,22,.35);color:var(--text)}
+.cm-obs-item.info{background:rgba(96,165,250,.08);border-color:rgba(96,165,250,.25);color:var(--text)}
+.cm-obs-item.ok{background:rgba(16,185,129,.08);border-color:rgba(16,185,129,.3);color:var(--green)}
+.cm-revision-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;align-items:center}
+.cm-revision-status{font-size:12px;color:var(--muted)}
+.cm-wa-block{margin-top:14px;border:1px solid var(--border);border-radius:10px;overflow:hidden}
+.cm-wa-block summary{cursor:pointer;padding:12px 14px;font-size:13px;font-weight:600;background:var(--bg);color:var(--muted)}
+.cm-wa-block pre{margin:0;padding:14px;font-size:13px;white-space:pre-wrap;background:var(--bg2);max-height:280px;overflow:auto}
 .batch-status{display:inline-block;padding:2px 8px;border-radius:8px;font-size:10px;font-weight:700;text-transform:uppercase}
 .batch-status.ok{background:rgba(16,185,129,.15);color:var(--green)}
 .batch-status.failed{background:rgba(239,68,68,.15);color:var(--red)}
@@ -609,23 +626,25 @@ y genera el SQL de alta. Tras analizar, <strong>edita la línea (Tier)</strong> 
 <div id="creditModelErrores" style="display:none;margin-bottom:16px"></div>
 
 <div id="creditModelDetail" style="display:none">
+<div id="creditModelDetailCard" class="cm-detail-card"></div>
 <div id="creditModelLineaBar" style="display:none;margin-bottom:14px;padding:12px 14px;background:var(--bg);border:1px solid var(--border);border-radius:10px">
   <div style="font-size:13px;font-weight:600;margin-bottom:8px">Línea de crédito a asignar</div>
   <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
     <label style="font-size:12px;color:var(--muted)">S/</label>
     <input type="number" id="creditModelLineaEdit" class="input" style="width:120px" min="1" step="50">
     <span id="creditModelLineaHint" style="font-size:12px;color:var(--muted)"></span>
-    <button type="button" class="btn btn-outline btn-small" onclick="applyCreditModelLinea()">Actualizar SQL</button>
+    <button type="button" class="btn btn-outline btn-small" onclick="applyCreditModelLinea()">Aplicar línea</button>
   </div>
 </div>
-<div style="display:flex;gap:8px;margin-bottom:12px;border-bottom:1px solid var(--border);padding-bottom:8px">
-<button type="button" class="perfil-tab credit-model-tab active" data-cm-tab="reporte" onclick="switchCreditModelTab('reporte')">Reporte</button>
-<button type="button" class="perfil-tab credit-model-tab" data-cm-tab="sql" onclick="switchCreditModelTab('sql')">SQL</button>
-<button type="button" class="perfil-tab credit-model-tab" data-cm-tab="wa" onclick="switchCreditModelTab('wa')">WhatsApp</button>
+<div id="creditModelObsPanel" class="cm-detail-card" style="display:none">
+  <div style="font-size:13px;font-weight:600;margin-bottom:10px">Observaciones del modelo</div>
+  <ul id="creditModelObsList" class="cm-obs-list"></ul>
+  <div id="creditModelRevisionActions" class="cm-revision-actions"></div>
 </div>
-<div id="creditModelPanelReporte" class="credit-model-panel"></div>
-<pre id="creditModelPanelSql" class="credit-model-panel" style="display:none;white-space:pre-wrap;font-size:12px;background:var(--bg2);padding:12px;border-radius:8px;max-height:420px;overflow:auto"></pre>
-<pre id="creditModelPanelWa" class="credit-model-panel" style="display:none;white-space:pre-wrap;font-size:13px;background:var(--bg2);padding:12px;border-radius:8px"></pre>
+<details id="creditModelWaBlock" class="cm-wa-block" style="display:none">
+  <summary>Mensaje WhatsApp (onboarding)</summary>
+  <pre id="creditModelPanelWa"></pre>
+</details>
 </div>
 
 <div style="margin-top:20px;display:none" id="creditModelLoadBar" class="bo-write">
@@ -2306,10 +2325,17 @@ function isCreditModelRevisionOk(idx){
 }
 
 function toggleCreditModelRevisionConfirm(idx, on){
+  setCreditModelRevisionConfirm(idx, on);
+}
+
+function setCreditModelRevisionConfirm(idx, on){
   if(on) creditModelRevisionConfirmed[idx] = true;
   else delete creditModelRevisionConfirmed[idx];
   var rows = creditModelData && creditModelData.bodegas;
-  if(rows) renderCreditModelTable(rows);
+  if(rows){
+    renderCreditModelTable(rows);
+    if(creditModelSelectedIdx === idx) renderCreditModelDetail(idx);
+  }
 }
 
 function creditModelRevisionCell(idx, b){
@@ -2438,9 +2464,32 @@ function selectCreditModelRow(idx){
   var rows = creditModelData && creditModelData.bodegas;
   if(!rows || !rows[idx]) return;
   renderCreditModelTable(rows);
-  var b = rows[idx];
   var det = document.getElementById('creditModelDetail');
   if(det) det.style.display = 'block';
+  renderCreditModelDetail(idx);
+}
+
+function renderCreditModelDetail(idx){
+  var rows = creditModelData && creditModelData.bodegas;
+  if(!rows || !rows[idx]) return;
+  var b = rows[idx];
+  var a = b.analisis || {};
+  var card = document.getElementById('creditModelDetailCard');
+  if(card){
+    var estado = b.necesita_revision
+      ? '<span class="badge" style="border-color:var(--orange);color:var(--orange)">Revisar</span>'
+      : '<span class="badge" style="border-color:var(--green);color:var(--green)">Lista</span>';
+    card.innerHTML =
+      '<div class="cm-detail-title">'+escAttr(b.razon_social||'')+'</div>'+
+      '<div class="cm-detail-meta">'+escAttr(b.telefono||'')+' · '+escAttr(b.archivo||'')+' · '+estado+'</div>'+
+      '<div class="cm-metrics">'+
+        '<div class="cm-metric"><div class="cm-metric-label">Pedidos 6m</div><div class="cm-metric-value">'+(a.pedidos||'—')+'</div></div>'+
+        '<div class="cm-metric"><div class="cm-metric-label">Ticket prom.</div><div class="cm-metric-value">S/'+Number(a.ticket||0).toFixed(2)+'</div></div>'+
+        '<div class="cm-metric"><div class="cm-metric-label">Línea 7d</div><div class="cm-metric-value">S/'+Number(a.linea_7d||0).toFixed(2)+'</div></div>'+
+        '<div class="cm-metric"><div class="cm-metric-label">Tier modelo</div><div class="cm-metric-value">S/'+getCreditModelLineaModelo(idx)+'</div></div>'+
+        '<div class="cm-metric"><div class="cm-metric-label">Línea asignada</div><div class="cm-metric-value">S/'+getCreditModelLinea(idx)+(isCreditModelLineaEdited(idx)?' <span class="import-badge warn">editada</span>':'')+'</div></div>'+
+      '</div>';
+  }
   var lineaBar = document.getElementById('creditModelLineaBar');
   var lineaInp = document.getElementById('creditModelLineaEdit');
   var lineaHint = document.getElementById('creditModelLineaHint');
@@ -2450,25 +2499,42 @@ function selectCreditModelRow(idx){
     var modelo = getCreditModelLineaModelo(idx);
     lineaHint.textContent = 'Sugerida por modelo: S/'+modelo+(isCreditModelLineaEdited(idx) ? ' · editada' : '');
   }
-  var rep = document.getElementById('creditModelPanelReporte');
-  if(rep) rep.innerHTML = '<pre style="white-space:pre-wrap;font-size:12px;margin:0;max-height:420px;overflow:auto">'+escAttr(b.reporte_ficha||'')+'</pre>';
-  var sql = document.getElementById('creditModelPanelSql');
-  if(sql) sql.textContent = b.sql_block || '';
+  var obsPanel = document.getElementById('creditModelObsPanel');
+  var obsList = document.getElementById('creditModelObsList');
+  var revActions = document.getElementById('creditModelRevisionActions');
+  if(obsPanel) obsPanel.style.display = 'block';
+  if(obsList){
+    var revisar = (b.avisos && b.avisos.revisar) || [];
+    var notas = (b.avisos && b.avisos.notas) || [];
+    var items = [];
+    revisar.forEach(function(txt){
+      items.push('<li class="cm-obs-item warn"><strong>Revisar:</strong> '+escAttr(txt)+'</li>');
+    });
+    notas.forEach(function(txt){
+      items.push('<li class="cm-obs-item info"><strong>Nota:</strong> '+escAttr(txt)+'</li>');
+    });
+    if(!revisar.length && !notas.length){
+      items.push('<li class="cm-obs-item ok">Sin observaciones del modelo. La bodega puede cargarse con la línea sugerida.</li>');
+    } else if(!revisar.length){
+      items.push('<li class="cm-obs-item ok">Sin alertas críticas. Solo notas informativas.</li>');
+    }
+    obsList.innerHTML = items.join('');
+  }
+  if(revActions){
+    if(b.necesita_revision){
+      var ok = isCreditModelRevisionOk(idx);
+      revActions.innerHTML =
+        '<button type="button" class="btn btn-green btn-small" onclick="setCreditModelRevisionConfirm('+idx+', true)">✓ Confirmar revisión</button>'+
+        '<button type="button" class="btn btn-outline btn-small" onclick="setCreditModelRevisionConfirm('+idx+', false)">No confirmar</button>'+
+        '<span class="cm-revision-status">'+(ok ? 'Estado: revisión confirmada' : 'Debes confirmar o ajustar la línea antes de cargar')+'</span>';
+    } else {
+      revActions.innerHTML = '<span class="cm-revision-status" style="color:var(--green)">No requiere confirmación manual.</span>';
+    }
+  }
+  var waBlock = document.getElementById('creditModelWaBlock');
   var wa = document.getElementById('creditModelPanelWa');
   if(wa) wa.textContent = b.mensaje || '';
-  switchCreditModelTab('reporte');
-}
-
-function switchCreditModelTab(tab){
-  document.querySelectorAll('.credit-model-tab').forEach(function(btn){
-    btn.classList.toggle('active', btn.dataset.cmTab === tab);
-  });
-  var rep = document.getElementById('creditModelPanelReporte');
-  var sql = document.getElementById('creditModelPanelSql');
-  var wa = document.getElementById('creditModelPanelWa');
-  if(rep) rep.style.display = tab === 'reporte' ? 'block' : 'none';
-  if(sql) sql.style.display = tab === 'sql' ? 'block' : 'none';
-  if(wa) wa.style.display = tab === 'wa' ? 'block' : 'none';
+  if(waBlock) waBlock.style.display = b.mensaje ? 'block' : 'none';
 }
 
 function toggleCreditModelRow(idx, on){
@@ -2548,14 +2614,9 @@ function applyCreditModelLineaIdx(idx){
       creditModelRevisionConfirmed[idx] = true;
     }
     if(creditModelSelectedIdx === idx){
-      var sql = document.getElementById('creditModelPanelSql');
-      if(sql) sql.textContent = b.sql_block || '';
       var lineaInp = document.getElementById('creditModelLineaEdit');
       if(lineaInp) lineaInp.value = x.d.linea_aprobada;
-      var lineaHint = document.getElementById('creditModelLineaHint');
-      if(lineaHint){
-        lineaHint.textContent = 'Sugerida por modelo: S/'+modelo+(isCreditModelLineaEdited(idx) ? ' · editada' : '');
-      }
+      renderCreditModelDetail(idx);
     }
     renderCreditModelTable(rows);
     showToast('Línea S/'+x.d.linea_aprobada+' aplicada al SQL','success');
