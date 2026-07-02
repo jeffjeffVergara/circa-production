@@ -599,7 +599,21 @@ async def _send_payment_options(phone, pedido_id, total, items_text, bodega_id=N
                 "title": f"Financiar S/{monto_fin}",
                 "description": f"\U0001f4b0Hoy S/{paga_hoy:.2f} | \U0001f4b3Cuota S/{paga_7d:.2f} en 7d",
             })
-    
+
+    # Financiar todo: cubre montos que no coinciden con tiers fijos
+    financiable = round(min(total, linea), 2)
+    tier_montos = [t["monto"] for t in tiers]
+    if financiable > 0 and financiable not in tier_montos:
+        fee_ft = circa_fees.calcular_comision_por_plan(financiable, 7)["fee"]
+        paga_hoy_ft = round(total - financiable, 2)
+        paga_7d_ft = round(financiable + fee_ft, 2)
+        tiers.append({
+            "id": f"FIN100_{pid}",
+            "monto": financiable,
+            "title": f"Financiar todo S/{financiable:.2f}",
+            "description": f"💰Hoy S/{paga_hoy_ft:.2f} | 💳Cuota S/{paga_7d_ft:.2f} en 7d",
+        })
+
     header = (
         f"\U0001f6d2 *{saludo_pedido} pedido est\u00e1 listo para pagar*\n"
         f"\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n"

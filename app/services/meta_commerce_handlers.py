@@ -266,7 +266,10 @@ async def handle_fin_pct(btn: str, ctx: MetaWaContext, msg: dict, meta_client) -
         linea = float((ctx.bodega or {}).get("linea_disponible") or 0)
         pedido_short = btn.rsplit("_", 1)[-1] if "_" in btn else ""
         pedido = (
-            db.get_pedido_borrador_por_prefijo(bod_id, pedido_short)
+            db.get_pedido_borrador_por_prefijo(
+                bod_id, pedido_short,
+                ("borrador", "preventa_borrador", "preventa_confirmada"),
+            )
             if bod_id and pedido_short
             else None
         )
