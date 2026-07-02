@@ -750,12 +750,17 @@ async def list_catalogo(distribuidor_id: str = None, bodega_id: str = None, marc
             dist_ids = [DIMAX_DISTRIBUIDOR_ID]
     except Exception:
         dist_ids = [DIMAX_DISTRIBUIDOR_ID]
-    q = (
-        db.sb.table("catalogo_distribuidor")
-        .select("*, productos_circa(*)")
-        .eq("activo", True)
-        .in_("distribuidor_id", dist_ids)
-    )
+    # Si bodega es test, mostrar todo el catálogo (incluyendo Nestlé inactivo)
+    es_test = False
+    if bodega_id:
+        try:
+            bod = db.sb.table("bodegas").select("es_test").eq("id", bodega_id).single().execute().data
+            es_test = bod.get("es_test", False) if bod else False
+        except Exception:
+            pass
+    q = db.sb.table("catalogo_distribuidor").select("*, productos_circa(*)").in_("distribuidor_id", dist_ids)
+    if not es_test:
+        q = q.eq("activo", True)
     rows = q.execute().data
     result = []
     for row in rows:
