@@ -98,6 +98,19 @@ def generar_sql(b: dict[str, Any]) -> dict[str, Any]:
         ins.append("WHERE NOT EXISTS (SELECT 1 FROM bodega_vendedores bv")
         ins.append("  WHERE bv.bodega_id = b.id AND bv.vendedor_id = v.id);")
 
+    # Amarre al historico Washington por documento (DNI y RUC)
+    ins.append("")
+    ins.append("-- Amarre al historico Washington por documento")
+    for _d in [doc.get("dni"), doc.get("ruc")]:
+        if not _d:
+            continue
+        ins.append("UPDATE historico_washington_clientes SET bodega_id = b.id")
+        ins.append("FROM bodegas b WHERE b.telefono_whatsapp = %s" % sql_str(tel))
+        ins.append("  AND historico_washington_clientes.doc_cliente = %s;" % sql_str(_d))
+        ins.append("UPDATE historico_washington SET bodega_id = b.id")
+        ins.append("FROM bodegas b WHERE b.telefono_whatsapp = %s" % sql_str(tel))
+        ins.append("  AND historico_washington.doc_cliente = %s;" % sql_str(_d))
+
     verif = "\n".join([
         "SELECT 'bodega' AS tipo, razon_social AS detalle,",
         "       linea_aprobada::text AS aprob, linea_disponible::text AS disp,",
