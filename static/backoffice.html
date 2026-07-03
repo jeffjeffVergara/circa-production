@@ -364,6 +364,31 @@ tr:hover td{background:var(--card-hover)}
 .cm-wa-block{margin-top:14px;border:1px solid var(--border);border-radius:10px;overflow:hidden}
 .cm-wa-block summary{cursor:pointer;padding:12px 14px;font-size:13px;font-weight:600;background:var(--bg);color:var(--muted)}
 .cm-wa-block pre{margin:0;padding:14px;font-size:13px;white-space:pre-wrap;background:var(--bg2);max-height:280px;overflow:auto}
+.obs-search-row{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;align-items:center}
+.obs-search-row .input{max-width:360px;flex:1;min-width:200px}
+.obs-results{display:grid;gap:8px;margin-bottom:16px}
+.obs-result-item{padding:12px 14px;border:1px solid var(--border);border-radius:10px;background:var(--bg);cursor:pointer;transition:background .15s}
+.obs-result-item:hover,.obs-result-item.selected{background:var(--card-hover);border-color:rgba(37,99,235,.45)}
+.obs-result-title{font-weight:700;font-size:14px;margin-bottom:4px}
+.obs-result-meta{font-size:12px;color:var(--muted)}
+.obs-layout{display:grid;grid-template-columns:minmax(280px,360px) 1fr;gap:16px;align-items:start}
+@media(max-width:960px){.obs-layout{grid-template-columns:1fr}}
+.obs-panel{background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:14px}
+.obs-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-bottom:14px}
+.obs-kpi{padding:10px;border-radius:8px;background:var(--card);border:1px solid var(--border);text-align:center}
+.obs-kpi-val{font-size:20px;font-weight:700}
+.obs-kpi-lbl{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
+.obs-timeline{max-height:520px;overflow:auto;display:flex;flex-direction:column;gap:8px}
+.obs-ev{padding:10px 12px;border-radius:8px;border-left:3px solid var(--border);background:var(--card);font-size:13px}
+.obs-ev.ok{border-left-color:var(--green)}
+.obs-ev.error{border-left-color:var(--red)}
+.obs-ev.warn{border-left-color:var(--orange)}
+.obs-ev.info{border-left-color:var(--blue-light)}
+.obs-ev-head{display:flex;justify-content:space-between;gap:8px;margin-bottom:4px}
+.obs-ev-title{font-weight:600}
+.obs-ev-time{font-size:11px;color:var(--muted);white-space:nowrap}
+.obs-ev-detail{font-size:12px;color:var(--muted);line-height:1.45;white-space:pre-wrap}
+.obs-analysis{margin-top:14px;padding:14px;border-radius:10px;background:rgba(37,99,235,.08);border:1px solid rgba(37,99,235,.25);font-size:13px;line-height:1.55;white-space:pre-wrap}
 .batch-status{display:inline-block;padding:2px 8px;border-radius:8px;font-size:10px;font-weight:700;text-transform:uppercase}
 .batch-status.ok{background:rgba(16,185,129,.15);color:var(--green)}
 .batch-status.failed{background:rgba(239,68,68,.15);color:var(--red)}
@@ -437,6 +462,7 @@ tr:hover td{background:var(--card-hover)}
 <button type="button" class="bo-nav-item" onclick="showTab('procesos')" id="nav-procesos">⚙️ Procesos batch</button>
 <button type="button" class="bo-nav-item bo-write" onclick="showTab('soporte')" id="nav-soporte">💬 Soporte WA</button>
 <button type="button" class="bo-nav-item" onclick="showTab('creditmodel')" id="nav-creditmodel">📈 Modelo líneas</button>
+<button type="button" class="bo-nav-item" onclick="showTab('observability')" id="nav-observability">🔍 Auditoría cliente</button>
 </div>
 </aside>
 
@@ -650,6 +676,42 @@ y genera el SQL de alta. Tras analizar, <strong>edita la línea (Tier)</strong> 
 
 <div style="margin-top:20px;display:none" id="creditModelLoadBar" class="bo-write">
 <button class="btn btn-green" onclick="openCreditModelLoadModal()">💾 Cargar seleccionadas en base</button>
+</div>
+</div>
+</div>
+
+<!-- AUDITORÍA CLIENTE -->
+<div id="view-observability" style="display:none">
+<div class="section">
+<h2>🔍 Auditoría y observabilidad del cliente
+<span style="font-size:12px;color:var(--muted);font-weight:400">Recorrido onboarding · WA · biometría · errores</span>
+</h2>
+<p style="font-size:13px;color:var(--muted);margin:-8px 0 16px;max-width:900px">
+Busca por <strong>DNI</strong>, <strong>nombre de bodega</strong> o <strong>teléfono</strong>. Revisa la línea de tiempo y, si hace falta, pide un <strong>análisis con Claude</strong> (a demanda).
+</p>
+<div class="obs-search-row">
+<input type="search" id="obsSearchInput" class="input" placeholder="DNI, nombre bodega o teléfono (+51…)" autocomplete="off" onkeydown="if(event.key==='Enter'){searchObservability();}">
+<button type="button" class="btn btn-green btn-small" onclick="searchObservability()">Buscar</button>
+</div>
+<div class="obs-layout">
+<div>
+<div id="obsResults" class="obs-results"></div>
+<div id="obsEmpty" class="empty" style="padding:24px;display:none">Escribe al menos 2 caracteres y busca.</div>
+</div>
+<div id="obsDetail" style="display:none">
+<div class="obs-panel">
+<div id="obsBodegaHeader" style="margin-bottom:12px"></div>
+<div id="obsKpis" class="obs-kpis"></div>
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+<button type="button" class="btn btn-outline btn-small" onclick="loadObservabilityTimeline()">🔄 Actualizar</button>
+<button type="button" class="btn btn-green btn-small" onclick="analyzeObservability()">✨ Analizar con Claude</button>
+</div>
+<textarea id="obsQuestion" class="input" rows="2" placeholder="Pregunta opcional para Claude (ej. ¿Por qué falló la selfie?)" style="margin-bottom:12px;font-size:13px"></textarea>
+<div id="obsAnalysis" class="obs-analysis" style="display:none"></div>
+<h3 style="font-size:13px;margin:14px 0 8px;color:var(--muted)">Línea de tiempo</h3>
+<div id="obsTimeline" class="obs-timeline"></div>
+</div>
+</div>
 </div>
 </div>
 </div>
@@ -937,6 +999,7 @@ function login(){
       if(location.hash === '#soporte') showTab('soporte');
       else if(location.hash === '#procesos') showTab('procesos');
       else if(location.hash === '#creditmodel') showTab('creditmodel');
+      else if(location.hash === '#observability') showTab('observability');
     })
     .catch(function(e){document.getElementById('loginError').textContent = e.message});
 }
@@ -978,7 +1041,7 @@ function apiPatch(path, body){
 }
 
 var MAIN_TABS = ['dashboard','bodegas','pagos','cobranzas','scoring','pedidos','vendedores'];
-var SIDEBAR_NAV = ['procesos','soporte','creditmodel'];
+var SIDEBAR_NAV = ['procesos','soporte','creditmodel','observability'];
 var ALL_VIEWS = MAIN_TABS.concat(SIDEBAR_NAV);
 
 function updateSidebarToggleBtn(){
@@ -1084,6 +1147,7 @@ function showTab(name){
     cobranzas: 'Cargando cobranzas…',
     scoring: 'Calculando scores…',
     creditmodel: 'Listo para analizar Excel…',
+    observability: 'Busca un cliente…',
     pedidos: 'Cargando pedidos…',
     vendedores: 'Cargando vendedores…',
     soporte: 'Cargando inbox WhatsApp…',
@@ -1096,6 +1160,7 @@ function showTab(name){
     cobranzas: loadCobranzas,
     scoring: function(){ return loadScoring(); },
     creditmodel: function(){ return Promise.resolve(); },
+    observability: function(){ return Promise.resolve(); },
     pedidos: loadPedidos,
     vendedores: loadVendedores,
     soporte: loadSoporteInbox,
@@ -2736,6 +2801,148 @@ function submitCreditModelLoad(){
     });
 }
 
+var obsSelectedBodegaId = null;
+var obsTimelineData = null;
+
+function formatObsTime(iso){
+  if(!iso) return '—';
+  try{
+    return new Date(iso).toLocaleString('es-PE',{hour12:false});
+  }catch(e){ return String(iso); }
+}
+
+function searchObservability(){
+  var q = (document.getElementById('obsSearchInput')||{}).value || '';
+  if(q.trim().length < 2){ showToast('Escribe al menos 2 caracteres','error'); return; }
+  showPanelLoader('Buscando bodegas…', true);
+  api('/api/backoffice/observability/search?q='+encodeURIComponent(q.trim()))
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      hidePanelLoader();
+      renderObsSearchResults(d.results || [], q.trim());
+    }).catch(function(e){
+      hidePanelLoader();
+      showToast('Error al buscar: '+e.message,'error');
+    });
+}
+
+function renderObsSearchResults(rows, query){
+  var box = document.getElementById('obsResults');
+  var empty = document.getElementById('obsEmpty');
+  if(!box) return;
+  if(!rows.length){
+    box.innerHTML = '';
+    if(empty){
+      empty.style.display = 'block';
+      empty.textContent = 'Sin resultados para «'+query+'».';
+    }
+    document.getElementById('obsDetail').style.display = 'none';
+    obsSelectedBodegaId = null;
+    return;
+  }
+  if(empty) empty.style.display = 'none';
+  box.innerHTML = rows.map(function(b){
+    var sel = obsSelectedBodegaId === b.id ? ' selected' : '';
+    return '<div class="obs-result-item'+sel+'" onclick="selectObservabilityBodega(\''+escAttr(b.id)+'\')">'+
+      '<div class="obs-result-title">'+escAttr(b.razon_social||b.nombre_comercial||'—')+'</div>'+
+      '<div class="obs-result-meta">'+escAttr(b.telefono_whatsapp||'')+
+        ' · DNI '+(b.dni_representante||'—')+
+        ' · '+escAttr(b.estado||'')+
+        (b.es_test ? ' · <span class="import-badge warn">test</span>' : '')+
+      '</div></div>';
+  }).join('');
+  if(rows.length === 1 && !obsSelectedBodegaId){
+    selectObservabilityBodega(rows[0].id);
+  }
+}
+
+function selectObservabilityBodega(id){
+  obsSelectedBodegaId = id;
+  var items = document.querySelectorAll('.obs-result-item');
+  items.forEach(function(el){ el.classList.remove('selected'); });
+  items.forEach(function(el){
+    if(el.getAttribute('onclick') && el.getAttribute('onclick').indexOf(id) >= 0) el.classList.add('selected');
+  });
+  loadObservabilityTimeline();
+}
+
+function renderObservabilityTimeline(data){
+  obsTimelineData = data;
+  var det = document.getElementById('obsDetail');
+  if(det) det.style.display = 'block';
+  var b = data.bodega || {};
+  var hdr = document.getElementById('obsBodegaHeader');
+  if(hdr){
+    hdr.innerHTML = '<div style="font-size:16px;font-weight:700">'+escAttr(b.razon_social||'')+'</div>'+
+      '<div style="font-size:12px;color:var(--muted);margin-top:4px">'+
+        escAttr(b.telefono_whatsapp||'')+' · DNI '+(b.dni_representante||'—')+' · '+escAttr(b.representante_legal||'')+
+      '</div>';
+  }
+  var sum = data.summary || {};
+  var kpis = document.getElementById('obsKpis');
+  if(kpis){
+    kpis.innerHTML =
+      '<div class="obs-kpi"><div class="obs-kpi-val">'+((data.events||[]).length)+'</div><div class="obs-kpi-lbl">Eventos</div></div>'+
+      '<div class="obs-kpi"><div class="obs-kpi-val" style="color:var(--red)">'+(sum.errors||0)+'</div><div class="obs-kpi-lbl">Errores</div></div>'+
+      '<div class="obs-kpi"><div class="obs-kpi-val" style="font-size:13px">'+escAttr(sum.current_fase_label||sum.current_fase||'—')+'</div><div class="obs-kpi-lbl">Fase actual</div></div>'+
+      '<div class="obs-kpi"><div class="obs-kpi-val" style="font-size:13px">'+escAttr(b.onboarding_fase||'—')+'</div><div class="obs-kpi-lbl">Onboarding BD</div></div>';
+  }
+  var tl = document.getElementById('obsTimeline');
+  if(tl){
+    var evs = data.events || [];
+    if(!evs.length){
+      tl.innerHTML = '<div class="empty" style="padding:20px">Sin eventos registrados para esta bodega.</div>';
+    } else {
+      tl.innerHTML = evs.map(function(ev){
+        var st = ev.status || 'info';
+        return '<div class="obs-ev '+st+'">'+
+          '<div class="obs-ev-head"><span class="obs-ev-title">'+escAttr(ev.title||'')+'</span>'+
+          '<span class="obs-ev-time">'+escAttr(formatObsTime(ev.at))+'</span></div>'+
+          '<div class="obs-ev-detail">'+escAttr(ev.detail||'')+'</div></div>';
+      }).join('');
+    }
+  }
+  var an = document.getElementById('obsAnalysis');
+  if(an) an.style.display = 'none';
+}
+
+function loadObservabilityTimeline(){
+  if(!obsSelectedBodegaId){ showToast('Selecciona una bodega','error'); return; }
+  showPanelLoader('Cargando línea de tiempo…', true);
+  api('/api/backoffice/observability/timeline?bodega_id='+encodeURIComponent(obsSelectedBodegaId))
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      hidePanelLoader();
+      renderObservabilityTimeline(d);
+    }).catch(function(e){
+      hidePanelLoader();
+      showToast('Error: '+e.message,'error');
+    });
+}
+
+function analyzeObservability(){
+  if(!obsSelectedBodegaId){ showToast('Selecciona una bodega','error'); return; }
+  var q = (document.getElementById('obsQuestion')||{}).value || '';
+  showPanelLoader('Claude analizando recorrido…', true);
+  apiPost('/api/backoffice/observability/analyze', { bodega_id: obsSelectedBodegaId, question: q.trim() || null })
+    .then(function(x){
+      hidePanelLoader();
+      if(!x.ok){
+        showToast((x.d && x.d.detail) || 'No se pudo analizar','error');
+        return;
+      }
+      var an = document.getElementById('obsAnalysis');
+      if(an){
+        an.style.display = 'block';
+        an.textContent = (x.d && x.d.analysis) || 'Sin respuesta';
+      }
+      showToast('Análisis listo','success');
+    }).catch(function(e){
+      hidePanelLoader();
+      showToast('Error: '+e.message,'error');
+    });
+}
+
 function exportPedidosCSV(){
   if(!allPedidos.length){showToast('No hay datos','error');return}
   var rows = [['Fecha','Pedido','Bodega','RUC','Distribuidor','Total','Venta Financiada','Venta al Contado','Estado']];
@@ -2799,6 +3006,7 @@ function notifyPinResult(msg, type){
       if(location.hash === '#soporte') showTab('soporte');
       else if(location.hash === '#procesos') showTab('procesos');
       else if(location.hash === '#creditmodel') showTab('creditmodel');
+      else if(location.hash === '#observability') showTab('observability');
     }).catch(function(){ sessionStorage.clear(); localStorage.removeItem('circa_bo_token'); });
   }
 })();

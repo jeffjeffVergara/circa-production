@@ -1495,6 +1495,62 @@ async def batch_job_run(
     return result
 
 
+class ObservabilityAnalyzeBody(BaseModel):
+    bodega_id: str = Field(..., min_length=8)
+    question: Optional[str] = Field(default=None, max_length=2000)
+
+
+@router.get("/observability/search")
+async def observability_search(
+    q: str,
+    limit: int = 20,
+    user: dict = Depends(get_backoffice_user),
+):
+    from app.services.client_observability import search_bodegas
+
+    return {"query": q, "results": search_bodegas(q, limit=min(limit, 50))}
+
+
+@router.get("/observability/timeline")
+async def observability_timeline(
+    bodega_id: str,
+    user: dict = Depends(get_backoffice_user),
+):
+    from app.services.client_observability import build_timeline
+
+    data = build_timeline(bodega_id.strip())
+    if not data.get("bodega"):
+        raise HTTPException(status_code=404, detail="Bodega no encontrada")
+    return data
+
+
+@router.post("/observability/analyze")
+async def observability_analyze(
+    body: ObservabilityAnalyzeBody,
+    user: dict = Depends(get_backoffice_user),
+):
+    from app.services.client_observability import analyze_with_claude, build_timeline
+
+    timeline = build_timeline(body.bodega_id.strip())
+    if not timeline.get("bodega"):
+        raise HTTPException(status_code=404, detail="Bodega no encontrada")
+    try:
+        result = analyze_with_claude(timeline, question=body.question)
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e)) from e
+
+    log_action(
+        user=user,
+        action="observability_analyze",
+        entity_type="bodega",
+        entity_id=body.bodega_id,
+        bodega_id=body.bodega_id,
+        comment=(body.question or "Análisis automático")[:500],
+        after={"model": result.get("model")},
+    )
+    return {"timeline_summary": timeline.get("summary"), **result}
+
+
 from app.routes.backoffice_ops import bodegas_ops_handler
 router.get("/bodegas-ops")(bodegas_ops_handler)
 from app.routes.backoffice_ops import marcar_pago_distribuidor_handler
