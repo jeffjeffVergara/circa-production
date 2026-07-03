@@ -844,6 +844,15 @@ async def admin_cobranzas(
     return {"cobranzas": resultado, "total": len(resultado), "stats_distribuidor": list(stats_dist.values())}
 
 
+@router.get("/admin/cobranzas/reporte-diario")
+async def admin_cobranza_reporte_diario(admin: bool = Depends(verify_admin)):
+    from starlette.responses import HTMLResponse
+    from app.jobs.cobranza_diaria import get_pedidos_vencidos, render_html
+    rows = await get_pedidos_vencidos()
+    html = render_html(rows)
+    return HTMLResponse(content=html)
+
+
 @router.post("/admin/verificar-pago/{pedido_id}")
 async def admin_verificar_pago(pedido_id: str, payload: dict, admin: bool = Depends(verify_admin)):
     """Mark order as paid + restore bodega line."""
