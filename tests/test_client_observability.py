@@ -5,7 +5,13 @@ import os
 os.environ.setdefault("SUPABASE_URL", "https://example.supabase.co")
 os.environ.setdefault("SUPABASE_SERVICE_KEY", "test-key")
 
-from app.services.client_observability import _digits_only, _phone_e164, _timeline_for_claude
+from app.services.client_observability import (
+    _analytics_title,
+    _digits_only,
+    _phone_e164,
+    _timeline_for_claude,
+    _wa_message_title,
+)
 
 
 def test_digits_only():
@@ -16,6 +22,16 @@ def test_digits_only():
 def test_phone_e164():
     assert _phone_e164("956277521") == "+51956277521"
     assert _phone_e164("51956277521") == "+51956277521"
+
+
+def test_wa_message_title_inbound():
+    title = _wa_message_title({"direction": "inbound", "message_type": "text"})
+    assert "entrada" in title
+    assert "text" in title
+
+
+def test_analytics_title_message_replied():
+    assert "cliente respondió" in _analytics_title("message_replied")
 
 
 def test_timeline_for_claude_includes_errors():

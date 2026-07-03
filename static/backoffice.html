@@ -389,6 +389,13 @@ tr:hover td{background:var(--card-hover)}
 .obs-ev-time{font-size:11px;color:var(--muted);white-space:nowrap}
 .obs-ev-detail{font-size:12px;color:var(--muted);line-height:1.45;white-space:pre-wrap}
 .obs-analysis{margin-top:14px;padding:14px;border-radius:10px;background:rgba(37,99,235,.08);border:1px solid rgba(37,99,235,.25);font-size:13px;line-height:1.55;white-space:pre-wrap}
+.obs-legend{margin:0 0 16px;border:1px solid var(--border);border-radius:10px;background:var(--bg);overflow:hidden}
+.obs-legend summary{cursor:pointer;padding:10px 14px;font-size:13px;font-weight:600;color:var(--muted)}
+.obs-legend-body{padding:0 14px 14px;font-size:12px;color:var(--muted);line-height:1.55}
+.obs-legend-grid{display:grid;gap:10px}
+@media(min-width:720px){.obs-legend-grid{grid-template-columns:1fr 1fr}}
+.obs-legend-item{padding:8px 10px;border-radius:8px;background:var(--card);border:1px solid var(--border)}
+.obs-legend-item strong{color:var(--text);font-size:12px;display:block;margin-bottom:3px}
 .batch-status{display:inline-block;padding:2px 8px;border-radius:8px;font-size:10px;font-weight:700;text-transform:uppercase}
 .batch-status.ok{background:rgba(16,185,129,.15);color:var(--green)}
 .batch-status.failed{background:rgba(239,68,68,.15);color:var(--red)}
@@ -689,6 +696,21 @@ y genera el SQL de alta. Tras analizar, <strong>edita la línea (Tier)</strong> 
 <p style="font-size:13px;color:var(--muted);margin:-8px 0 16px;max-width:900px">
 Busca por <strong>DNI</strong>, <strong>nombre de bodega</strong> o <strong>teléfono</strong>. Revisa la línea de tiempo y, si hace falta, pide un <strong>análisis con Claude</strong> (a demanda).
 </p>
+<details class="obs-legend" open>
+<summary>📖 Leyenda de la línea de tiempo</summary>
+<div class="obs-legend-body">
+<div class="obs-legend-grid">
+<div class="obs-legend-item"><strong>WA entrada · bodeguero → Circa · text</strong>Mensaje que escribió el bodeguero (texto, «Hola», DNI, etc.). El detalle muestra el contenido.</div>
+<div class="obs-legend-item"><strong>WA salida · Circa → bodeguero · text</strong>Respuesta del bot Circa por WhatsApp. Si hay latencia, indica cuánto tardó el bot en responder al mensaje anterior.</div>
+<div class="obs-legend-item"><strong>WA · image / interactive</strong>Foto (DNI, selfie) o respuesta a botón/lista de WhatsApp. El tipo va después del punto medio.</div>
+<div class="obs-legend-item"><strong>Analytics · cliente respondió en WA</strong>Registro automático (<code>message_replied</code>) cuando entra un mensaje del bodeguero. Sirve para métricas; suele aparecer junto al WA inbound del mismo acto.</div>
+<div class="obs-legend-item"><strong>Analytics · Circa envió mensaje WA</strong>Registro automático (<code>message_sent</code>) cuando Circa envía un mensaje. Espejo resumido del WA outbound.</div>
+<div class="obs-legend-item"><strong>Biometría · dni_anverso / selfie</strong>Validación KYC (foto DNI o selfie). Borde verde = OK; rojo = rechazado o error.</div>
+<div class="obs-legend-item"><strong>Estado de sesión WhatsApp</strong>Fase actual del flujo del bot (<em>reg_dni</em>, <em>reg_biometria</em>, <em>menu</em>, etc.).</div>
+<div class="obs-legend-item"><strong>Backoffice · …</strong>Acción manual de soporte en el panel (reset PIN, carga, etc.).</div>
+</div>
+</div>
+</details>
 <div class="obs-search-row">
 <input type="search" id="obsSearchInput" class="input" placeholder="DNI, nombre bodega o teléfono (+51…)" autocomplete="off" onkeydown="if(event.key==='Enter'){searchObservability();}">
 <button type="button" class="btn btn-green btn-small" onclick="searchObservability()">Buscar</button>

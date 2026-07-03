@@ -32,6 +32,73 @@ _FASE_LABELS = {
     "reset_clave": "Reset de clave",
 }
 
+_ANALYTICS_EVENT_LABELS = {
+    "message_replied": "cliente respondió en WA",
+    "message_sent": "Circa envió mensaje WA",
+    "catalog_opened": "abrió catálogo",
+    "order_created": "creó pedido",
+}
+
+_WA_DIRECTION_LABELS = {
+    "inbound": "entrada · bodeguero → Circa",
+    "outbound": "salida · Circa → bodeguero",
+}
+
+_WA_TYPE_HINTS = {
+    "text": "texto escrito o botón",
+    "image": "foto (DNI, selfie, etc.)",
+    "interactive": "botón o lista de WhatsApp",
+    "button": "respuesta a botón",
+    "document": "documento adjunto",
+    "audio": "nota de voz",
+    "video": "video",
+}
+
+
+def _analytics_title(event_type: str) -> str:
+    key = (event_type or "event").strip()
+    label = _ANALYTICS_EVENT_LABELS.get(key, key.replace("_", " "))
+    return f"Analytics · {label}"
+
+
+def _analytics_detail(row: dict[str, Any]) -> str:
+    et = row.get("event_type") or ""
+    parts = []
+    if et == "message_replied":
+        parts.append("El bodeguero envió un mensaje; el sistema lo contabiliza para métricas de respuesta.")
+    elif et == "message_sent":
+        parts.append("Circa envió un mensaje al bodeguero; registro paralelo al WA outbound.")
+    meta = row.get("metadata") or {}
+    if meta.get("message_type"):
+        parts.append(f"tipo {meta['message_type']}")
+    if meta.get("response_time_ms") is not None:
+        parts.append(f"latencia respuesta {meta['response_time_ms']} ms")
+    parts.append(f"origen {row.get('source') or '—'}")
+    return " · ".join(parts)
+
+
+def _wa_message_title(row: dict[str, Any]) -> str:
+    direction = row.get("direction") or "?"
+    mtype = row.get("message_type") or "text"
+    dir_lbl = _WA_DIRECTION_LABELS.get(direction, direction)
+    return f"WA {dir_lbl} · {mtype}"
+
+
+def _wa_message_detail(row: dict[str, Any]) -> str:
+    content = (row.get("content") or "").strip()
+    mtype = row.get("message_type") or "text"
+    hint = _WA_TYPE_HINTS.get(mtype, mtype)
+    prefix = f"[{hint}] "
+    if row.get("template_name"):
+        prefix += f"plantilla {row['template_name']} · "
+    body = content or "(sin texto visible)"
+    if len(body) > 220:
+        body = body[:217] + "…"
+    rt = row.get("response_time_ms")
+    if rt is not None and row.get("direction") == "outbound":
+        body += f" · tiempo de respuesta del bot: {rt} ms"
+    return prefix + body
+
 
 def _digits_only(value: str) -> str:
     return "".join(c for c in (value or "") if c.isdigit())
@@ -270,8 +337,8 @@ def build_timeline(bodega_id: str) -> dict[str, Any]:
             _event(
                 row.get("created_at"),
                 kind="analytics",
-                title=f"Analytics · {row.get('event_type') or 'event'}",
-                detail=f"canal {row.get('channel') or '—'} · origen {row.get('source') or '—'}",
+                title=_analytics_title(row.get("event_type") or ""),
+                detail=_analytics_detail(row),
                 status="info",
                 meta=row.get("metadata") or {},
             )
@@ -293,20 +360,12 @@ def build_timeline(bodega_id: str) -> dict[str, Any]:
         messages = []
 
     for row in messages:
-        direction = row.get("direction") or "?"
-        mtype = row.get("message_type") or "text"
-        content = (row.get("content") or "").strip()
-        if len(content) > 220:
-            content = content[:217] + "…"
-        title = f"WA {direction} · {mtype}"
-        if row.get("template_name"):
-            title += f" ({row['template_name']})"
         events.append(
             _event(
                 row.get("created_at"),
                 kind="mensaje",
-                title=title,
-                detail=content or "(sin texto)",
+                title=_wa_message_title(row),
+                detail=_wa_message_detail(row),
                 status="info",
                 meta={
                     "response_time_ms": row.get("response_time_ms"),
