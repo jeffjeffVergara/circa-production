@@ -49,6 +49,8 @@ async def get_pedidos_vencidos() -> list:
                 db.sb.table("bodega_vendedores")
                 .select("vendedores(codigo, nombre)")
                 .eq("bodega_id", bod_id)
+                .eq("activo", True)
+                .order("created_at")
                 .limit(1)
                 .execute()
             ).data
