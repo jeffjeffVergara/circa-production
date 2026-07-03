@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 from typing import Any
 
 from app.services.bodega_onboarding_snapshot import onboarding_alta_fields
@@ -187,6 +188,18 @@ def ejecutar_bodega_supabase(record: dict[str, Any]) -> tuple[bool, Any]:
             "grupo": v.get("grupo"),
             "dia_visita": v.get("dia_visita"),
         })
+
+    # Amarre al historico Washington por documento (DNI o RUC)
+    for _doc in {doc.get("dni"), doc.get("ruc")}:
+        if not _doc:
+            continue
+        try:
+            db.sb.table("historico_washington_clientes")\
+                .update({"bodega_id": bodega_id}).eq("doc_cliente", _doc).execute()
+            db.sb.table("historico_washington")\
+                .update({"bodega_id": bodega_id}).eq("doc_cliente", _doc).execute()
+        except Exception:
+            pass  # historico opcional; no debe bloquear el alta
 
     return True, _verificacion_rows(bodega_row, mapping_info)
 
