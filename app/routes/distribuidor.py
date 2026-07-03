@@ -845,7 +845,17 @@ async def admin_cobranzas(
 
 
 @router.get("/admin/cobranzas/reporte-diario")
-async def admin_cobranza_reporte_diario(admin: bool = Depends(verify_admin)):
+async def admin_cobranza_reporte_diario(
+    x_admin_token: str = Header(None, alias="X-Admin-Token"),
+    authorization: str = Header(None, alias="Authorization"),
+):
+    import hmac
+    token = x_admin_token
+    if not token and authorization and authorization.startswith("Bearer "):
+        token = authorization[7:]
+    expected = admin_token_or_raise()
+    if not token or not hmac.compare_digest(token.strip(), expected):
+        raise HTTPException(status_code=401, detail="Token invalido")
     from starlette.responses import HTMLResponse
     from app.jobs.cobranza_diaria import get_pedidos_vencidos, render_html
     rows = await get_pedidos_vencidos()
