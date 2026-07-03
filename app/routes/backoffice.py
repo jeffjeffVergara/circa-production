@@ -1596,3 +1596,12 @@ router.get("/gmv")(gmv_handler)
 from app.routes.backoffice_import_dimax import import_dimax_preview_handler, import_dimax_confirm_handler, DiMaxConfirmBody
 router.post("/import/dimax-analisis/preview")(import_dimax_preview_handler)
 router.post("/import/dimax-analisis/confirm")(import_dimax_confirm_handler)
+
+
+@router.get("/cobranzas/reporte-diario")
+async def backoffice_cobranza_reporte_diario(user: dict = Depends(get_backoffice_user)):
+    from starlette.responses import HTMLResponse
+    from app.jobs.cobranza_diaria import get_pedidos_vencidos, render_html
+    rows = await get_pedidos_vencidos()
+    html = render_html(rows)
+    return HTMLResponse(content=html)
