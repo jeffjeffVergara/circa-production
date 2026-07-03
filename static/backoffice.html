@@ -2816,7 +2816,6 @@ function searchObservability(){
   if(q.trim().length < 2){ showToast('Escribe al menos 2 caracteres','error'); return; }
   showPanelLoader('Buscando bodegas…', true);
   api('/api/backoffice/observability/search?q='+encodeURIComponent(q.trim()))
-    .then(function(r){ return r.json(); })
     .then(function(d){
       hidePanelLoader();
       renderObsSearchResults(d.results || [], q.trim());
@@ -2910,7 +2909,6 @@ function loadObservabilityTimeline(){
   if(!obsSelectedBodegaId){ showToast('Selecciona una bodega','error'); return; }
   showPanelLoader('Cargando línea de tiempo…', true);
   api('/api/backoffice/observability/timeline?bodega_id='+encodeURIComponent(obsSelectedBodegaId))
-    .then(function(r){ return r.json(); })
     .then(function(d){
       hidePanelLoader();
       renderObservabilityTimeline(d);
