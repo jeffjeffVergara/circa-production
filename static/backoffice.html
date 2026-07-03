@@ -522,6 +522,7 @@ tr:hover td{background:var(--card-hover)}
 <input type="date" id="cobFechaDesde" onchange="loadCobranzas()">
 <input type="date" id="cobFechaHasta" onchange="loadCobranzas()">
 <button class="btn btn-green btn-small" onclick="exportCobranzasCSV()">📥 Descargar CSV</button>
+<button class="btn btn-small" style="background:#4fc3f7;color:#000;font-weight:600" onclick="abrirReporteDiario()">📋 Reporte diario</button>
 </div>
 
 <div id="statsDistribuidorGrid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;margin-bottom:20px"></div>
@@ -1526,6 +1527,17 @@ function exportCobranzasCSV(){
     rows.push([c.numero||'',b.nombre_comercial||'',b.ruc||'',b.telefono_whatsapp||'',d.nombre_comercial||'',c.fecha_entregado||'',c.fecha_vencimiento||'',c.dias_restantes||'',c.total_pagar||0,c.status_cobranza||'']);
   });
   downloadCSV(rows,'cobranzas');
+}
+
+function abrirReporteDiario(){
+  fetch('/api/distribuidor/admin/cobranzas/reporte-diario', {headers: authHeaders({'X-Admin-Token': AUTH_TOKEN})})
+    .then(function(r){ if(!r.ok) throw new Error(r.status); return r.text(); })
+    .then(function(html){
+      var w = window.open('','_blank');
+      w.document.write(html);
+      w.document.close();
+    })
+    .catch(function(e){ showToast('Error: '+e.message,'error'); });
 }
 
 var scoringData = null;
