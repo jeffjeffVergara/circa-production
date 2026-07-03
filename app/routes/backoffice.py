@@ -1551,6 +1551,42 @@ async def observability_analyze(
     return {"timeline_summary": timeline.get("summary"), **result}
 
 
+@router.get("/control-panel/lookup")
+async def control_panel_lookup(
+    q: str,
+    limit: int = 15,
+    user: dict = Depends(get_backoffice_user),
+):
+    from app.services.control_panel import lookup_bodegas
+
+    return {"query": q, "results": lookup_bodegas(q, limit=min(limit, 25))}
+
+
+@router.post("/control-panel/bodega/{bodega_id}/pin/unlock")
+async def control_panel_unlock_pin(
+    bodega_id: str,
+    body: ReauthMixin,
+    user: dict = Depends(get_backoffice_writer),
+):
+    verify_reauth_password(body.password)
+    from app.services.control_panel import unlock_pin
+
+    try:
+        result = unlock_pin(bodega_id.strip())
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+
+    log_action(
+        user=user,
+        action="pin_unlock",
+        entity_type="bodega",
+        entity_id=bodega_id,
+        comment=body.comentario.strip(),
+        bodega_id=bodega_id,
+    )
+    return result
+
+
 from app.routes.backoffice_ops import bodegas_ops_handler
 router.get("/bodegas-ops")(bodegas_ops_handler)
 from app.routes.backoffice_ops import marcar_pago_distribuidor_handler

@@ -396,6 +396,19 @@ tr:hover td{background:var(--card-hover)}
 @media(min-width:720px){.obs-legend-grid{grid-template-columns:1fr 1fr}}
 .obs-legend-item{padding:8px 10px;border-radius:8px;background:var(--card);border:1px solid var(--border)}
 .obs-legend-item strong{color:var(--text);font-size:12px;display:block;margin-bottom:3px}
+.cp-layout{display:grid;grid-template-columns:minmax(280px,340px) 1fr;gap:16px;align-items:start}
+@media(max-width:960px){.cp-layout{grid-template-columns:1fr}}
+.cp-panel{background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:14px}
+.cp-actions{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;margin-top:14px}
+.cp-action-btn{text-align:left;padding:12px 14px;border-radius:10px;border:1px solid var(--border);background:var(--card);cursor:pointer;transition:background .15s,border-color .15s}
+.cp-action-btn:hover:not(:disabled){background:var(--card-hover);border-color:rgba(37,99,235,.45)}
+.cp-action-btn:disabled{opacity:.45;cursor:not-allowed}
+.cp-action-btn strong{display:block;font-size:13px;margin-bottom:4px;color:var(--text)}
+.cp-action-btn span{font-size:11px;color:var(--muted);line-height:1.4}
+.cp-status-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin:12px 0}
+.cp-status{padding:10px;border-radius:8px;background:var(--card);border:1px solid var(--border);font-size:12px}
+.cp-status-lbl{color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px}
+.cp-status-val{font-weight:600;font-size:13px}
 .batch-status{display:inline-block;padding:2px 8px;border-radius:8px;font-size:10px;font-weight:700;text-transform:uppercase}
 .batch-status.ok{background:rgba(16,185,129,.15);color:var(--green)}
 .batch-status.failed{background:rgba(239,68,68,.15);color:var(--red)}
@@ -470,6 +483,7 @@ tr:hover td{background:var(--card-hover)}
 <button type="button" class="bo-nav-item bo-write" onclick="showTab('soporte')" id="nav-soporte">💬 Soporte WA</button>
 <button type="button" class="bo-nav-item" onclick="showTab('creditmodel')" id="nav-creditmodel">📈 Modelo líneas</button>
 <button type="button" class="bo-nav-item" onclick="showTab('observability')" id="nav-observability">🔍 Auditoría cliente</button>
+<button type="button" class="bo-nav-item bo-write" onclick="showTab('controlpanel')" id="nav-controlpanel">🎛 Control Panel</button>
 </div>
 </aside>
 
@@ -696,7 +710,7 @@ y genera el SQL de alta. Tras analizar, <strong>edita la línea (Tier)</strong> 
 <p style="font-size:13px;color:var(--muted);margin:-8px 0 16px;max-width:900px">
 Busca por <strong>DNI</strong>, <strong>nombre de bodega</strong> o <strong>teléfono</strong>. Revisa la línea de tiempo y, si hace falta, pide un <strong>análisis con Claude</strong> (a demanda).
 </p>
-<details class="obs-legend" open>
+<details class="obs-legend">
 <summary>📖 Leyenda de la línea de tiempo</summary>
 <div class="obs-legend-body">
 <div class="obs-legend-grid">
@@ -732,6 +746,35 @@ Busca por <strong>DNI</strong>, <strong>nombre de bodega</strong> o <strong>tel�
 <div id="obsAnalysis" class="obs-analysis" style="display:none"></div>
 <h3 style="font-size:13px;margin:14px 0 8px;color:var(--muted)">Línea de tiempo</h3>
 <div id="obsTimeline" class="obs-timeline"></div>
+</div>
+</div>
+</div>
+</div>
+</div>
+
+<!-- CONTROL PANEL -->
+<div id="view-controlpanel" style="display:none">
+<div class="section">
+<h2>🎛 Control Panel
+<span style="font-size:12px;color:var(--muted);font-weight:400">Gestión de usuarios por DNI o teléfono</span>
+</h2>
+<p style="font-size:13px;color:var(--muted);margin:-8px 0 16px;max-width:920px">
+Busca una bodega y ejecuta acciones de soporte <strong>sin tocar código</strong>: reset de sesión, clave, onboarding, desbloqueo PIN y activación. Todas quedan en auditoría.
+</p>
+<div class="obs-search-row">
+<input type="search" id="cpSearchInput" class="input" placeholder="DNI, nombre o teléfono (+51…)" autocomplete="off" onkeydown="if(event.key==='Enter'){searchControlPanel();}">
+<button type="button" class="btn btn-green btn-small" onclick="searchControlPanel()">Buscar</button>
+</div>
+<div class="cp-layout">
+<div>
+<div id="cpResults" class="obs-results"></div>
+<div id="cpEmpty" class="empty" style="padding:24px;display:none">Escribe al menos 2 caracteres y busca.</div>
+</div>
+<div id="cpDetail" style="display:none">
+<div class="cp-panel">
+<div id="cpBodegaHeader"></div>
+<div id="cpStatusGrid" class="cp-status-grid"></div>
+<div class="cp-actions" id="cpActions"></div>
 </div>
 </div>
 </div>
@@ -1022,6 +1065,7 @@ function login(){
       else if(location.hash === '#procesos') showTab('procesos');
       else if(location.hash === '#creditmodel') showTab('creditmodel');
       else if(location.hash === '#observability') showTab('observability');
+      else if(location.hash === '#controlpanel') showTab('controlpanel');
     })
     .catch(function(e){document.getElementById('loginError').textContent = e.message});
 }
@@ -1063,7 +1107,7 @@ function apiPatch(path, body){
 }
 
 var MAIN_TABS = ['dashboard','bodegas','pagos','cobranzas','scoring','pedidos','vendedores'];
-var SIDEBAR_NAV = ['procesos','soporte','creditmodel','observability'];
+var SIDEBAR_NAV = ['procesos','soporte','creditmodel','observability','controlpanel'];
 var ALL_VIEWS = MAIN_TABS.concat(SIDEBAR_NAV);
 
 function updateSidebarToggleBtn(){
@@ -1170,6 +1214,7 @@ function showTab(name){
     scoring: 'Calculando scores…',
     creditmodel: 'Listo para analizar Excel…',
     observability: 'Busca un cliente…',
+    controlpanel: 'Busca por DNI o teléfono…',
     pedidos: 'Cargando pedidos…',
     vendedores: 'Cargando vendedores…',
     soporte: 'Cargando inbox WhatsApp…',
@@ -1183,6 +1228,7 @@ function showTab(name){
     scoring: function(){ return loadScoring(); },
     creditmodel: function(){ return Promise.resolve(); },
     observability: function(){ return Promise.resolve(); },
+    controlpanel: function(){ return Promise.resolve(); },
     pedidos: loadPedidos,
     vendedores: loadVendedores,
     soporte: loadSoporteInbox,
@@ -2963,6 +3009,365 @@ function analyzeObservability(){
     });
 }
 
+var cpSelectedBodegaId = null;
+var cpLookupRows = [];
+
+var CP_FASES = [
+  {v:'welcome', l:'Bienvenida — reiniciar onboarding'},
+  {v:'reg_ruc', l:'Registro RUC'},
+  {v:'reg_dni', l:'Verificación DNI'},
+  {v:'reg_biometria', l:'Selfie / biometría'},
+  {v:'reg_linea_acepta', l:'Aceptación de línea'},
+  {v:'reg_contrato', l:'Contrato'},
+  {v:'reg_pin', l:'Creación de PIN'},
+  {v:'reset_clave', l:'Flujo «olvidé mi clave»'},
+  {v:'menu', l:'Menú principal'},
+  {v:'catalogo', l:'Catálogo / pedido'}
+];
+
+function searchControlPanel(){
+  var q = (document.getElementById('cpSearchInput')||{}).value || '';
+  if(q.trim().length < 2){ showToast('Escribe al menos 2 caracteres','error'); return; }
+  showPanelLoader('Buscando…', true);
+  api('/api/backoffice/control-panel/lookup?q='+encodeURIComponent(q.trim()))
+    .then(function(d){
+      hidePanelLoader();
+      cpLookupRows = d.results || [];
+      renderControlPanelResults(cpLookupRows, q.trim());
+    }).catch(function(e){
+      hidePanelLoader();
+      showToast('Error al buscar: '+e.message,'error');
+    });
+}
+
+function renderControlPanelResults(rows, query){
+  var box = document.getElementById('cpResults');
+  var empty = document.getElementById('cpEmpty');
+  if(!box) return;
+  if(!rows.length){
+    box.innerHTML = '';
+    if(empty){ empty.style.display = 'block'; empty.textContent = 'Sin resultados para «'+query+'».'; }
+    document.getElementById('cpDetail').style.display = 'none';
+    cpSelectedBodegaId = null;
+    return;
+  }
+  if(empty) empty.style.display = 'none';
+  box.innerHTML = rows.map(function(b){
+    var sel = cpSelectedBodegaId === b.id ? ' selected' : '';
+    var ses = (b.sesion && b.sesion.fase_label) || 'sin sesión';
+    return '<div class="obs-result-item'+sel+'" onclick="selectControlPanelBodega(\''+escAttr(b.id)+'\')">'+
+      '<div class="obs-result-title">'+escAttr(b.razon_social||b.nombre_comercial||'—')+'</div>'+
+      '<div class="obs-result-meta">'+escAttr(b.telefono_whatsapp||'')+' · DNI '+(b.dni_representante||'—')+
+        ' · '+escAttr(ses)+
+        (b.es_test ? ' · <span class="import-badge warn">test</span>' : '')+
+      '</div></div>';
+  }).join('');
+  if(rows.length === 1 && !cpSelectedBodegaId){
+    selectControlPanelBodega(rows[0].id);
+  }
+}
+
+function getControlPanelRow(id){
+  for(var i=0;i<cpLookupRows.length;i++){
+    if(cpLookupRows[i].id === id) return cpLookupRows[i];
+  }
+  return null;
+}
+
+function selectControlPanelBodega(id){
+  cpSelectedBodegaId = id;
+  document.querySelectorAll('#cpResults .obs-result-item').forEach(function(el){
+    el.classList.remove('selected');
+    if(el.getAttribute('onclick') && el.getAttribute('onclick').indexOf(id) >= 0) el.classList.add('selected');
+  });
+  var b = getControlPanelRow(id);
+  if(!b){
+    searchControlPanel();
+    return;
+  }
+  renderControlPanelDetail(b);
+}
+
+function renderControlPanelDetail(b){
+  var det = document.getElementById('cpDetail');
+  if(det) det.style.display = 'block';
+  var ses = b.sesion || {};
+  var pin = b.pin_status || {};
+  var hdr = document.getElementById('cpBodegaHeader');
+  if(hdr){
+    hdr.innerHTML = '<div style="font-size:16px;font-weight:700">'+escAttr(b.razon_social||'')+'</div>'+
+      '<div style="font-size:12px;color:var(--muted);margin-top:4px">'+
+        escAttr(b.telefono_whatsapp||'')+' · DNI '+(b.dni_representante||'—')+' · '+escAttr(b.representante_legal||'')+
+      '</div>';
+  }
+  var pinLbl = pin.has_pin
+    ? (pin.bloqueado ? '🔒 Bloqueada' : '✅ Con clave')
+    : '⚠️ Sin clave';
+  if(pin.intentos > 0 && !pin.bloqueado) pinLbl += ' · '+pin.intentos+' fallo(s)';
+  var grid = document.getElementById('cpStatusGrid');
+  if(grid){
+    grid.innerHTML =
+      '<div class="cp-status"><div class="cp-status-lbl">Estado BD</div><div class="cp-status-val">'+escAttr(b.estado||'—')+'</div></div>'+
+      '<div class="cp-status"><div class="cp-status-lbl">Fase bot</div><div class="cp-status-val">'+escAttr(ses.fase_label||'sin sesión')+'</div></div>'+
+      '<div class="cp-status"><div class="cp-status-lbl">Onboarding</div><div class="cp-status-val">'+escAttr(b.onboarding_fase||'—')+'</div></div>'+
+      '<div class="cp-status"><div class="cp-status-lbl">Clave PIN</div><div class="cp-status-val">'+pinLbl+'</div></div>';
+  }
+  var actions = document.getElementById('cpActions');
+  if(!actions) return;
+  var readOnly = isReadOnly();
+  var unlockDisabled = readOnly || (!pin.bloqueado && !(pin.intentos > 0));
+  actions.innerHTML =
+    '<button type="button" class="cp-action-btn" onclick="cpActionRestartOnboarding()"'+(readOnly?' disabled':'')+'>'+
+      '<strong>🔄 Reiniciar onboarding</strong><span>Sesión → bienvenida, borra datos del flujo. El bodeguero empieza de cero.</span></button>'+
+    '<button type="button" class="cp-action-btn" onclick="cpActionGoMenu()"'+(readOnly?' disabled':'')+'>'+
+      '<strong>📋 Enviar al menú</strong><span>Sesión → menú principal y limpia carrito/datos temporales.</span></button>'+
+    '<button type="button" class="cp-action-btn" onclick="cpActionCustomSession()"'+(readOnly?' disabled':'')+'>'+
+      '<strong>⚙️ Cambiar fase de sesión</strong><span>Elige fase manual (reg_dni, reg_biometria, etc.) y si limpiar datos.</span></button>'+
+    '<button type="button" class="cp-action-btn" onclick="cpActionResetPin()"'+(readOnly?' disabled':'')+'>'+
+      '<strong>🔐 Resetear clave</strong><span>Borra PIN y envía link por WhatsApp para crear clave nueva.</span></button>'+
+    '<button type="button" class="cp-action-btn" onclick="cpActionSetPin()"'+(readOnly?' disabled':'')+'>'+
+      '<strong>✏️ Asignar clave (4 dígitos)</strong><span>Define PIN desde soporte y notifica al bodeguero.</span></button>'+
+    '<button type="button" class="cp-action-btn" onclick="cpActionUnlockPin()"'+(unlockDisabled?' disabled':'')+'>'+
+      '<strong>🔓 Desbloquear PIN</strong><span>Quita bloqueo e intentos fallidos sin cambiar la clave.</span></button>'+
+    '<button type="button" class="cp-action-btn" onclick="cpActionActivate()"'+(readOnly?' disabled':'')+'>'+
+      '<strong>✅ Activar bodega</strong><span>Estado → activo en base de datos.</span></button>'+
+    '<button type="button" class="cp-action-btn" onclick="cpActionOpenAudit()">'+
+      '<strong>🔍 Ver auditoría</strong><span>Abre la línea de tiempo y análisis Claude de este cliente.</span></button>';
+}
+
+function cpReauthFields(extraHtml){
+  return (extraHtml || '')+
+    '<div class="modal-field"><label>Comentario (mín. 8 caracteres)</label><input id="cpComentario" class="input"></div>'+
+    '<div class="modal-field"><label>Contraseña backoffice</label><input type="password" id="cpPass" class="input"></div>';
+}
+
+function cpReadReauth(){
+  return {
+    comentario: ((document.getElementById('cpComentario')||{}).value || '').trim(),
+    password: (document.getElementById('cpPass')||{}).value || ''
+  };
+}
+
+function cpValidateReauth(p){
+  if(p.comentario.length < 8){ showToast('Comentario mínimo 8 caracteres','error'); return false; }
+  if(!p.password){ showToast('Ingresa tu contraseña','error'); return false; }
+  return true;
+}
+
+function cpReloadSelected(){
+  if(!cpSelectedBodegaId) return;
+  var q = (document.getElementById('cpSearchInput')||{}).value || '';
+  if(q.trim().length >= 2){
+    api('/api/backoffice/control-panel/lookup?q='+encodeURIComponent(q.trim())).then(function(d){
+      cpLookupRows = d.results || [];
+      var b = getControlPanelRow(cpSelectedBodegaId);
+      if(b) renderControlPanelDetail(b);
+      else renderControlPanelResults(cpLookupRows, q.trim());
+    }).catch(function(){});
+  }
+}
+
+function cpActionRestartOnboarding(){
+  if(!cpSelectedBodegaId || isReadOnly()) return;
+  document.getElementById('modalContainer').innerHTML =
+    '<div class="modal-overlay open" onclick="if(event.target===this)closeModal()"><div class="modal"><h3>Reiniciar onboarding</h3>'+
+    '<p style="font-size:13px;color:var(--muted)">Sesión → <strong>welcome</strong> y se borran los datos del flujo. El bodeguero verá la oferta inicial al escribir de nuevo.</p>'+
+    cpReauthFields('')+
+    '<div class="modal-actions"><button class="btn btn-outline" onclick="closeModal()">Cancelar</button>'+
+    '<button class="btn btn-red" onclick="cpSubmitSessionReset(\'welcome\', true)">Reiniciar</button></div></div></div>';
+}
+
+function cpActionGoMenu(){
+  if(!cpSelectedBodegaId || isReadOnly()) return;
+  document.getElementById('modalContainer').innerHTML =
+    '<div class="modal-overlay open" onclick="if(event.target===this)closeModal()"><div class="modal"><h3>Enviar al menú</h3>'+
+    '<p style="font-size:13px;color:var(--muted)">Sesión → <strong>menu</strong> y se limpian datos temporales del flujo.</p>'+
+    cpReauthFields('')+
+    '<div class="modal-actions"><button class="btn btn-outline" onclick="closeModal()">Cancelar</button>'+
+    '<button class="btn btn-green" onclick="cpSubmitSessionReset(\'menu\', true)">Ir al menú</button></div></div></div>';
+}
+
+function cpActionCustomSession(){
+  if(!cpSelectedBodegaId || isReadOnly()) return;
+  var opts = CP_FASES.map(function(f){ return '<option value="'+f.v+'">'+escAttr(f.l)+'</option>'; }).join('');
+  document.getElementById('modalContainer').innerHTML =
+    '<div class="modal-overlay open" onclick="if(event.target===this)closeModal()"><div class="modal"><h3>Cambiar fase de sesión</h3>'+
+    '<div class="modal-field"><label>Nueva fase</label><select id="cpFase" class="input">'+opts+'</select></div>'+
+    '<label style="display:block;margin:8px 0 12px;font-size:12px;color:var(--muted)"><input type="checkbox" id="cpClear" checked> Limpiar datos de sesión</label>'+
+    cpReauthFields('')+
+    '<div class="modal-actions"><button class="btn btn-outline" onclick="closeModal()">Cancelar</button>'+
+    '<button class="btn btn-green" onclick="cpSubmitCustomSession()">Aplicar</button></div></div></div>';
+}
+
+function cpSubmitCustomSession(){
+  var fase = (document.getElementById('cpFase')||{}).value || 'menu';
+  var clearDatos = (document.getElementById('cpClear')||{}).checked !== false;
+  cpSubmitSessionReset(fase, clearDatos);
+}
+
+function cpSubmitSessionReset(fase, clearDatos){
+  var p = cpReadReauth();
+  if(!cpValidateReauth(p)) return;
+  closeModal();
+  showPanelLoader('Actualizando sesión…', true);
+  apiPost('/api/backoffice/bodega/'+cpSelectedBodegaId+'/sesion/reset', {
+    fase: fase,
+    comentario: p.comentario,
+    password: p.password,
+    clear_datos: !!clearDatos
+  }).then(function(x){
+    hidePanelLoader();
+    if(!x.ok){ showToast((x.d && x.d.detail) || 'Error','error'); return; }
+    showToast('Sesión → '+fase,'success');
+    cpReloadSelected();
+  }).catch(function(e){
+    hidePanelLoader();
+    showToast(e.message,'error');
+  });
+}
+
+function cpActionResetPin(){
+  if(!cpSelectedBodegaId || isReadOnly()) return;
+  document.getElementById('modalContainer').innerHTML =
+    '<div class="modal-overlay open" onclick="if(event.target===this)closeModal()"><div class="modal"><h3>Resetear clave</h3>'+
+    '<p style="font-size:13px;color:var(--muted)">Se borra el PIN y el bodeguero recibe un link por WhatsApp para crear uno nuevo.</p>'+
+    cpReauthFields('')+
+    '<div class="modal-actions"><button class="btn btn-outline" onclick="closeModal()">Cancelar</button>'+
+    '<button class="btn btn-red" onclick="cpSubmitResetPin()">Resetear clave</button></div></div></div>';
+}
+
+function cpSubmitResetPin(){
+  var p = cpReadReauth();
+  if(!cpValidateReauth(p)) return;
+  closeModal();
+  showPanelLoader('Reseteando clave…', true);
+  apiPost('/api/backoffice/bodega/'+cpSelectedBodegaId+'/pin/reset', p).then(function(x){
+    hidePanelLoader();
+    if(!x.ok){
+      var msg = x.d.detail;
+      if(Array.isArray(msg)) msg = msg.map(function(e){ return e.msg || e; }).join(', ');
+      showToast(msg || 'Error','error');
+      return;
+    }
+    showToast(x.d.mensaje || 'Clave reseteada','success');
+    cpReloadSelected();
+  }).catch(function(e){
+    hidePanelLoader();
+    showToast(e.message,'error');
+  });
+}
+
+function cpActionSetPin(){
+  if(!cpSelectedBodegaId || isReadOnly()) return;
+  document.getElementById('modalContainer').innerHTML =
+    '<div class="modal-overlay open" onclick="if(event.target===this)closeModal()"><div class="modal"><h3>Asignar clave</h3>'+
+    '<div class="modal-field"><label>Nueva clave (4 dígitos)</label><input id="cpPin" class="input" maxlength="4" inputmode="numeric"></div>'+
+    '<div class="modal-field"><label>Confirmar clave</label><input id="cpPin2" class="input" maxlength="4" inputmode="numeric"></div>'+
+    cpReauthFields('')+
+    '<div class="modal-actions"><button class="btn btn-outline" onclick="closeModal()">Cancelar</button>'+
+    '<button class="btn btn-green" onclick="cpSubmitSetPin()">Asignar</button></div></div></div>';
+}
+
+function cpSubmitSetPin(){
+  var pin = (document.getElementById('cpPin')||{}).value || '';
+  var pin2 = (document.getElementById('cpPin2')||{}).value || '';
+  var p = cpReadReauth();
+  if(!cpValidateReauth(p)) return;
+  if(pin.length !== 4 || pin !== pin2){ showToast('Clave inválida o no coincide','error'); return; }
+  closeModal();
+  showPanelLoader('Guardando clave…', true);
+  apiPost('/api/backoffice/bodega/'+cpSelectedBodegaId+'/pin/set', {
+    comentario: p.comentario,
+    password: p.password,
+    pin: pin,
+    pin_confirm: pin2
+  }).then(function(x){
+    hidePanelLoader();
+    if(!x.ok){
+      var msg = x.d.detail;
+      if(Array.isArray(msg)) msg = msg.map(function(e){ return e.msg || e; }).join(', ');
+      showToast(msg || 'Error','error');
+      return;
+    }
+    showToast(x.d.mensaje || 'Clave asignada','success');
+    cpReloadSelected();
+  }).catch(function(e){
+    hidePanelLoader();
+    showToast(e.message,'error');
+  });
+}
+
+function cpActionUnlockPin(){
+  if(!cpSelectedBodegaId || isReadOnly()) return;
+  document.getElementById('modalContainer').innerHTML =
+    '<div class="modal-overlay open" onclick="if(event.target===this)closeModal()"><div class="modal"><h3>Desbloquear PIN</h3>'+
+    '<p style="font-size:13px;color:var(--muted)">Quita bloqueo temporal e intentos fallidos. La clave actual se mantiene.</p>'+
+    cpReauthFields('')+
+    '<div class="modal-actions"><button class="btn btn-outline" onclick="closeModal()">Cancelar</button>'+
+    '<button class="btn btn-green" onclick="cpSubmitUnlockPin()">Desbloquear</button></div></div></div>';
+}
+
+function cpSubmitUnlockPin(){
+  var p = cpReadReauth();
+  if(!cpValidateReauth(p)) return;
+  closeModal();
+  showPanelLoader('Desbloqueando…', true);
+  apiPost('/api/backoffice/control-panel/bodega/'+cpSelectedBodegaId+'/pin/unlock', p).then(function(x){
+    hidePanelLoader();
+    if(!x.ok){ showToast((x.d && x.d.detail) || 'Error','error'); return; }
+    showToast('PIN desbloqueado','success');
+    cpReloadSelected();
+  }).catch(function(e){
+    hidePanelLoader();
+    showToast(e.message,'error');
+  });
+}
+
+function cpActionActivate(){
+  if(!cpSelectedBodegaId || isReadOnly()) return;
+  document.getElementById('modalContainer').innerHTML =
+    '<div class="modal-overlay open" onclick="if(event.target===this)closeModal()"><div class="modal"><h3>Activar bodega</h3>'+
+    cpReauthFields('')+
+    '<div class="modal-actions"><button class="btn btn-outline" onclick="closeModal()">Cancelar</button>'+
+    '<button class="btn btn-green" onclick="cpSubmitActivate()">Activar</button></div></div></div>';
+}
+
+function cpSubmitActivate(){
+  var p = cpReadReauth();
+  if(!cpValidateReauth(p)) return;
+  closeModal();
+  showPanelLoader('Activando…', true);
+  apiPatch('/api/backoffice/bodega/'+cpSelectedBodegaId, {
+    estado: 'activo',
+    comentario: p.comentario,
+    password: p.password
+  }).then(function(x){
+    hidePanelLoader();
+    if(!x.ok){ showToast((x.d && x.d.detail) || 'Error','error'); return; }
+    showToast('Bodega activada','success');
+    cpReloadSelected();
+  }).catch(function(e){
+    hidePanelLoader();
+    showToast(e.message,'error');
+  });
+}
+
+function cpActionOpenAudit(){
+  if(!cpSelectedBodegaId) return;
+  var b = getControlPanelRow(cpSelectedBodegaId);
+  var q = b && (b.dni_representante || b.telefono_whatsapp || b.razon_social) || '';
+  var inp = document.getElementById('obsSearchInput');
+  if(inp) inp.value = q;
+  obsSelectedBodegaId = cpSelectedBodegaId;
+  showTab('observability');
+  if(q.trim().length >= 2){
+    searchObservability();
+  } else {
+    selectObservabilityBodega(cpSelectedBodegaId);
+    loadObservabilityTimeline();
+  }
+}
+
 function exportPedidosCSV(){
   if(!allPedidos.length){showToast('No hay datos','error');return}
   var rows = [['Fecha','Pedido','Bodega','RUC','Distribuidor','Total','Venta Financiada','Venta al Contado','Estado']];
@@ -3027,6 +3432,7 @@ function notifyPinResult(msg, type){
       else if(location.hash === '#procesos') showTab('procesos');
       else if(location.hash === '#creditmodel') showTab('creditmodel');
       else if(location.hash === '#observability') showTab('observability');
+      else if(location.hash === '#controlpanel') showTab('controlpanel');
     }).catch(function(){ sessionStorage.clear(); localStorage.removeItem('circa_bo_token'); });
   }
 })();
