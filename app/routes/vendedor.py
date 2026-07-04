@@ -812,7 +812,7 @@ function setModo(m){
   }
 }
 
-$("fileFotos").addEventListener("change",function(){
+document.getElementById("fileFotos").addEventListener("change",function(){
   var files=this.files, box=$("thumbs");
   box.innerHTML="";
   for(var i=0;i<files.length;i++){
@@ -834,7 +834,7 @@ $("fileFotos").addEventListener("change",function(){
   }
 });
 
-$("btnProcesar").addEventListener("click",function(){
+document.getElementById("btnProcesar").addEventListener("click",function(){
   var input=$("fileFotos");
   if(!input.files||input.files.length===0) return;
   var fd=new FormData();
