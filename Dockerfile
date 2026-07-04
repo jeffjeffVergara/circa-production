@@ -1,12 +1,5 @@
 FROM python:3.12-slim
 
-# Tesseract OCR + dependencias de sistema para Pillow (libjpeg, zlib, libpng)
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-      tesseract-ocr tesseract-ocr-spa \
-      libjpeg62-turbo-dev zlib1g-dev libpng-dev && \
-    rm -rf /var/lib/apt/lists/*
-
 WORKDIR /app
 
 COPY requirements.txt .
