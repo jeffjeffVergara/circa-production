@@ -1015,7 +1015,7 @@ async def upload_imagenes_preventa(
         )
 
     # Validar vendedor
-    vendedor = await _get_vendedor_by_token(token)
+    vendedor = _get_vendedor_by_token(token)
     if not vendedor:
         return JSONResponse({"error": "Token inválido"}, status_code=401)
 
