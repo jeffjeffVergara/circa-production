@@ -52,19 +52,43 @@ def _ocr_image(image_bytes: bytes) -> str:
 
     img = Image.open(io.BytesIO(image_bytes))
 
+    # Convertir RGBA a RGB (screenshots con transparencia)
     if img.mode == "RGBA":
         bg = Image.new("RGB", img.size, (255, 255, 255))
         bg.paste(img, mask=img.split()[3])
         img = bg
+    elif img.mode != "RGB":
+        img = img.convert("RGB")
 
     processed = _preprocess_image(img)
 
-    text = pytesseract.image_to_string(
-        processed,
-        lang="spa",
-        config="--psm 4 --oem 3",
-    )
-    return text
+    # Intentar múltiples configuraciones de Tesseract
+    configs = [
+        {"lang": "spa", "config": "--psm 3 --oem 3"},
+        {"lang": "spa", "config": "--psm 6 --oem 3"},
+        {"lang": "eng", "config": "--psm 3 --oem 3"},
+    ]
+
+    best_text = ""
+    for cfg in configs:
+        try:
+            text = pytesseract.image_to_string(
+                processed,
+                lang=cfg["lang"],
+                config=cfg["config"],
+            )
+            logger.info(f"OCR config {cfg}: {len(text)} chars")
+            if len(text.strip()) > len(best_text.strip()):
+                best_text = text
+            # Si encontramos "Codigo" en el texto, es el bueno
+            if "odigo" in text or "ODIGO" in text or "P0" in text:
+                logger.info(f"OCR match found with config {cfg}")
+                return text
+        except Exception as e:
+            logger.warning(f"OCR config {cfg} failed: {e}")
+            continue
+
+    return best_text
 
 
 # --- Regex patterns para ticket BsSoft ---
