@@ -992,7 +992,7 @@ $("btnCrear").addEventListener("click",function(){
 # OCR: Upload múltiples fotos de tickets BsSoft
 # ═══════════════════════════════════════════════════════════
 
-@router.post("/v/{token}/preventa/upload-imagenes")
+@router.post("/{token}/preventa/upload-imagenes")
 async def upload_imagenes_preventa(
     token: str,
     request: Request,
