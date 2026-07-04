@@ -1612,7 +1612,7 @@ async def backoffice_bodegas_reporte_listas(user: dict = Depends(get_backoffice_
     from starlette.responses import HTMLResponse
     from app.jobs.reporte_bodegas import get_enroladas_listas, render_listas_html
     from app.services.db import supabase
-    rows = await get_enroladas_listas(supabase)
+    rows = get_enroladas_listas(supabase)
     html = render_listas_html(rows)
     return HTMLResponse(content=html)
 
@@ -1622,6 +1622,6 @@ async def backoffice_bodegas_reporte_sin_enrolar(user: dict = Depends(get_backof
     from starlette.responses import HTMLResponse
     from app.jobs.reporte_bodegas import get_sin_enrolar, render_sin_enrolar_html
     from app.services.db import supabase
-    rows = await get_sin_enrolar(supabase)
+    rows = get_sin_enrolar(supabase)
     html = render_sin_enrolar_html(rows)
     return HTMLResponse(content=html)
