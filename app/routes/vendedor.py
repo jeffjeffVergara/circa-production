@@ -743,12 +743,28 @@ input[type=file]{display:none}
 
   <div class="card">
     <h3>1 &middot; Archivo de DIMAX</h3>
-    <label class="drop" id="drop">
-      <div class="big" id="dropTxt">Toca para elegir el Excel</div>
-      <div class="small">archivo .xlsx tal cual sale del sistema</div>
-      <input type="file" id="file" accept=".xlsx,.xls">
-    </label>
-    <button class="btn primary" id="btnRevisar" disabled>Revisar archivo</button>
+    <div style="display:flex;gap:6px;margin-bottom:12px">
+      <button type="button" id="btnModoExcel" onclick="setModo('excel')" style="flex:1;padding:10px;border-radius:10px;border:2px solid #22D3EE;background:#22D3EE;color:#04222a;font-weight:700;cursor:pointer;font-size:13px;font-family:inherit">&#128196; Excel</button>
+      <button type="button" id="btnModoFoto" onclick="setModo('foto')" style="flex:1;padding:10px;border-radius:10px;border:2px solid #22D3EE;background:transparent;color:#22D3EE;font-weight:700;cursor:pointer;font-size:13px;font-family:inherit">&#128247; Fotos ticket</button>
+    </div>
+    <div id="zonaExcel">
+      <label class="drop" id="drop">
+        <div class="big" id="dropTxt">Toca para elegir el Excel</div>
+        <div class="small">archivo .xlsx tal cual sale del sistema</div>
+        <input type="file" id="file" accept=".xlsx,.xls">
+      </label>
+      <button class="btn primary" id="btnRevisar" disabled>Revisar archivo</button>
+    </div>
+    <div id="zonaFotos" class="hidden">
+      <label class="drop" id="dropFoto" onclick="document.getElementById('fileFotos').click()">
+        <div class="big" id="dropFotoTxt">Toca para elegir fotos del ticket</div>
+        <div class="small">puedes seleccionar varias im&aacute;genes</div>
+        <input type="file" id="fileFotos" multiple accept="image/*" style="display:none">
+      </label>
+      <div id="thumbs" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px"></div>
+      <button class="btn primary hidden" id="btnProcesar" disabled>&#128270; Procesar fotos</button>
+      <div id="ocrStatus" style="text-align:center;color:rgba(255,255,255,.5);font-size:12px;margin-top:6px"></div>
+    </div>
     <div class="err hidden" id="errUp"></div>
   </div>
 
@@ -780,6 +796,84 @@ input[type=file]{display:none}
 </div>
 <script>
 var TOKEN="__TOKEN__";
+var modo="excel";
+
+function setModo(m){
+  modo=m;
+  var zE=$("zonaExcel"),zF=$("zonaFotos"),bE=$("btnModoExcel"),bF=$("btnModoFoto");
+  if(m==="foto"){
+    zE.classList.add("hidden");zF.classList.remove("hidden");
+    bF.style.background="#22D3EE";bF.style.color="#04222a";
+    bE.style.background="transparent";bE.style.color="#22D3EE";
+  } else {
+    zE.classList.remove("hidden");zF.classList.add("hidden");
+    bE.style.background="#22D3EE";bE.style.color="#04222a";
+    bF.style.background="transparent";bF.style.color="#22D3EE";
+  }
+}
+
+$("fileFotos").addEventListener("change",function(){
+  var files=this.files, box=$("thumbs");
+  box.innerHTML="";
+  for(var i=0;i<files.length;i++){
+    (function(idx){
+      var d=document.createElement("div");
+      d.style.cssText="position:relative;width:64px;height:64px;border-radius:10px;overflow:hidden;border:1px solid rgba(255,255,255,.15)";
+      var img=document.createElement("img");
+      img.src=URL.createObjectURL(files[idx]);
+      img.style.cssText="width:100%;height:100%;object-fit:cover";
+      d.appendChild(img);
+      box.appendChild(d);
+    })(i);
+  }
+  if(files.length>0){
+    $("dropFoto").classList.add("filed");
+    $("dropFotoTxt").textContent=files.length+" foto"+(files.length>1?"s":"")+" seleccionada"+(files.length>1?"s":"");
+    $("btnProcesar").classList.remove("hidden");
+    $("btnProcesar").disabled=false;
+  }
+});
+
+$("btnProcesar").addEventListener("click",function(){
+  var input=$("fileFotos");
+  if(!input.files||input.files.length===0) return;
+  var fd=new FormData();
+  for(var i=0;i<input.files.length;i++) fd.append("files",input.files[i]);
+  this.disabled=true; this.textContent="Procesando OCR...";
+  $("ocrStatus").textContent="Leyendo "+input.files.length+" imagen"+(input.files.length>1?"es":"")+"...";
+  $("errUp").classList.add("hidden");
+  fetch("/v/"+TOKEN+"/preventa/upload-imagenes",{method:"POST",body:fd})
+    .then(function(r){return r.json()})
+    .then(function(data){
+      $("btnProcesar").disabled=false;$("btnProcesar").textContent="Procesar fotos";
+      if(!data.ok){
+        $("ocrStatus").textContent="";
+        throw new Error(data.error||(data.parse_errors||[]).join(", ")||"Error al procesar");
+      }
+      var matched=data.items||[];
+      var noMatch=data.items_no_match||[];
+      $("ocrStatus").textContent=matched.length+" items reconocidos"+(noMatch.length>0?", "+noMatch.length+" sin match en cat\u00e1logo":"");
+      var nBonif=matched.filter(function(x){return x.es_bonificacion}).length;
+      preview={
+        fecha:"(foto de ticket)",
+        n_items:matched.length,
+        n_regalos:nBonif,
+        descuento_prorrateado:0,
+        total_pedido:data.total_pedido,
+        warnings:noMatch.map(function(x){return "Sin match: "+x.sku+" - "+x.descripcion}),
+        bodega_nombre:"(identificar manualmente)",
+        bodega_sugerida:null,
+        candidatos:[],
+        items_json:matched,
+        origen_ocr:true
+      };
+      renderPreview();
+    })
+    .catch(function(e){
+      $("btnProcesar").disabled=false;$("btnProcesar").textContent="Procesar fotos";
+      $("errUp").textContent=e.message;$("errUp").classList.remove("hidden");
+    });
+});
 var preview=null, chosenId=null, chosenName=null;
 var $=function(id){return document.getElementById(id)};
 
