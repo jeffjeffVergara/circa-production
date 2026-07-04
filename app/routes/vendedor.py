@@ -11,6 +11,9 @@ URLs:
   ... (mas endpoints proximamente: catalogo, pedido confirmado)
 """
 from fastapi import APIRouter, HTTPException, Path, Query
+
+# --- OCR tickets BsSoft ---
+from app.services.preventa_ocr import parse_ticket_bsoft, merge_items_multiples
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi import UploadFile, File, Request
 from datetime import datetime, timezone
@@ -746,7 +749,126 @@ input[type=file]{display:none}
     <label class="drop" id="drop">
       <div class="big" id="dropTxt">Toca para elegir el Excel</div>
       <div class="small">archivo .xlsx tal cual sale del sistema</div>
-      <input type="file" id="file" accept=".xlsx,.xls">
+      <input type="file" id="file" accept=".xlsx,.xls" id="inputExcel">
+
+<!-- Toggle modo -->
+<div style="display:flex;gap:8px;margin:12px 0;justify-content:center">
+  <button type="button" id="btnModoExcel" onclick="setModo('excel')"
+    style="padding:8px 20px;border-radius:8px;border:2px solid #5B8AF5;background:#5B8AF5;color:#fff;font-weight:600;cursor:pointer;font-size:14px">
+    📄 Excel
+  </button>
+  <button type="button" id="btnModoFoto" onclick="setModo('foto')"
+    style="padding:8px 20px;border-radius:8px;border:2px solid #5B8AF5;background:transparent;color:#5B8AF5;font-weight:600;cursor:pointer;font-size:14px">
+    📷 Fotos ticket
+  </button>
+</div>
+
+<div id="zonaFotos" style="display:none">
+  <input type="file" id="inputFotos" multiple accept="image/*"
+    style="display:none" onchange="mostrarThumbnails(this.files)">
+  <button type="button" onclick="document.getElementById('inputFotos').click()"
+    style="width:100%;padding:14px;border-radius:10px;border:2px dashed #5B8AF5;background:rgba(91,138,245,0.08);color:#5B8AF5;font-size:15px;cursor:pointer;margin:8px 0">
+    📷 Seleccionar fotos de ticket BsSoft
+  </button>
+  <div id="thumbnails" style="display:flex;flex-wrap:wrap;gap:8px;margin:8px 0"></div>
+  <button type="button" id="btnSubirFotos" onclick="subirFotos()" style="display:none;width:100%;padding:14px;border-radius:10px;border:none;background:#5B8AF5;color:#fff;font-size:16px;font-weight:600;cursor:pointer;margin:8px 0">
+    🔍 Procesar fotos
+  </button>
+  <div id="ocrStatus" style="text-align:center;color:#aaa;font-size:13px;margin:4px 0"></div>
+</div>
+
+<script>
+function setModo(modo) {
+  var zExcel = document.getElementById('inputExcel');
+  var zFotos = document.getElementById('zonaFotos');
+  var btnE = document.getElementById('btnModoExcel');
+  var btnF = document.getElementById('btnModoFoto');
+  if (modo === 'foto') {
+    if (zExcel) zExcel.parentElement.style.display = 'none';
+    zFotos.style.display = 'block';
+    btnF.style.background = '#5B8AF5'; btnF.style.color = '#fff';
+    btnE.style.background = 'transparent'; btnE.style.color = '#5B8AF5';
+  } else {
+    if (zExcel) zExcel.parentElement.style.display = '';
+    zFotos.style.display = 'none';
+    btnE.style.background = '#5B8AF5'; btnE.style.color = '#fff';
+    btnF.style.background = 'transparent'; btnF.style.color = '#5B8AF5';
+  }
+}
+
+function mostrarThumbnails(files) {
+  var container = document.getElementById('thumbnails');
+  container.innerHTML = '';
+  for (var i = 0; i < files.length; i++) {
+    var div = document.createElement('div');
+    div.style.cssText = 'position:relative;width:70px;height:70px;border-radius:8px;overflow:hidden;border:1px solid #333';
+    var img = document.createElement('img');
+    img.src = URL.createObjectURL(files[i]);
+    img.style.cssText = 'width:100%;height:100%;object-fit:cover';
+    var btn = document.createElement('button');
+    btn.textContent = '×';
+    btn.style.cssText = 'position:absolute;top:2px;right:2px;background:rgba(0,0,0,0.7);color:#fff;border:none;border-radius:50%;width:20px;height:20px;cursor:pointer;font-size:14px;line-height:18px';
+    btn.setAttribute('data-idx', i);
+    btn.onclick = function() { this.parentElement.remove(); };
+    div.appendChild(img);
+    div.appendChild(btn);
+    container.appendChild(div);
+  }
+  if (files.length > 0) {
+    document.getElementById('btnSubirFotos').style.display = 'block';
+  }
+}
+
+function subirFotos() {
+  var input = document.getElementById('inputFotos');
+  if (!input.files || input.files.length === 0) {
+    alert('Selecciona al menos una foto');
+    return;
+  }
+  var formData = new FormData();
+  for (var i = 0; i < input.files.length; i++) {
+    formData.append('files', input.files[i]);
+  }
+  var btn = document.getElementById('btnSubirFotos');
+  btn.disabled = true;
+  btn.textContent = '⏳ Procesando OCR...';
+  document.getElementById('ocrStatus').textContent = 'Leyendo ' + input.files.length + ' imagen(es)...';
+
+  var token = window.location.pathname.split('/')[2];
+  fetch('/v/' + token + '/preventa/upload-imagenes', {
+    method: 'POST',
+    body: formData
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(data) {
+    btn.disabled = false;
+    btn.textContent = '🔍 Procesar fotos';
+    if (data.ok) {
+      document.getElementById('ocrStatus').textContent =
+        '✅ ' + data.items.length + ' items reconocidos, ' +
+        data.items_no_match.length + ' sin match';
+      // Reutilizar el handler de resultados existente del Excel
+      if (typeof handleUploadResult === 'function') {
+        handleUploadResult(data);
+      } else {
+        alert('Items: ' + data.items.length + '\nSin match: ' + data.items_no_match.length + '\nTotal: S/' + data.total_pedido);
+      }
+    } else {
+      document.getElementById('ocrStatus').textContent = '❌ ' + (data.error || 'Error al procesar');
+      if (data.parse_errors && data.parse_errors.length > 0) {
+        alert(data.parse_errors.join('\n'));
+      }
+    }
+  })
+  .catch(function(err) {
+    btn.disabled = false;
+    btn.textContent = '🔍 Procesar fotos';
+    document.getElementById('ocrStatus').textContent = '❌ Error de conexión';
+    alert('Error: ' + err.message);
+  });
+}
+</script>
+
     </label>
     <button class="btn primary" id="btnRevisar" disabled>Revisar archivo</button>
     <div class="err hidden" id="errUp"></div>
@@ -892,3 +1014,175 @@ $("btnCrear").addEventListener("click",function(){
    .catch(function(e){self.disabled=false;self.textContent="Crear preventa";$("errCrear").textContent=e.message;$("errCrear").classList.remove("hidden")});
 });
 </script></body></html>"""
+
+
+# ═══════════════════════════════════════════════════════════
+# OCR: Upload múltiples fotos de tickets BsSoft
+# ═══════════════════════════════════════════════════════════
+
+@router.post("/v/{token}/preventa/upload-imagenes")
+async def upload_imagenes_preventa(
+    token: str,
+    request: Request,
+    files: list[UploadFile] = File(...),
+):
+    """
+    Recibe múltiples fotos de tickets BsSoft, ejecuta OCR,
+    matchea SKUs contra catálogo y devuelve shape idéntico
+    al endpoint /preventa/upload (Excel).
+    """
+    import asyncio
+
+    # Validar vendedor
+    vendedor = await _get_vendedor_by_token(token)
+    if not vendedor:
+        return JSONResponse({"error": "Token inválido"}, status_code=401)
+
+    # Validaciones
+    if len(files) > 10:
+        return JSONResponse(
+            {"error": "Máximo 10 archivos permitidos"},
+            status_code=400,
+        )
+
+    ALLOWED_TYPES = {
+        "image/jpeg", "image/png", "image/webp",
+        "image/heic", "image/heif",
+        "application/pdf",
+    }
+    MAX_SIZE = 10 * 1024 * 1024  # 10MB
+
+    # Leer y validar archivos
+    images_bytes = []
+    for f in files:
+        content_type = f.content_type or ""
+        if content_type not in ALLOWED_TYPES:
+            return JSONResponse(
+                {"error": f"Tipo no soportado: {f.filename} ({content_type}). Usa JPG, PNG o PDF."},
+                status_code=400,
+            )
+        data = await f.read()
+        if len(data) > MAX_SIZE:
+            return JSONResponse(
+                {"error": f"Archivo muy grande: {f.filename} ({len(data)//1024//1024}MB). Máximo 10MB."},
+                status_code=400,
+            )
+        images_bytes.append(data)
+
+    if not images_bytes:
+        return JSONResponse({"error": "No se recibieron archivos"}, status_code=400)
+
+    # OCR en paralelo
+    loop = asyncio.get_event_loop()
+    parseos = await asyncio.gather(*[
+        loop.run_in_executor(None, parse_ticket_bsoft, img_bytes)
+        for img_bytes in images_bytes
+    ])
+
+    # Merge items de todas las imágenes
+    merged = merge_items_multiples(list(parseos))
+    ocr_items = merged["items"]
+
+    if not ocr_items:
+        return JSONResponse({
+            "ok": False,
+            "error": "No se pudieron leer items de las imágenes.",
+            "parse_errors": merged["all_errors"],
+            "raw_texts": merged["raw_texts"],
+        })
+
+    # Match contra catálogo del distribuidor
+    dist_id = vendedor.get("distribuidor_id")
+    if not dist_id:
+        return JSONResponse({"error": "Vendedor sin distribuidor asignado"}, status_code=400)
+
+    # Cargar catálogo
+    from app.database import get_supabase
+    sb = get_supabase()
+    cat_resp = sb.table("catalogo_distribuidor").select(
+        "id, sku_distribuidor, producto_circa_id, unidades, activo, codigo"
+    ).eq("distribuidor_id", dist_id).eq("activo", True).execute()
+
+    catalogo_rows = cat_resp.data or []
+
+    # Cargar nombres de productos_circa
+    pc_ids = [r["producto_circa_id"] for r in catalogo_rows if r.get("producto_circa_id")]
+    pc_map = {}
+    if pc_ids:
+        # Batch en chunks de 50
+        for chunk_start in range(0, len(pc_ids), 50):
+            chunk = pc_ids[chunk_start:chunk_start + 50]
+            pc_resp = sb.table("productos_circa").select(
+                "id, nombre, marca, categoria"
+            ).in_("id", chunk).execute()
+            for p in (pc_resp.data or []):
+                pc_map[p["id"]] = p
+
+    # Index por SKU (sku_distribuidor)
+    cat_by_sku = {}
+    for row in catalogo_rows:
+        sku = (row.get("sku_distribuidor") or "").strip()
+        if sku:
+            cat_by_sku[sku] = row
+        # También indexar por código numérico sin P (ej: "0148" -> P0148)
+        codigo = row.get("codigo")
+        if codigo:
+            cat_by_sku[f"P{str(codigo).zfill(4)}"] = row
+
+    items_matched = []
+    items_no_match = []
+
+    for ocr_item in ocr_items:
+        sku = ocr_item["sku"]
+
+        # Intentar match directo
+        cat_row = cat_by_sku.get(sku)
+
+        # Fallback: quitar P y buscar numérico
+        if not cat_row and sku.startswith("P"):
+            numeric = sku[1:].lstrip("0")
+            for k, v in cat_by_sku.items():
+                if k.lstrip("P").lstrip("0") == numeric:
+                    cat_row = v
+                    break
+
+        if cat_row:
+            pc = pc_map.get(cat_row["producto_circa_id"], {})
+            # Resolver precio desde unidades JSONB
+            unidades = cat_row.get("unidades") or {}
+            pack_size = ocr_item["pack_size"]
+            precio = unidades.get(pack_size, ocr_item["precio"])
+
+            items_matched.append({
+                "catalogo_id": cat_row["id"],
+                "nombre": pc.get("nombre", ocr_item["descripcion"]),
+                "marca": pc.get("marca", ""),
+                "pack_size": pack_size,
+                "cantidad": ocr_item["cantidad"],
+                "precio": float(precio),
+                "subtotal": round(float(precio) * ocr_item["cantidad"], 2),
+                "es_bonificacion": ocr_item["es_bonificacion"],
+                "sku": sku,
+            })
+        else:
+            items_no_match.append({
+                "sku": sku,
+                "descripcion": ocr_item["descripcion"],
+                "pack_size": ocr_item["pack_size"],
+                "cantidad": ocr_item["cantidad"],
+                "precio": ocr_item["precio"],
+                "total": ocr_item["total"],
+                "es_bonificacion": ocr_item["es_bonificacion"],
+            })
+
+    total = sum(it["subtotal"] for it in items_matched)
+
+    return JSONResponse({
+        "ok": True,
+        "items": items_matched,
+        "items_no_match": items_no_match,
+        "total_pedido": round(total, 2),
+        "num_imagenes": len(images_bytes),
+        "parse_errors": merged["all_errors"],
+    })
+
