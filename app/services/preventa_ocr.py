@@ -28,18 +28,21 @@ def _ensure_deps():
 
 
 def _preprocess_image(img):
-    """Convierte screenshot de app BsSoft a imagen óptima para Tesseract."""
+    """Preprocesa screenshot de app BsSoft para Tesseract."""
     _, ImageFilter, _ = _ensure_deps()
 
     w, h = img.size
+    # Escalar si es muy pequeño
     if w < 800:
         ratio = 800 / w
         from PIL import Image as PILImage
         img = img.resize((int(w * ratio), int(h * ratio)), PILImage.LANCZOS)
 
+    # Solo grayscale + sharpen. NO binarizar: los screenshots de app
+    # tienen fondo oscuro+texto claro Y fondo claro+texto oscuro.
+    # Tesseract 4 (LSTM) maneja ambos sin binarización manual.
     img = img.convert("L")
     img = img.filter(ImageFilter.SHARPEN)
-    img = img.point(lambda x: 255 if x > 140 else 0, "1")
     return img
 
 
@@ -59,7 +62,7 @@ def _ocr_image(image_bytes: bytes) -> str:
     text = pytesseract.image_to_string(
         processed,
         lang="spa",
-        config="--psm 6 --oem 3",
+        config="--psm 4 --oem 3",
     )
     return text
 
