@@ -1,10 +1,5 @@
 FROM python:3.12-slim
 
-# Tesseract OCR + idioma español (para parser de tickets BsSoft)
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-spa && \
-    rm -rf /var/lib/apt/lists/*
-
 WORKDIR /app
 
 COPY requirements.txt .
