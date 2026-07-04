@@ -11,6 +11,5 @@ cryptography>=42.0.0
 redis>=5.0.0,<6
 # force rebuild v5 - added flows infrastructure
 reportlab
-# OCR para tickets BsSoft
-pytesseract>=0.3.10
-Pillow>=10.0.0
+openpyxl>=3.1.0
+psycopg2-binary>=2.9.9
