@@ -668,6 +668,17 @@ async def list_pedidos(estado: str = None, _admin: bool = Depends(verify_admin_t
         q = q.eq("estado", estado)
     return q.order("created_at", desc=True).limit(50).execute().data
 
+
+@app.get("/api/test-notify/{pedido_id}")
+async def test_notify(pedido_id: str, _admin: bool = Depends(verify_admin_token)):
+    """Diagnóstico: dispara notificar_preventa_bodeguero manualmente."""
+    from app.flows.catalogo import notificar_preventa_bodeguero
+    try:
+        await notificar_preventa_bodeguero(pedido_id)
+        return {"ok": True, "sent": True}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
 @app.get("/api/pedidos/{pedido_id}")
 async def get_pedido(pedido_id: str, _admin: bool = Depends(verify_admin_token)):
     pedido = db.sb.table("pedidos").select("*, bodegas(nombre_comercial, telefono_whatsapp)").eq("id", pedido_id).single().execute().data
