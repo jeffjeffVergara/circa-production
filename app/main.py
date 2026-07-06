@@ -1099,9 +1099,15 @@ async def submit_cart(data: CartSubmission):
             },
         )
 
-    # === MODO VENDEDOR: NO mandar mensaje automatico al WhatsApp del bodeguero ===
-    # El vendedor mismo le va a pasar el link/QR al bodeguero.
+    # === MODO VENDEDOR: enviar notificación automática al bodeguero (06-jul-2026) ===
     if is_vendedor_mode:
+        try:
+            import asyncio as _aio
+            from app.flows.catalogo import notificar_preventa_bodeguero
+            _aio.ensure_future(notificar_preventa_bodeguero(str(pedido_id)))
+        except Exception as _ne:
+            logger.warning(f"Auto-notify preventa vendedor: {_ne}")
+        # Sigue devolviendo el link_token para la pantalla /share (fallback)
         return {
             "ok": True,
             "pedido_id": str(pedido_id) if pedido_id else None,

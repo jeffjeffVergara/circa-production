@@ -586,10 +586,26 @@ async def _send_payment_options(phone, pedido_id, total, items_text, bodega_id=N
     pid = str(pedido_id)[:8]
     fecha_pago = (datetime.now() + timedelta(days=7)).strftime("%d/%m/%Y")
     
-    # Fixed financing tiers: S/100, S/200, S/300
+    # Máximo financiable como PRIMERA opción (06-jul-2026)
+    financiable = round(min(total, linea), 2)
     tiers = []
-    for monto_fin in [100, 200, 300, 400, 500]:
-        if monto_fin <= linea and monto_fin <= total:
+    if financiable > 0:
+        fee_max = circa_fees.calcular_comision_por_plan(financiable, 7)["fee"]
+        paga_hoy_max = round(total - financiable, 2)
+        paga_7d_max = round(financiable + fee_max, 2)
+        if financiable >= total:
+            title_max = f"\U0001f4b3 Financiar todo S/{financiable:.2f}"
+        else:
+            title_max = f"\U0001f4b3 Financiar S/{financiable:.2f} (m\u00e1x.)"
+        tiers.append({
+            "id": f"FIN100_{pid}",
+            "monto": financiable,
+            "title": title_max,
+            "description": f"\U0001f4b0Hoy S/{paga_hoy_max:.2f} | Cuota S/{paga_7d_max:.2f} en 7d",
+        })
+    # Tiers fijos menores al máximo (descendente)
+    for monto_fin in [500, 400, 300, 200, 100]:
+        if monto_fin < financiable and monto_fin <= total:
             fee = circa_fees.calcular_comision_por_plan(monto_fin, 7)["fee"]
             paga_hoy = round(total - monto_fin, 2)
             paga_7d = round(monto_fin + fee, 2)
@@ -599,20 +615,6 @@ async def _send_payment_options(phone, pedido_id, total, items_text, bodega_id=N
                 "title": f"Financiar S/{monto_fin}",
                 "description": f"\U0001f4b0Hoy S/{paga_hoy:.2f} | \U0001f4b3Cuota S/{paga_7d:.2f} en 7d",
             })
-
-    # Financiar todo: cubre montos que no coinciden con tiers fijos
-    financiable = round(min(total, linea), 2)
-    tier_montos = [t["monto"] for t in tiers]
-    if financiable > 0 and financiable not in tier_montos:
-        fee_ft = circa_fees.calcular_comision_por_plan(financiable, 7)["fee"]
-        paga_hoy_ft = round(total - financiable, 2)
-        paga_7d_ft = round(financiable + fee_ft, 2)
-        tiers.append({
-            "id": f"FIN100_{pid}",
-            "monto": financiable,
-            "title": f"Financiar todo S/{financiable:.2f}",
-            "description": f"💰Hoy S/{paga_hoy_ft:.2f} | 💳Cuota S/{paga_7d_ft:.2f} en 7d",
-        })
 
     header = (
         f"\U0001f6d2 *{saludo_pedido} pedido est\u00e1 listo para pagar*\n"
@@ -626,9 +628,9 @@ async def _send_payment_options(phone, pedido_id, total, items_text, bodega_id=N
         await meta_client.send_text(phone, header)
 
         rows = []
-        rows.append({"id": f"CONTADO_{pid}", "title": f"\U0001f4b5 Pago todo hoy", "description": f"S/{total:.2f} al contado"})
-        for t in reversed(tiers):
+        for t in tiers:
             rows.append({"id": t["id"], "title": t["title"], "description": t["description"]})
+        rows.append({"id": f"CONTADO_{pid}", "title": f"\U0001f4b5 Pagar todo al contado", "description": f"S/{total:.2f} al chofer"})
         rows.append({"id": f"EDITAR_{pid}", "title": "\u270f\ufe0f Editar carrito", "description": "Volver al catalogo"})
 
         await meta_client.send_list(
@@ -675,6 +677,70 @@ async def _send_payment_options(phone, pedido_id, total, items_text, bodega_id=N
 
     logger.info(f"Payment options sent to {phone}, linea={linea}")
 
+
+
+
+async def notificar_preventa_bodeguero(pedido_id: str):
+    """Envía opciones de pago al bodeguero cuando se crea una preventa.
+    
+    Se llama desde submit_cart (modo vendedor) y desde importar_preventas.
+    Solo envía si la bodega está onboarded (tiene pin_hash).
+    """
+    import json as _json
+    try:
+        p = db.sb.table("pedidos").select(
+            "id, items_json, monto_productos, total_pedido, bodega_id"
+        ).eq("id", pedido_id).limit(1).execute()
+        if not p.data:
+            logger.error(f"notificar_preventa: pedido {pedido_id} not found")
+            return
+        pedido = p.data[0]
+
+        bodega_id = pedido["bodega_id"]
+        total = float(pedido.get("monto_productos") or pedido.get("total_pedido") or 0)
+        if total <= 0:
+            logger.warning(f"notificar_preventa: pedido {pedido_id} total=0, skip")
+            return
+
+        b = db.sb.table("bodegas").select(
+            "telefono_whatsapp, pin_hash"
+        ).eq("id", bodega_id).limit(1).execute()
+        if not b.data:
+            logger.error(f"notificar_preventa: bodega {bodega_id} not found")
+            return
+        bodega = b.data[0]
+
+        if not bodega.get("pin_hash"):
+            logger.info(f"notificar_preventa: bodega {bodega_id} sin PIN, skip")
+            return
+
+        phone = (bodega.get("telefono_whatsapp") or "").replace("+", "").replace(" ", "")
+        if not phone:
+            return
+        if len(phone) == 9:
+            phone = f"51{phone}"
+
+        items_raw = pedido.get("items_json")
+        if isinstance(items_raw, str):
+            try:
+                items_raw = _json.loads(items_raw)
+            except Exception:
+                items_raw = []
+
+        item_lines = []
+        for item in (items_raw or []):
+            qty = item.get("cantidad", 0)
+            nombre = item.get("nombre", item.get("descripcion", "?"))
+            sub = item.get("subtotal", 0)
+            regalo = " \U0001f381" if item.get("es_bonificacion") else ""
+            item_lines.append(f"\u25b8 {qty}x {nombre}\n  S/{sub:.2f}{regalo}")
+        items_text = "\n".join(item_lines) if item_lines else "(sin detalle de productos)"
+
+        await _send_payment_options(phone, pedido_id, total, items_text, bodega_id)
+        logger.info(f"notificar_preventa: OK -> {phone} pedido {pedido_id}")
+
+    except Exception as e:
+        logger.error(f"notificar_preventa error: {e}", exc_info=True)
 
 # ── Payment & Confirmation ──
 

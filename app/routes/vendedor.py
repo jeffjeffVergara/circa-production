@@ -517,7 +517,7 @@ def vendedor_share_link(
 <body>
   <a href="/v/{token}" class="back">← Menú</a>
   <div class="titulo">Preventa lista</div>
-  <div class="subtitulo">Pásale el link o el QR a tu cliente</div>
+  <div class="subtitulo">✅ Se envió por WhatsApp al bodeguero</div>
 
   <div class="preventa-meta">
     <div class="bodega">{bodega_nombre}</div>
@@ -534,7 +534,7 @@ def vendedor_share_link(
   <div class="link-text-small" id="link-text">{wa_link}</div>
 
   <div class="help">
-    El cliente abre el QR (o pega el link en WhatsApp)<br>y aprueba la preventa con su clave Circa.
+    El bodeguero ya recibió las opciones de pago por WhatsApp.<br>Si no le llegó, comparte el link de abajo.
   </div>
 
   <div class="btns-final">

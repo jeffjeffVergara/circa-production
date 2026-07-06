@@ -1536,6 +1536,14 @@ async def importar_preventas(
                 "items_no_match": resultado["items_no_match"],
             })
             creadas += 1
+
+            # Auto-notificar al bodeguero por WhatsApp (06-jul-2026)
+            try:
+                from app.flows.catalogo import notificar_preventa_bodeguero
+                import asyncio
+                asyncio.ensure_future(notificar_preventa_bodeguero(resultado["pedido_id"]))
+            except Exception as _ne:
+                logger.warning(f"Auto-notify preventa {pv.ruc_bodega}: {_ne}")
             
         except Exception as e:
             logger.error(f"Error procesando preventa RUC {pv.ruc_bodega}: {e}", exc_info=True)
