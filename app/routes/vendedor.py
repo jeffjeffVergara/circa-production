@@ -776,6 +776,7 @@ input[type=file]{display:none}
     <div class="row"><span class="k">Descuento DIMAX</span><span class="v" id="pvDesc">-</span></div>
     <div class="row"><span class="k">Total a cobrar</span><span class="tot" id="pvTot">-</span></div>
     <div id="pvWarn"></div>
+    <div id="pvItems2" style="margin-top:10px"></div>
   </div>
 
   <div class="card hidden" id="cardBod">
@@ -855,7 +856,7 @@ document.getElementById("btnProcesar").addEventListener("click",function(){
       $("ocrStatus").textContent=matched.length+" items reconocidos"+(noMatch.length>0?", "+noMatch.length+" sin match en cat\u00e1logo":"");
       var nBonif=(matched.filter(function(x){return x.es_bonificacion}).length)+(data.bonificaciones||[]).length;
       preview={
-        fecha:"(foto de ticket)",
+        fecha:data.bodega_nombre?(data.headers&&data.headers[0]&&data.headers[0].fecha?data.headers[0].fecha:"(foto de ticket)"):"(foto de ticket)",
         n_items:matched.length,
         n_regalos:nBonif,
         descuento_prorrateado:0,
@@ -908,6 +909,15 @@ function renderPreview(){
   $("pvTot").textContent=money(preview.total_pedido);
   var w=$("pvWarn"); w.innerHTML="";
   (preview.warnings||[]).forEach(function(t){var d=document.createElement("div");d.className="warn";d.textContent=t;w.appendChild(d)});
+  var il=$("pvItems2"); if(il) il.innerHTML="";
+  if(preview.items_json && il){
+    preview.items_json.forEach(function(it){
+      var r=document.createElement("div");
+      r.className="row";
+      r.innerHTML='<span class="k">'+it.cantidad+'x '+(it.nombre||it.sku)+'</span><span class="v">S/'+(it.subtotal||0).toFixed(2)+'</span>';
+      il.appendChild(r);
+    });
+  }
   $("cardBod").classList.remove("hidden");
   $("btnCrear").classList.remove("hidden");
   $("detect").innerHTML="El archivo dice: <b>"+(preview.bodega_nombre||"(sin nombre)")+"</b>";
@@ -1188,6 +1198,7 @@ async def upload_imagenes_preventa(
         "num_imagenes": len(images_bytes),
         "parse_errors": merged["all_errors"],
         "bodega_nombre": bodega_nombre,
+        "headers": merged.get("headers", []),
         "bodega_sugerida": bodega_sugerida,
         "candidatos": candidatos,
     })
