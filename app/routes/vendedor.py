@@ -756,11 +756,11 @@ input[type=file]{display:none}
       <button class="btn primary" id="btnRevisar" disabled>Revisar archivo</button>
     </div>
     <div id="zonaFotos" class="hidden">
-      <label class="drop" id="dropFoto" onclick="document.getElementById('fileFotos').click()">
+      <div class="drop" id="dropFoto" onclick="document.getElementById('fileFotos').click()">
         <div class="big" id="dropFotoTxt">Toca para elegir fotos del ticket</div>
         <div class="small">puedes seleccionar varias im&aacute;genes</div>
         <input type="file" id="fileFotos" multiple accept="image/*" style="display:none">
-      </label>
+      </div>
       <div id="thumbs" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px"></div>
       <button class="btn primary hidden" id="btnProcesar" disabled>&#128270; Procesar fotos</button>
       <div id="ocrStatus" style="text-align:center;color:rgba(255,255,255,.5);font-size:12px;margin-top:6px"></div>
@@ -866,7 +866,8 @@ document.getElementById("btnProcesar").addEventListener("click",function(){
         bodega_sugerida:data.bodega_sugerida||null,
         candidatos:data.candidatos||[],
         items_json:matched,
-        origen_ocr:true
+        origen_ocr:true,
+        bonificaciones:data.bonificaciones||[]
       };
       renderPreview();
     })
@@ -917,6 +918,14 @@ function renderPreview(){
       r.innerHTML='<span class="k">'+it.cantidad+'x '+(it.nombre||it.sku)+'</span><span class="v">S/'+(it.subtotal||0).toFixed(2)+'</span>';
       il.appendChild(r);
     });
+    if(preview.bonificaciones){
+      preview.bonificaciones.forEach(function(it){
+        var r=document.createElement("div");
+        r.className="row";
+        r.innerHTML='<span class="k" style="color:#22D3EE">\ud83c\udf81 '+(it.cantidad||1)+'x '+(it.descripcion||it.sku)+'</span><span class="v" style="color:#22D3EE">REGALO</span>';
+        il.appendChild(r);
+      });
+    }
   }
   $("cardBod").classList.remove("hidden");
   $("btnCrear").classList.remove("hidden");
