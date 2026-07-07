@@ -1074,8 +1074,8 @@ async def upload_imagenes_preventa(
     if not dist_id:
         return JSONResponse({"error": "Vendedor sin distribuidor asignado"}, status_code=400)
 
-    from app.database import get_supabase
-    sb = get_supabase()
+    from app.services.db import sb
+    
     cat_resp = sb.table("catalogo_distribuidor").select(
         "id, sku_distribuidor, producto_circa_id, unidades, activo, codigo"
     ).eq("distribuidor_id", str(dist_id)).eq("activo", True).execute()
