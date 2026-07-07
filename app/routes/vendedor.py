@@ -856,7 +856,7 @@ document.getElementById("btnProcesar").addEventListener("click",function(){
       $("ocrStatus").textContent=matched.length+" items reconocidos"+(noMatch.length>0?", "+noMatch.length+" sin match en cat\u00e1logo":"");
       var nBonif=(matched.filter(function(x){return x.es_bonificacion}).length)+(data.bonificaciones||[]).length;
       preview={
-        fecha:data.bodega_nombre?(data.headers&&data.headers[0]&&data.headers[0].fecha?data.headers[0].fecha:"(foto de ticket)"):"(foto de ticket)",
+        fecha:(data.headers&&data.headers[0]&&data.headers[0].fecha)||"(foto de ticket)",
         n_items:matched.length,
         n_regalos:nBonif,
         descuento_prorrateado:0,

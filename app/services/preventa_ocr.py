@@ -87,7 +87,7 @@ _RE_TOTAL = re.compile(
     re.IGNORECASE,
 )
 _RE_DOC_NUM = re.compile(r"V\d{4}-\d{5,7}")
-_RE_FECHA = re.compile(r"(\d{1,2}/\d{2}/\d{4})\s+(\d{2}:\d{2}:\d{2})")
+_RE_FECHA = re.compile(r"(\d{1,2}/\d{2}/\d{4})\s+(\d{1,2}[: ]\d{2}[: ]?\d{0,2})")
 _RE_ENTREGA = re.compile(r"F\.\s*Entrega\s*:?\s*(\d{1,2}/\d{2}/\d{4})", re.IGNORECASE)
 
 
