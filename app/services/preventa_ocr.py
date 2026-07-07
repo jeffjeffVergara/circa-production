@@ -173,6 +173,41 @@ def _parse_items_from_text(text: str) -> list[dict]:
     return items
 
 
+def _extract_bodega_name(text: str) -> str:
+    """Extrae nombre de bodega del header del ticket BsSoft.
+    Es la primera línea con texto ALL-CAPS sustancial (>5 chars)."""
+    lines = text.strip().split("\n")
+    name_parts = []
+    found_start = False
+    for l in lines:
+        l = l.strip()
+        if not l or len(l) < 3:
+            if found_start:
+                break
+            continue
+        # Skip status bar (time pattern at start)
+        if re.match(r'^\d{1,2}:\d{2}', l):
+            continue
+        # Skip lines with too many symbols/numbers (not a name)
+        alpha_ratio = sum(1 for c in l if c.isalpha()) / max(len(l), 1)
+        if alpha_ratio < 0.6:
+            if found_start:
+                break
+            continue
+        # Check if it looks like a name (mostly uppercase letters)
+        cleaned = re.sub(r'^[^A-Za-zÁÉÍÓÚÑ]+', '', l)
+        if cleaned and len(cleaned) > 3:
+            if not found_start:
+                found_start = True
+            name_parts.append(cleaned)
+            # Most bodega names are 1-2 lines
+            if len(name_parts) >= 2:
+                break
+        elif found_start:
+            break
+    return " ".join(name_parts).strip()
+
+
 def _parse_header_from_text(text: str) -> dict:
     header = {}
     m_doc = _RE_DOC_NUM.search(text)
@@ -185,6 +220,7 @@ def _parse_header_from_text(text: str) -> dict:
     m_entrega = _RE_ENTREGA.search(text)
     if m_entrega:
         header["fecha_entrega"] = m_entrega.group(1)
+    header["bodega_nombre"] = _extract_bodega_name(text)
     return header
 
 

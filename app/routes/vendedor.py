@@ -853,15 +853,15 @@ document.getElementById("btnProcesar").addEventListener("click",function(){
       var matched=data.items||[];
       var noMatch=data.items_no_match||[];
       $("ocrStatus").textContent=matched.length+" items reconocidos"+(noMatch.length>0?", "+noMatch.length+" sin match en cat\u00e1logo":"");
-      var nBonif=matched.filter(function(x){return x.es_bonificacion}).length;
+      var nBonif=(matched.filter(function(x){return x.es_bonificacion}).length)+(data.bonificaciones||[]).length;
       preview={
-        fecha:"(foto de ticket)",
+        fecha:data.bodega_nombre?"(ticket de "+data.bodega_nombre+")":"(foto de ticket)",
         n_items:matched.length,
         n_regalos:nBonif,
         descuento_prorrateado:0,
         total_pedido:data.total_pedido,
         warnings:noMatch.map(function(x){return "Sin match: "+x.sku+" - "+x.descripcion}),
-        bodega_nombre:"(identificar manualmente)",
+        bodega_nombre:data.bodega_nombre||"(identificar manualmente)",
         bodega_sugerida:null,
         candidatos:[],
         items_json:matched,
@@ -1146,12 +1146,25 @@ async def upload_imagenes_preventa(
 
     total = sum(it["subtotal"] for it in items_matched)
 
+    # Separar bonificaciones de items realmente no matcheados
+    bonificaciones = [it for it in items_no_match if it.get("es_bonificacion")]
+    items_sin_match_real = [it for it in items_no_match if not it.get("es_bonificacion")]
+
+    # Extraer nombre de bodega del header OCR
+    bodega_nombre = ""
+    for h in merged.get("headers", []):
+        if h.get("bodega_nombre"):
+            bodega_nombre = h["bodega_nombre"]
+            break
+
     return JSONResponse({
         "ok": True,
         "items": items_matched,
-        "items_no_match": items_no_match,
+        "items_no_match": items_sin_match_real,
+        "bonificaciones": bonificaciones,
         "total_pedido": round(total, 2),
         "num_imagenes": len(images_bytes),
         "parse_errors": merged["all_errors"],
+        "bodega_nombre": bodega_nombre,
     })
 
