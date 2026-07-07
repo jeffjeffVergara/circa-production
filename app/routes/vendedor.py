@@ -855,15 +855,15 @@ document.getElementById("btnProcesar").addEventListener("click",function(){
       $("ocrStatus").textContent=matched.length+" items reconocidos"+(noMatch.length>0?", "+noMatch.length+" sin match en cat\u00e1logo":"");
       var nBonif=(matched.filter(function(x){return x.es_bonificacion}).length)+(data.bonificaciones||[]).length;
       preview={
-        fecha:data.bodega_nombre?"(ticket de "+data.bodega_nombre+")":"(foto de ticket)",
+        fecha:"(foto de ticket)",
         n_items:matched.length,
         n_regalos:nBonif,
         descuento_prorrateado:0,
         total_pedido:data.total_pedido,
         warnings:noMatch.map(function(x){return "Sin match: "+x.sku+" - "+x.descripcion}),
         bodega_nombre:data.bodega_nombre||"(identificar manualmente)",
-        bodega_sugerida:null,
-        candidatos:[],
+        bodega_sugerida:data.bodega_sugerida||null,
+        candidatos:data.candidatos||[],
         items_json:matched,
         origen_ocr:true
       };
@@ -1157,6 +1157,28 @@ async def upload_imagenes_preventa(
             bodega_nombre = h["bodega_nombre"]
             break
 
+    # Auto-buscar bodega por nombre
+    bodega_sugerida = None
+    candidatos = []
+    if bodega_nombre:
+        try:
+            palabras = bodega_nombre.strip().split()
+            if len(palabras) >= 2:
+                q = sb.table("bodegas").select(
+                    "id, razon_social, nombre_comercial, distrito, "
+                    "dni_representante, ruc, linea_disponible, linea_aprobada"
+                ).eq("es_test", False)
+                for p in palabras[:3]:
+                    if len(p) > 2:
+                        q = q.ilike("razon_social", f"%{p}%")
+                result = q.limit(5).execute()
+                if result.data:
+                    bodega_sugerida = result.data[0]
+                    candidatos = result.data[1:] if len(result.data) > 1 else []
+        except Exception as e:
+            import logging
+            logging.getLogger("circa.ocr").warning(f"Bodega search failed: {e}")
+
     return JSONResponse({
         "ok": True,
         "items": items_matched,
@@ -1166,5 +1188,7 @@ async def upload_imagenes_preventa(
         "num_imagenes": len(images_bytes),
         "parse_errors": merged["all_errors"],
         "bodega_nombre": bodega_nombre,
+        "bodega_sugerida": bodega_sugerida,
+        "candidatos": candidatos,
     })
 
