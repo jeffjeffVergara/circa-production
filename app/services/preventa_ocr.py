@@ -1,58 +1,29 @@
 """
 preventa_ocr.py — Parser OCR para tickets BsSoft (screenshots de app)
-Usa Tesseract (gratuito) + regex estructurado.
-Todos los imports son lazy/safe — si falta una dependencia,
-el módulo se carga igual y falla solo al llamar parse_ticket_bsoft().
+Tesseract + regex. Imports lazy para no crashear el app si falta dependencia.
 """
 
 import re
 import io
 import logging
-from typing import Optional
 
 logger = logging.getLogger("circa.ocr")
 
 
 def _ensure_deps():
-    """Importa PIL y pytesseract. Lanza RuntimeError si no están."""
     try:
         from PIL import Image, ImageFilter
         import pytesseract
         return Image, ImageFilter, pytesseract
     except ImportError as e:
-        raise RuntimeError(
-            f"Dependencia OCR faltante: {e}. "
-            "Verificar que Pillow y pytesseract estén en requirements.txt "
-            "y tesseract-ocr en Dockerfile."
-        )
-
-
-def _preprocess_image(img):
-    """Preprocesa screenshot de app BsSoft para Tesseract."""
-    _, ImageFilter, _ = _ensure_deps()
-
-    w, h = img.size
-    # Escalar si es muy pequeño
-    if w < 800:
-        ratio = 800 / w
-        from PIL import Image as PILImage
-        img = img.resize((int(w * ratio), int(h * ratio)), PILImage.LANCZOS)
-
-    # Solo grayscale + sharpen. NO binarizar: los screenshots de app
-    # tienen fondo oscuro+texto claro Y fondo claro+texto oscuro.
-    # Tesseract 4 (LSTM) maneja ambos sin binarización manual.
-    img = img.convert("L")
-    img = img.filter(ImageFilter.SHARPEN)
-    return img
+        raise RuntimeError(f"Dependencia OCR faltante: {e}")
 
 
 def _ocr_image(image_bytes: bytes) -> str:
-    """Ejecuta Tesseract sobre bytes de imagen. Retorna texto crudo."""
     Image, _, pytesseract = _ensure_deps()
 
     img = Image.open(io.BytesIO(image_bytes))
 
-    # Convertir RGBA a RGB (screenshots con transparencia)
     if img.mode == "RGBA":
         bg = Image.new("RGB", img.size, (255, 255, 255))
         bg.paste(img, mask=img.split()[3])
@@ -60,41 +31,43 @@ def _ocr_image(image_bytes: bytes) -> str:
     elif img.mode != "RGB":
         img = img.convert("RGB")
 
-    processed = _preprocess_image(img)
+    # Scale up if small (phone screenshots ~720px need 2x for Tesseract)
+    w, h = img.size
+    if w < 1400:
+        ratio = 2
+        img = img.resize((w * ratio, h * ratio), Image.LANCZOS)
 
-    # Intentar múltiples configuraciones de Tesseract
-    configs = [
-        {"lang": "spa", "config": "--psm 3 --oem 3"},
-        {"lang": "spa", "config": "--psm 6 --oem 3"},
-        {"lang": "eng", "config": "--psm 3 --oem 3"},
-    ]
+    # NO grayscale, NO binarization — Tesseract 4+ handles color images well
+    # Raw RGB gives best results on BsSoft screenshots
+    text = pytesseract.image_to_string(
+        img,
+        lang="spa",
+        config="--psm 3 --oem 3",
+    )
 
-    best_text = ""
-    for cfg in configs:
-        try:
-            text = pytesseract.image_to_string(
-                processed,
-                lang=cfg["lang"],
-                config=cfg["config"],
-            )
-            logger.info(f"OCR config {cfg}: {len(text)} chars")
-            if len(text.strip()) > len(best_text.strip()):
-                best_text = text
-            # Si encontramos "Codigo" en el texto, es el bueno
-            if "odigo" in text or "ODIGO" in text or "P0" in text:
-                logger.info(f"OCR match found with config {cfg}")
-                return text
-        except Exception as e:
-            logger.warning(f"OCR config {cfg} failed: {e}")
-            continue
+    # If spa produced nothing, try eng
+    if len(text.strip()) < 20:
+        logger.warning("spa produced little text, trying eng")
+        text = pytesseract.image_to_string(
+            img,
+            lang="eng",
+            config="--psm 3 --oem 3",
+        )
 
-    return best_text
+    return text
 
 
-# --- Regex patterns para ticket BsSoft ---
+def _normalize_sku(raw: str) -> str:
+    """POO33 -> P0033 (OCR confuses O and 0)"""
+    raw = raw.upper().strip()
+    if raw.startswith("P"):
+        return "P" + raw[1:].replace("O", "0")
+    return raw.replace("O", "0")
 
+
+# Regex patterns — allow O/0 interchangeably in codes
 _RE_CODIGO = re.compile(
-    r"C[oó]digo\s*:\s*(P?\d{3,5})",
+    r"C[oó]digo\s*:\s*(P?[0-9O]{3,5})",
     re.IGNORECASE,
 )
 _RE_UNIDAD = re.compile(
@@ -133,7 +106,6 @@ def _parse_items_from_text(text: str) -> list[dict]:
                 if m_codigo:
                     descripcion = line
                     i += 1
-                    line = lines[i].strip()
                 else:
                     i += 1
                     continue
@@ -143,8 +115,7 @@ def _parse_items_from_text(text: str) -> list[dict]:
         else:
             descripcion = lines[i - 1].strip() if i > 0 else ""
 
-        sku_raw = m_codigo.group(1)
-        sku = sku_raw if sku_raw.startswith("P") else f"P{sku_raw}"
+        sku = _normalize_sku(m_codigo.group(1))
 
         unidad_tipo = ""
         pack_qty = 1
