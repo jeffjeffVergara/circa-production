@@ -193,6 +193,75 @@ def msg_receipt(numero: str, monto_fin: float, fee: float, total: float,
     return "\n".join(lines)
 
 # ── STATUS ────────────────────────────────────
+_ESTADO_PEDIDO_LABELS = {
+    "borrador": "Borrador",
+    "preventa_borrador": "Pre-venta borrador",
+    "preventa_confirmada": "Pre-venta pendiente",
+    "preventa_aceptada": "Pre-venta aceptada",
+    "confirmado": "Confirmado",
+    "recibido": "Recibido",
+    "en_preparacion": "En preparación",
+    "despachado": "Despachado",
+    "en_camino": "En camino",
+    "entregado": "Entregado",
+    "pago_reportado": "Pago reportado",
+}
+
+
+def _fmt_fecha_vencimiento(raw) -> str:
+    if not raw:
+        return ""
+    s = str(raw)[:10]
+    if len(s) == 10 and s[4] == "-":
+        try:
+            y, m, d = s.split("-")
+            return f"{d}/{m}/{y}"
+        except ValueError:
+            pass
+    return str(raw)
+
+
+def format_pedido_activo_line(p: dict) -> str:
+    """Una línea legible para ESTADO / pedidos activos (incluye preventas sin número)."""
+    estado = (p.get("estado") or "").strip()
+    label = _ESTADO_PEDIDO_LABELS.get(estado, estado.replace("_", " ").title() or "—")
+
+    numero = p.get("numero")
+    if numero:
+        ref = str(numero)
+    else:
+        lt = (p.get("link_token") or "").strip()
+        ref = f"PRV-{lt[:8]}" if lt else "Pre-venta"
+
+    total_pedido = float(p.get("total_pedido") or p.get("monto_productos") or 0)
+    monto_credito = float(p.get("monto_total_credito") or 0)
+    monto_fin = float(p.get("monto_financiado") or 0)
+    fee = float(p.get("fee_monto") or 0)
+    monto_contado = float(p.get("monto_contado") or 0)
+
+    if estado in ("preventa_confirmada", "preventa_borrador", "borrador"):
+        monto_show = total_pedido
+    elif monto_credito > 0:
+        monto_show = monto_credito
+    elif monto_fin > 0:
+        monto_show = monto_fin + fee
+    else:
+        monto_show = float(p.get("total") or total_pedido or monto_contado or 0)
+
+    vence_raw = p.get("fecha_vencimiento")
+    if vence_raw:
+        vence_str = f"Vence {_fmt_fecha_vencimiento(vence_raw)}"
+    elif estado in ("preventa_confirmada", "preventa_borrador"):
+        vence_str = "Pendiente de confirmar"
+    else:
+        vence_str = "Sin vencimiento"
+
+    line = f"• {ref} — {label} — S/{monto_show:.2f} — {vence_str}"
+    if monto_contado > 0 and estado not in ("preventa_confirmada", "preventa_borrador", "borrador"):
+        line += f" (+ S/{monto_contado:.2f} contado)"
+    return line
+
+
 def msg_status(numero: str, estado: str, detalle: str = "") -> str:
     icons = {
         "confirmado": "📋", "aprobado": "✅", "despachado": "📦",

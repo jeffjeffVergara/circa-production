@@ -193,6 +193,7 @@ def _verify_pin_for_payment(pin: str, bodega_id: str) -> dict:
         pedido_id = datos["pedido_id"]
         dias = int(datos.get("dias", 0) or 0)
         monto = float(datos["monto"])
+        contado = float(datos.get("contado", 0) or 0)
         fee = 0.0
         rate = 0.0
 
@@ -237,7 +238,9 @@ def _verify_pin_for_payment(pin: str, bodega_id: str) -> dict:
                 "distribuidor_id": _dist_ped,
                 "fee_tasa": rate, "fee_monto": fee,
                 "fee_regimen": fee_regimen_para_pedido_nuevo(),
-                "monto_financiado": round(monto, 2), "plazo_dias": dias,
+                "monto_financiado": round(monto, 2),
+                "monto_contado": round(contado, 2),
+                "plazo_dias": dias,
                 "monto_total_credito": round(monto + fee, 2),
                 "total": round(monto + fee, 2),
                 "estado": ("preventa_confirmada" if tipo_operacion == "preventa" else "confirmado"),
@@ -287,8 +290,12 @@ def _verify_pin_for_payment(pin: str, bodega_id: str) -> dict:
                     f"Financiado con Circa\n\n"
                     f"Financiado: *S/{monto:.2f}*\n"
                     f"Cuota Circa: *S/{monto+fee:.2f}*\n"
-                    f"Plazo maximo: {dias} dias\n\n"
-                    f"\U0001f7e3Yape / \U0001f7e2Plin  *986311567*\n"
+                    f"Plazo maximo: {dias} dias\n"
+                )
+                if contado > 0:
+                    conf_msg += f"\n\U0001f4b5 Al distribuidor (contado): *S/{contado:.2f}*\n"
+                conf_msg += (
+                    f"\n\U0001f7e3Yape / \U0001f7e2Plin  *986311567*\n"
                     f"Paga antes del {fecha_pago_conf} y escribe *YA PAGUE*"
                 )
             else:

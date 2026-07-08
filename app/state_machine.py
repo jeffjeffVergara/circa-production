@@ -909,12 +909,14 @@ En menos de 24 horas validamos tu solicitud y activamos tu línea. Empiezas comp
             }]
 
         if body_n in ("ESTADO", "3", "estado"):
+            from app.services.messages import format_pedido_activo_line
+
             pedidos = db.get_pedidos_activos(bodega["id"])
             if not pedidos:
                 return ["No tienes pedidos activos. Escribe *PEDIDO* para hacer uno."]
             lines = ["📋 *Tus pedidos activos:*\n"]
             for p in pedidos:
-                lines.append(f"• {p['numero']} — {p['estado'].upper()} — S/{p['monto_total_credito']:.2f} — Vence {p['fecha_vencimiento']}")
+                lines.append(format_pedido_activo_line(p))
             return ["\n".join(lines)]
 
         if body_n in ("PAGUE", "YA PAGUE"):
