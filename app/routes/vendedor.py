@@ -991,7 +991,7 @@ $("btnCrear").addEventListener("click",function(){
   fetch("/v/"+TOKEN+"/preventa/crear",{
     method:"POST",headers:{"Content-Type":"application/json"},
     body:JSON.stringify({
-      bodega_id:chosenId, items:preview.items||preview.items_json,
+      bodega_id:chosenId, items:(preview.items||preview.items_json||[]).map(function(x){return {sku_distribuidor:x.sku_distribuidor||x.sku||"",catalogo_id:x.catalogo_id,cantidad:x.cantidad,unidad:x.pack_size||x.unidad||"",precio_unitario:x.precio||x.precio_unitario||0,subtotal:x.subtotal||0,descripcion:x.nombre||x.descripcion||""};}),
       total_pedido:preview.total_pedido,
       descuento_prorrateado:preview.descuento_prorrateado,
       fecha:preview.fecha
