@@ -686,6 +686,17 @@ async def preventa_crear(
         fecha_visita=fecha,
     )
     link_token = res.get("link_token")
+
+    # Notificar al bodeguero por WhatsApp (mismo disparo que distribuidor.py:1544)
+    pedido_id_nuevo = res.get("pedido_id")
+    if pedido_id_nuevo:
+        try:
+            import asyncio
+            from app.flows.catalogo import notificar_preventa_bodeguero
+            asyncio.ensure_future(notificar_preventa_bodeguero(str(pedido_id_nuevo)))
+        except Exception as e:
+            print(f"[preventa_crear] fallo al agendar notificacion: {e}")
+
     return {
         "ok": True,
         "pedido_id": res.get("pedido_id"),
