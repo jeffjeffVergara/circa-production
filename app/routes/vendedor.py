@@ -658,6 +658,19 @@ async def preventa_crear(
     if not bod or bod[0].get("distribuidor_id") != vendedor["distribuidor_id"]:
         raise HTTPException(status_code=403, detail="Esa bodega no es de tu distribuidor.")
 
+    # Normalizar items OCR: mapear 'sku' a 'sku_distribuidor' si falta
+    for it in items:
+        if "sku_distribuidor" not in it and "sku" in it:
+            it["sku_distribuidor"] = it["sku"]
+        if "precio_unitario" not in it and "precio" in it:
+            it["precio_unitario"] = it["precio"]
+        if "descripcion" not in it and "nombre" in it:
+            it["descripcion"] = it["nombre"]
+        if "unidad" not in it and "pack_size" in it:
+            it["unidad"] = it["pack_size"]
+        if "sku_distribuidor" not in it:
+            it["sku_distribuidor"] = ""
+
     # Total cobrado = suma de subtotales (los regalos vienen en 0). No confiamos en el total del cliente.
     total_pedido = round(sum(float(i.get("subtotal") or 0) for i in items), 2)
     if total_pedido <= 0:
