@@ -882,8 +882,6 @@ Busca una bodega y ejecuta acciones de soporte <strong>sin tocar código</strong
 </select>
 <button class="btn btn-outline btn-small" onclick="clearBodegaFilters()" title="Limpiar filtros">✕</button>
 <button class="btn btn-green btn-small" onclick="exportBodegasCSV()">📥 Excel</button>
-<button class="btn btn-small" style="background:#4fc3f7;color:#000;font-weight:600" onclick="abrirReporteListas()">📋 Listas para vender</button>
-<button class="btn btn-small" style="background:#ffa726;color:#000;font-weight:600" onclick="abrirReportePendientes()">📋 Sin enrolar</button>
 </div>
 <div class="table-wrap">
 <table class="bodegas-table">
@@ -1666,28 +1664,6 @@ function exportCobranzasCSV(){
 
 function abrirReporteDiario(){
   fetch('/api/backoffice/cobranzas/reporte-diario', {headers: authHeaders({'X-Admin-Token': AUTH_TOKEN})})
-    .then(function(r){ if(!r.ok) throw new Error(r.status); return r.text(); })
-    .then(function(html){
-      var w = window.open('','_blank');
-      w.document.write(html);
-      w.document.close();
-    })
-    .catch(function(e){ showToast('Error: '+e.message,'error'); });
-}
-
-function abrirReporteListas(){
-  fetch('/api/backoffice/bodegas/reporte-listas', {headers: authHeaders({'X-Admin-Token': AUTH_TOKEN})})
-    .then(function(r){ if(!r.ok) throw new Error(r.status); return r.text(); })
-    .then(function(html){
-      var w = window.open('','_blank');
-      w.document.write(html);
-      w.document.close();
-    })
-    .catch(function(e){ showToast('Error: '+e.message,'error'); });
-}
-
-function abrirReportePendientes(){
-  fetch('/api/backoffice/bodegas/reporte-sin-enrolar', {headers: authHeaders({'X-Admin-Token': AUTH_TOKEN})})
     .then(function(r){ if(!r.ok) throw new Error(r.status); return r.text(); })
     .then(function(html){
       var w = window.open('','_blank');
@@ -4034,8 +4010,10 @@ function openBodegaDetail(id, ev){
     var b = d.bodega || {};
     var name = b.nombre_comercial || b.razon_social || '?';
     document.getElementById('bodegaPerfilTitle').textContent = name;
+    var docLabel = b.ruc ? 'RUC ' + b.ruc : (b.dni_representante ? 'DNI ' + b.dni_representante : '');
     document.getElementById('bodegaPerfilSubtitle').textContent =
-      (b.representante_legal||'') + ' · ' + (b.telefono_whatsapp||'') +
+      (docLabel ? docLabel + ' · ' : '') +
+      (b.telefono_whatsapp||'') +
       (b.es_test ? ' · 🧪 BODEGA TEST' : '');
     document.getElementById('bodegaPerfilContent').innerHTML = renderBodegaPerfil(d);
   }).catch(function(e){
