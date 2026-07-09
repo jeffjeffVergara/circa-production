@@ -358,6 +358,22 @@ def _normalizar_telefono(tel: str) -> str:
     raise HTTPException(status_code=400, detail="Teléfono WhatsApp inválido (Perú)")
 
 
+
+def _link_bodega_vendedor(bodega_id: str, vendedor_codigo: str, vendedor_nombre: str | None = None):
+    try:
+        vend = _sb_get('vendedores', {'select': 'id,nombre', 'codigo': f'eq.{vendedor_codigo}', 'activo': 'eq.true'})
+        if not vend and vendedor_nombre:
+            vend = _sb_get('vendedores', {'select': 'id,nombre', 'nombre': f'eq.{vendedor_nombre}', 'activo': 'eq.true'})
+        if not vend:
+            log.warning('Vendedor %s no encontrado para bodega %s', vendedor_codigo, bodega_id)
+            return
+        existing_bv = _sb_get('bodega_vendedores', {'select': 'supervisor', 'vendedor_id': f'eq.{vend[0]["id"]}', 'activo': 'eq.true', 'limit': '1'})
+        supervisor = existing_bv[0].get('supervisor', '') if existing_bv else ''
+        db.sb.table('bodega_vendedores').insert({'bodega_id': bodega_id, 'vendedor_id': vend[0]['id'], 'activo': True, 'rol': 'ABN', 'grupo': 'BODEGAS', 'supervisor': supervisor}).execute()
+    except Exception as e:
+        log.warning('Error vinculando vendedor a bodega %s: %s', bodega_id, e)
+
+
 def _insert_bodega_record(
     *,
     ruc: str,
@@ -998,6 +1014,9 @@ async def confirm_dimax_bodega_excel(
         es_test=body.es_test,
         solo_dni_sin_ruc=body.solo_dni_sin_ruc,
     )
+    if body.vendedor_codigo:
+        _link_bodega_vendedor(bodega_id, body.vendedor_codigo, body.vendedor_nombre)
+
     audit_extra = {
         "origen": "dimax_excel",
         "codigo_dimax": body.codigo_dimax,
