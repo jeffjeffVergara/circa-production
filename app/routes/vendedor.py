@@ -991,7 +991,7 @@ $("btnCrear").addEventListener("click",function(){
   fetch("/v/"+TOKEN+"/preventa/crear",{
     method:"POST",headers:{"Content-Type":"application/json"},
     body:JSON.stringify({
-      bodega_id:chosenId, items:preview.items,
+      bodega_id:chosenId, items:preview.items||preview.items_json,
       total_pedido:preview.total_pedido,
       descuento_prorrateado:preview.descuento_prorrateado,
       fecha:preview.fecha
