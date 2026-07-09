@@ -266,10 +266,7 @@ def merge_items_multiples(lista_parseos: list[dict]) -> dict:
         for item in parseo.get("items", []):
             sku = item["sku"]
             if sku in merged:
-                merged[sku]["cantidad"] += item["cantidad"]
-                merged[sku]["total"] = round(
-                    merged[sku]["precio"] * merged[sku]["cantidad"], 2
-                )
+                pass  # Dedup: mantener primera ocurrencia, ignorar duplicados
             else:
                 merged[sku] = dict(item)
 
