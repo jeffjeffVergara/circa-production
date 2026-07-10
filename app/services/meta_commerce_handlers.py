@@ -45,11 +45,54 @@ def _pedido_total(pedido: dict) -> float:
 
 
 def _is_draft_status(estado: str) -> bool:
-    return estado in ("borrador", "preventa_borrador")
+    # preventa_confirmada: preventas DIMAX/vendedor ya creadas, aún sin PIN de pago
+    return estado in ("borrador", "preventa_borrador", "preventa_confirmada")
 
 
 def _confirmed_status_for(tipo_operacion: str) -> str:
     return "preventa_confirmada" if tipo_operacion == "preventa" else "confirmado"
+
+
+async def _go_pin_financiado(
+    *,
+    ctx: MetaWaContext,
+    meta_client,
+    pedido: dict,
+    bod_id: str,
+    fin_amt: float,
+    contado: float,
+    dias: int = 7,
+) -> None:
+    """Resumen + PIN con plazo fijo (default 7d). Sin menú de plazos."""
+    _qf = calculate_fee(fin_amt, dias)
+    rate = _qf["rate"]
+    fee = _qf["fee"]
+    fecha_venc = (datetime.now() + timedelta(days=dias)).strftime("%d/%m/%Y")
+    db.sb.table("sesiones").delete().eq("telefono", ctx.telefono).execute()
+    db.sb.table("sesiones").insert({
+        "telefono": ctx.telefono,
+        "fase": "pin_pago",
+        "datos": json.dumps({
+            "pedido_id": pedido["id"],
+            "dias": dias,
+            "rate": rate,
+            "monto": fin_amt,
+            "fee": round(fee, 2),
+            "venc": fecha_venc,
+            "contado": contado,
+        }),
+        "bodega_id": bod_id,
+    }).execute()
+    total_pagar = contado + fin_amt + fee
+    await meta_client.send_text(
+        ctx.telefono,
+        f"\U0001f4b3 *Resumen de pago — {dias} días*\n\n"
+        f"\U0001f69a Hoy pagas al repartidor: *S/{contado:.2f}*\n"
+        f"\U0001f4b3 Cuota Circa S/{fin_amt + fee:.2f} — pagar antes del {fecha_venc}\n\n"
+        f"*Total a pagar: S/{total_pagar:.2f}*\n\n"
+        f"Confirma con tu clave de 4 dígitos.",
+    )
+    await meta_client.send_pin_request(ctx.telefono, mode="verify", bodega_id=bod_id)
 
 
 async def _gen_order_number(bodega_id: str, tipo_operacion: str = "venta") -> str:
@@ -216,7 +259,6 @@ async def handle_finfijo(btn: str, ctx: MetaWaContext, msg: dict, meta_client) -
         monto_match = _re.search(r"FINFIJO(\d+)_", btn)
         fin_amt = int(monto_match.group(1)) if monto_match else 0
         bod_id = ctx.bodega_id
-        linea = float((ctx.bodega or {}).get("linea_disponible") or 0)
         pedido_short = btn.rsplit("_", 1)[-1] if "_" in btn else ""
         pedido = (
             db.get_pedido_borrador_por_prefijo(
@@ -229,29 +271,18 @@ async def handle_finfijo(btn: str, ctx: MetaWaContext, msg: dict, meta_client) -
         )
         if pedido and fin_amt > 0:
             total = _pedido_total(pedido)
-            contado = round(total - fin_amt, 2)
-            dias = 7
-            _qf = calculate_fee(fin_amt, dias)
-            rate = _qf["rate"]
-            fee = _qf["fee"]
-            fecha_venc = (datetime.now() + timedelta(days=dias)).strftime("%d/%m/%Y")
-            db.sb.table("sesiones").delete().eq("telefono", ctx.telefono).execute()
-            db.sb.table("sesiones").insert({
-                "telefono": ctx.telefono,
-                "fase": "pin_pago",
-                "datos": json.dumps({"pedido_id": pedido["id"], "dias": dias, "rate": rate, "monto": fin_amt}),
-                "bodega_id": bod_id,
-            }).execute()
-            total_pagar = contado + fin_amt + fee
-            await meta_client.send_text(
-                ctx.telefono,
-                f"\U0001f4b3 *Resumen de pago*\n\n"
-                f"\U0001f69a Hoy pagas al repartidor: *S/{contado:.2f}*\n"
-                f"\U0001f4b3 Cuota Circa S/{fin_amt + fee:.2f} — pagar antes del {fecha_venc}\n\n"
-                f"*Total a pagar: S/{total_pagar:.2f}*\n\n"
-                f"Confirma con tu clave de 4 digitos.",
+            contado = round(max(0.0, total - fin_amt), 2)
+            await _go_pin_financiado(
+                ctx=ctx,
+                meta_client=meta_client,
+                pedido=pedido,
+                bod_id=bod_id,
+                fin_amt=float(fin_amt),
+                contado=contado,
+                dias=7,
             )
-            await meta_client.send_pin_request(ctx.telefono, mode="verify", bodega_id=bod_id)
+        else:
+            await meta_client.send_text(ctx.telefono, "No encontré el pedido.")
     except Exception as e:
         logger.error("FINFIJO error: %s", e)
     await _mark_read(msg, meta_client)
@@ -259,6 +290,7 @@ async def handle_finfijo(btn: str, ctx: MetaWaContext, msg: dict, meta_client) -
 
 
 async def handle_fin_pct(btn: str, ctx: MetaWaContext, msg: dict, meta_client) -> bool:
+    """Financiar máx/50%/25% → siempre 7 días, directo a PIN (sin elegir plazo)."""
     if not (btn.startswith("FIN100_") or btn.startswith("FIN50_") or btn.startswith("FIN25_")):
         return False
     try:
@@ -281,33 +313,19 @@ async def handle_fin_pct(btn: str, ctx: MetaWaContext, msg: dict, meta_client) -
                 fin_amt = min(round(linea * 0.5, 2), total)
             else:
                 fin_amt = min(round(linea * 0.25, 2), total)
-            contado = round(total - fin_amt, 2)
-            fee7 = calculate_fee(fin_amt, 7)["fee"]
-            fee15 = calculate_fee(fin_amt, 15)["fee"]
-            fee30 = calculate_fee(fin_amt, 30)["fee"]
-            pid = str(pedido["id"])[:8]
-            db.sb.table("sesiones").delete().eq("telefono", ctx.telefono).execute()
-            db.sb.table("sesiones").insert({
-                "telefono": ctx.telefono,
-                "fase": "fin_plazo",
-                "datos": json.dumps({
-                    "pedido_id": pedido["id"],
-                    "fin_amt": fin_amt,
-                    "contado": contado,
-                    "total": total,
-                }),
-                "bodega_id": bod_id,
-            }).execute()
-            await meta_client.send_list(
-                to=ctx.telefono,
-                body=f"Financiar: *S/{fin_amt:.2f}*\nAl contado: S/{contado:.2f}\n\nElige plazo:",
-                button_text="Ver plazos",
-                sections=[{"title": "Plazo de pago", "rows": [
-                    {"id": f"PAY7_{pid}", "title": f"7 días ({format_rate_pct(calculate_fee(fin_amt, 7)['rate'])})", "description": f"Cargo Circa S/{fee7:.2f} · Total S/{fin_amt+fee7:.2f}"},
-                    {"id": f"PAY15_{pid}", "title": f"15 días ({format_rate_pct(calculate_fee(fin_amt, 15)['rate'])})", "description": f"Cargo Circa S/{fee15:.2f} · Total S/{fin_amt+fee15:.2f}"},
-                    {"id": f"PAY30_{pid}", "title": f"30 días ({format_rate_pct(calculate_fee(fin_amt, 30)['rate'])})", "description": f"Cargo Circa S/{fee30:.2f} · Total S/{fin_amt+fee30:.2f}"},
-                ]}],
-            )
+            contado = round(max(0.0, total - fin_amt), 2)
+            if fin_amt <= 0:
+                await meta_client.send_text(ctx.telefono, "No hay línea disponible para financiar. Elige contado o escribe MENU.")
+            else:
+                await _go_pin_financiado(
+                    ctx=ctx,
+                    meta_client=meta_client,
+                    pedido=pedido,
+                    bod_id=bod_id,
+                    fin_amt=fin_amt,
+                    contado=contado,
+                    dias=7,
+                )
         else:
             await meta_client.send_text(ctx.telefono, "No encontré el pedido.")
     except Exception as e:
@@ -318,19 +336,19 @@ async def handle_fin_pct(btn: str, ctx: MetaWaContext, msg: dict, meta_client) -
 
 
 async def handle_pay_plazo(btn: str, ctx: MetaWaContext, msg: dict, meta_client) -> bool:
+    """Legacy: si llega PAY15/PAY30, forzar 7 días (producto ya no ofrece otros plazos)."""
     if not (btn.startswith("PAY7_") or btn.startswith("PAY15_") or btn.startswith("PAY30_")):
         return False
     pedido_short = btn.split("_", 1)[1] if "_" in btn else ""
-    if btn.startswith("PAY7"):
-        dias = 7
-    elif btn.startswith("PAY15"):
-        dias = 15
-    else:
-        dias = 30
+    dias = 7  # único plazo activo
     try:
         bod_id = ctx.bodega_id
         pedido = (
-            db.get_pedido_borrador_por_prefijo(bod_id, pedido_short)
+            db.get_pedido_borrador_por_prefijo(
+                bod_id,
+                pedido_short,
+                ("borrador", "preventa_borrador", "preventa_confirmada"),
+            )
             if bod_id and pedido_short
             else None
         )
@@ -343,36 +361,16 @@ async def handle_pay_plazo(btn: str, ctx: MetaWaContext, msg: dict, meta_client)
                 if sd.get("fin_amt"):
                     fin_amt = float(sd["fin_amt"])
                     contado = float(sd.get("contado") or 0)
-            monto = fin_amt
-            _qfee = calculate_fee(float(monto), int(dias))
-            fee = _qfee["fee"]
-            rate = _qfee["rate"]
-            venc = (datetime.now() + timedelta(days=dias)).strftime("%d/%m/%Y")
-            db.sb.table("sesiones").delete().eq("telefono", ctx.telefono).execute()
-            db.sb.table("sesiones").insert({
-                "telefono": ctx.telefono,
-                "fase": "pin_pago",
-                "datos": json.dumps({
-                    "pedido_id": pedido["id"],
-                    "dias": dias,
-                    "rate": rate,
-                    "monto": monto,
-                    "fee": round(fee, 2),
-                    "venc": venc,
-                    "contado": contado,
-                }),
-                "bodega_id": bod_id,
-            }).execute()
-            await meta_client.send_text(
-                ctx.telefono,
-                f"💳 *Circa {dias} dias*\n"
-                f"Financiar: S/{monto:.2f}\n"
-                f"Comisión Circa ({format_rate_pct(rate)}): S/{fee:.2f}\n"
-                f"*TOTAL: S/{monto+fee:.2f}*\n"
-                f"Vence: {venc}",
+            await _go_pin_financiado(
+                ctx=ctx,
+                meta_client=meta_client,
+                pedido=pedido,
+                bod_id=bod_id,
+                fin_amt=float(fin_amt),
+                contado=contado,
+                dias=dias,
             )
-            await meta_client.send_pin_request(ctx.telefono, mode="verify", bodega_id=bod_id)
-            logger.info("Order %s plazo %sd fee=%s", pedido["id"], dias, fee)
+            logger.info("Order %s plazo forzado %sd", pedido["id"], dias)
         else:
             await meta_client.send_text(ctx.telefono, "No encontre el pedido. Intenta de nuevo.")
     except Exception as e:

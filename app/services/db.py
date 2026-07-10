@@ -800,22 +800,43 @@ def crear_pedido_preventa(
 
 def get_preventa_pendiente(bodega_id: str) -> dict:
     """
-    Devuelve la preventa más reciente en estado borrador para esta bodega.
-    Incluye items_pedido. Devuelve None si no hay.
+    Devuelve la preventa más reciente pendiente de pago/confirmación PIN.
+    Incluye DIMAX, vendedor app y backoffice. Devuelve None si no hay.
     """
     r = sb.table("pedidos").select("*").eq(
         "bodega_id", bodega_id
-    ).eq("estado", "preventa_confirmada").eq("origen", "preventa_dimax").order(
-        "fecha_visita", desc=True
+    ).eq("estado", "preventa_confirmada").eq("tipo_operacion", "preventa").order(
+        "created_at", desc=True
     ).limit(1).execute()
     
     if not r.data:
         return None
     
     pedido = r.data[0]
+    # Ya confirmada con PIN (tiene número) → no mostrar como pendiente de pago
+    if pedido.get("numero"):
+        return None
+
     items = sb.table("items_pedido").select(
         "*, catalogo_distribuidor(sku_distribuidor, productos_circa(nombre, marca))"
     ).eq("pedido_id", pedido["id"]).execute().data
+    if not items:
+        # Fallback: items_json en el pedido
+        raw = pedido.get("items_json")
+        if isinstance(raw, str):
+            try:
+                raw = json.loads(raw)
+            except Exception:
+                raw = []
+        items = []
+        for i in (raw or []):
+            items.append({
+                "cantidad": i.get("cantidad", 1),
+                "subtotal": float(i.get("subtotal") or 0),
+                "catalogo_distribuidor": {
+                    "productos_circa": {"nombre": i.get("nombre") or i.get("descripcion") or "Producto"}
+                },
+            })
     pedido["items"] = items
     return pedido
 

@@ -560,7 +560,7 @@ def _f_linea(v) -> float:
 
 
 async def _send_payment_options(phone, pedido_id, total, items_text, bodega_id=None):
-    """Send financing options after Flow closes."""
+    """Send financing options. Plazo único: 7 días (sin menú 15/30)."""
     import asyncio
     from datetime import datetime, timedelta
     await asyncio.sleep(2)
@@ -568,6 +568,7 @@ async def _send_payment_options(phone, pedido_id, total, items_text, bodega_id=N
 
     linea = 0.0
     bodega_row = None
+    tipo_op = "venta"
     if bodega_id:
         try:
             b = db.sb.table("bodegas").select(
@@ -579,14 +580,21 @@ async def _send_payment_options(phone, pedido_id, total, items_text, bodega_id=N
                 linea = _f_linea(bodega_row.get("linea_disponible"))
         except Exception as e:
             logger.error(f"bodega load for payment options: {e}", exc_info=True)
+    try:
+        pe = db.sb.table("pedidos").select("tipo_operacion").eq("id", str(pedido_id)).limit(1).execute()
+        if pe.data:
+            tipo_op = pe.data[0].get("tipo_operacion") or "venta"
+    except Exception:
+        pass
 
     nick_rep = nombre_para_comunicar_representante(bodega_row, None)
     saludo_pedido = f"{nick_rep}, tu" if nick_rep else "Tu"
 
     pid = str(pedido_id)[:8]
     fecha_pago = (datetime.now() + timedelta(days=7)).strftime("%d/%m/%Y")
-    
-    # Máximo financiable como PRIMERA opción (06-jul-2026)
+    is_preventa = tipo_op == "preventa"
+
+    # Máximo financiable a 7 días (única opción de financiamiento principal)
     financiable = round(min(total, linea), 2)
     tiers = []
     if financiable > 0:
@@ -603,45 +611,52 @@ async def _send_payment_options(phone, pedido_id, total, items_text, bodega_id=N
             "title": title_max,
             "description": f"\U0001f4b0Hoy S/{paga_hoy_max:.2f} | Cuota S/{paga_7d_max:.2f} en 7d",
         })
-    # Tiers fijos menores al máximo (descendente)
-    for monto_fin in [500, 400, 300, 200, 100]:
-        if monto_fin < financiable and monto_fin <= total:
-            fee = circa_fees.calcular_comision_por_plan(monto_fin, 7)["fee"]
-            paga_hoy = round(total - monto_fin, 2)
-            paga_7d = round(monto_fin + fee, 2)
-            tiers.append({
-                "id": f"FINFIJO{monto_fin}_{pid}",
-                "monto": monto_fin,
-                "title": f"Financiar S/{monto_fin}",
-                "description": f"\U0001f4b0Hoy S/{paga_hoy:.2f} | \U0001f4b3Cuota S/{paga_7d:.2f} en 7d",
-            })
+
+    # En preventa: flujo simple (máx 7d + contado). En venta: tiers fijos menores.
+    if not is_preventa:
+        for monto_fin in [500, 400, 300, 200, 100]:
+            if monto_fin < financiable and monto_fin <= total:
+                fee = circa_fees.calcular_comision_por_plan(monto_fin, 7)["fee"]
+                paga_hoy = round(total - monto_fin, 2)
+                paga_7d = round(monto_fin + fee, 2)
+                tiers.append({
+                    "id": f"FINFIJO{monto_fin}_{pid}",
+                    "monto": monto_fin,
+                    "title": f"Financiar S/{monto_fin}",
+                    "description": f"\U0001f4b0Hoy S/{paga_hoy:.2f} | \U0001f4b3Cuota S/{paga_7d:.2f} en 7d",
+                })
 
     header = (
-        f"\U0001f6d2 *{saludo_pedido} pedido est\u00e1 listo para pagar*\n"
+        f"\U0001f6d2 *{saludo_pedido} {'pre-venta está lista' if is_preventa else 'pedido está listo'} para confirmar*\n"
         f"\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n"
         f"{items_text}\n"
         f"\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n"
         f"*TOTAL: S/{total:.2f}*"
+        + (f"\n\U0001f4c5 Plazo Circa: *7 días* (vence {fecha_pago})" if is_preventa and financiable > 0 else "")
     )
 
     if linea > 0 and tiers:
-        await meta_client.send_text(phone, header)
+        sent = await meta_client.send_text(phone, header)
+        if sent is None:
+            logger.warning(f"payment options text failed for {phone} (posible fuera de ventana 24h)")
+            return False
 
         rows = []
         for t in tiers:
             rows.append({"id": t["id"], "title": t["title"], "description": t["description"]})
         rows.append({"id": f"CONTADO_{pid}", "title": f"\U0001f4b5 Pagar todo al contado", "description": f"S/{total:.2f} al chofer"})
-        rows.append({"id": f"EDITAR_{pid}", "title": "\u270f\ufe0f Editar carrito", "description": "Volver al catalogo"})
+        if not is_preventa:
+            rows.append({"id": f"EDITAR_{pid}", "title": "\u270f\ufe0f Editar carrito", "description": "Volver al catalogo"})
 
-        await meta_client.send_list(
+        lst = await meta_client.send_list(
             to=phone,
-            body=f"Como quieres pagar?",
+            body="¿Cómo quieres pagar? (financiamiento a 7 días)",
             button_text="Ver opciones",
             sections=[{"title": "Opciones de pago", "rows": rows}])
+        logger.info(f"Payment options sent to {phone}, linea={linea}, preventa={is_preventa}")
+        return lst is not None
     elif linea <= 0:
         tel_fmt = f"+{phone}" if not phone.startswith("+") else phone
-        # Preventa cash: bajar a draft para que el handler de PIN (texto) la acepte.
-        # Guard por estado: solo afecta preventas; una venta ya esta en 'borrador'.
         db.sb.table("pedidos").update({"estado": "preventa_borrador"}).eq(
             "id", str(pedido_id)
         ).eq("estado", "preventa_confirmada").execute()
@@ -651,13 +666,15 @@ async def _send_payment_options(phone, pedido_id, total, items_text, bodega_id=N
             "datos": json.dumps({"pedido_id": str(pedido_id), "dias": 0, "rate": 0, "monto": total}),
             "bodega_id": bodega_id,
         }).execute()
-        await meta_client.send_text(phone,
+        sent = await meta_client.send_text(phone,
             f"{header}\n"
             f"Sin credito disponible. Solo contado.\n\n"
             f"Ingresa tu clave Circa para confirmar:")
+        return sent is not None
     else:
-        # Has linea but no tiers fit (total < 100)
-        await meta_client.send_text(phone, header)
+        sent = await meta_client.send_text(phone, header)
+        if sent is None:
+            return False
         rows = [{"id": f"CONTADO_{pid}", "title": f"Pago todo hoy S/{total:.0f}", "description": "Sin financiamiento"}]
         if total <= linea:
             fee = circa_fees.calcular_comision_por_plan(total, 7)["fee"]
@@ -668,28 +685,91 @@ async def _send_payment_options(phone, pedido_id, total, items_text, bodega_id=N
                 "title": "Pago total a 7 días",
                 "description": desc7[:72],
             })
-        rows.append({"id": f"EDITAR_{pid}", "title": "Editar carrito", "description": "Volver al catalogo"})
-        await meta_client.send_list(
+        if not is_preventa:
+            rows.append({"id": f"EDITAR_{pid}", "title": "Editar carrito", "description": "Volver al catalogo"})
+        lst = await meta_client.send_list(
             to=phone,
-            body=f"Como quieres pagar?",
+            body="¿Cómo quieres pagar? (financiamiento a 7 días)",
             button_text="Ver opciones",
             sections=[{"title": "Opciones de pago", "rows": rows}])
+        logger.info(f"Payment options sent to {phone}, linea={linea}")
+        return lst is not None
 
-    logger.info(f"Payment options sent to {phone}, linea={linea}")
+
+def _hours_since_last_inbound(telefono: str) -> float | None:
+    """Horas desde el último mensaje inbound del bodeguero. None si nunca escribió."""
+    from datetime import datetime, timezone
+    tel = telefono if telefono.startswith("+") else f"+{telefono.lstrip('+')}"
+    tel_alt = tel.lstrip("+")
+    try:
+        rows = (
+            db.sb.table("messages")
+            .select("created_at")
+            .eq("direction", "inbound")
+            .or_(f"telefono.eq.{tel},telefono.eq.{tel_alt},telefono.eq.+{tel_alt}")
+            .order("created_at", desc=True)
+            .limit(1)
+            .execute()
+            .data
+            or []
+        )
+        if not rows:
+            return None
+        raw = rows[0]["created_at"]
+        dt = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return (datetime.now(timezone.utc) - dt).total_seconds() / 3600.0
+    except Exception as e:
+        logger.warning(f"_hours_since_last_inbound: {e}")
+        return None
 
 
+async def _send_preventa_template(phone: str, bodega: dict, total: float, pedido_id: str) -> bool:
+    """Plantilla Meta para avisar fuera de la ventana de 24h de sesión."""
+    import os
+    from app.services import meta_client
+    from app.services.representante_comms import nombre_para_comunicar_representante
+
+    template = (os.getenv("PREVENTA_NOTIFY_TEMPLATE") or "preventa_lista_v1").strip()
+    if not template:
+        return False
+
+    nombre = nombre_para_comunicar_representante(bodega) or (
+        bodega.get("nombre_comercial") or bodega.get("razon_social") or "Hola"
+    )
+    total_txt = f"{total:.2f}"
+    # Body vars típicas: {{1}} nombre, {{2}} total, {{3}} plazo
+    components = [{
+        "type": "body",
+        "parameters": [
+            {"type": "text", "text": str(nombre)[:60]},
+            {"type": "text", "text": total_txt},
+            {"type": "text", "text": "7 días"},
+        ],
+    }]
+    # Probar idiomas comunes (como cobranza)
+    for lang in ("es", "es_MX", "es_ES"):
+        data = await meta_client.send_template(phone, template, language=lang, components=components)
+        if data:
+            logger.info(f"preventa template OK {template}/{lang} -> {phone} pedido={pedido_id}")
+            return True
+    logger.error(f"preventa template FAILED {template} -> {phone} (¿plantilla aprobada en Meta?)")
+    return False
 
 
 async def notificar_preventa_bodeguero(pedido_id: str):
     """Envía opciones de pago al bodeguero cuando se crea una preventa.
-    
-    Se llama desde submit_cart (modo vendedor) y desde importar_preventas.
-    Solo envía si la bodega está onboarded (tiene pin_hash).
+
+    Si el bodeguero no escribió en las últimas 24h (ventana Meta; umbral
+    configurable PREVENTA_SESSION_HOURS, default 24; producto pide ~48h),
+    usa plantilla aprobada (PREVENTA_NOTIFY_TEMPLATE) para abrir el contacto.
     """
     import json as _json
+    import os
     try:
         p = db.sb.table("pedidos").select(
-            "id, items_json, monto_productos, total_pedido, bodega_id"
+            "id, items_json, monto_productos, total_pedido, bodega_id, tipo_operacion"
         ).eq("id", pedido_id).limit(1).execute()
         if not p.data:
             logger.error(f"notificar_preventa: pedido {pedido_id} not found")
@@ -703,16 +783,13 @@ async def notificar_preventa_bodeguero(pedido_id: str):
             return
 
         b = db.sb.table("bodegas").select(
-            "telefono_whatsapp, pin_hash"
+            "telefono_whatsapp, pin_hash, nombre_comercial, razon_social, "
+            "representante_legal, representante_nombre_corto"
         ).eq("id", bodega_id).limit(1).execute()
         if not b.data:
             logger.error(f"notificar_preventa: bodega {bodega_id} not found")
             return
         bodega = b.data[0]
-
-        if not bodega.get("pin_hash"):
-            logger.info(f"notificar_preventa: bodega {bodega_id} sin PIN, skip")
-            return
 
         phone = (bodega.get("telefono_whatsapp") or "").replace("+", "").replace(" ", "")
         if not phone:
@@ -736,8 +813,48 @@ async def notificar_preventa_bodeguero(pedido_id: str):
             item_lines.append(f"\u25b8 {qty}x {nombre}\n  S/{sub:.2f}{regalo}")
         items_text = "\n".join(item_lines) if item_lines else "(sin detalle de productos)"
 
-        await _send_payment_options(phone, pedido_id, total, items_text, bodega_id)
-        logger.info(f"notificar_preventa: OK -> {phone} pedido {pedido_id}")
+        # Dejar menú listo: al responder, verá "Pagar mi preventa"
+        try:
+            tel_fmt = f"+{phone}" if not phone.startswith("+") else phone
+            db.upsert_session(tel_fmt, "menu", {}, bodega_id)
+        except Exception as e:
+            logger.warning(f"notificar_preventa session: {e}")
+
+        session_hours = float(os.getenv("PREVENTA_SESSION_HOURS") or "24")
+        # Producto: avisar aunque no haya escrito ~48h → umbral de sesión Meta es 24h;
+        # usamos el menor entre env y 48 para forzar template si está frío.
+        cold_hours = float(os.getenv("PREVENTA_COLD_HOURS") or "48")
+        hours = _hours_since_last_inbound(phone)
+        is_cold = hours is None or hours >= min(session_hours, cold_hours)
+
+        if is_cold:
+            logger.info(
+                f"notificar_preventa: cold contact hours={hours} -> template "
+                f"pedido={pedido_id} phone={phone}"
+            )
+            ok = await _send_preventa_template(phone, bodega, total, pedido_id)
+            if ok:
+                return
+            # Si no hay plantilla, intentar sesión igual (puede fallar fuera de ventana)
+            logger.warning("notificar_preventa: template falló, intento sesión libre")
+
+        if not bodega.get("pin_hash"):
+            # Sin PIN: al menos avisar con template o texto corto
+            if not is_cold:
+                from app.services import meta_client
+                await meta_client.send_text(
+                    phone,
+                    f"🛒 *Tu pre-venta está lista* (S/{total:.2f})\n\n"
+                    f"Activa tu clave Circa o escribe *MENU* → *Pagar mi preventa*.",
+                )
+            logger.info(f"notificar_preventa: bodega {bodega_id} sin PIN, aviso corto")
+            return
+
+        ok = await _send_payment_options(phone, pedido_id, total, items_text, bodega_id)
+        if not ok and not is_cold:
+            # Falló sesión (ventana cerrada) → template
+            await _send_preventa_template(phone, bodega, total, pedido_id)
+        logger.info(f"notificar_preventa: OK session={ok} -> {phone} pedido {pedido_id}")
 
     except Exception as e:
         logger.error(f"notificar_preventa error: {e}", exc_info=True)
