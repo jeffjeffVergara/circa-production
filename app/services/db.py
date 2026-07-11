@@ -677,6 +677,25 @@ def upsert_bodega_para_preventa(ruc: str, distribuidor_id: str, **datos_bodega) 
     return (nueva, True)
 
 
+def _sanitize_date(v):
+    """Normaliza fecha para insertar en columna DATE.
+    Acepta ISO YYYY-MM-DD o DD/MM/YYYY. Devuelve None para cualquier
+    otro valor (strings placeholder como '(foto de ticket)', vacios, None)."""
+    if not v or not isinstance(v, str):
+        return None
+    v = v.strip()
+    if not v or v.startswith("("):
+        return None
+    import re as _re
+    if _re.match(r"^\d{4}-\d{2}-\d{2}$", v):
+        return v
+    m = _re.match(r"^(\d{1,2})/(\d{1,2})/(\d{4})$", v)
+    if m:
+        d, mo, y = m.groups()
+        return f"{y}-{mo.zfill(2)}-{d.zfill(2)}"
+    return None
+
+
 def crear_pedido_preventa(
     bodega_id: str,
     distribuidor_id: str,
@@ -726,8 +745,8 @@ def crear_pedido_preventa(
         "link_token": link_token,
         "items_json": [],
         "dimax_pedido_id": dimax_pedido_id,
-        "fecha_visita": fecha_visita,
-        "fecha_entrega": fecha_entrega,
+        "fecha_visita": _sanitize_date(fecha_visita),
+        "fecha_entrega": _sanitize_date(fecha_entrega),
     }).execute().data[0]
     pedido_id = pedido["id"]
     
