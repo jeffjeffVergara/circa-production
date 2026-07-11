@@ -90,32 +90,48 @@ _RE_DOC_NUM = re.compile(r"V\d{4}-\d{5,7}")
 _RE_FECHA = re.compile(r"(\d{1,2}/\d{2}/\d{4})\s+(\d{1,2}[: ]\d{2}[: ]?\d{0,2})")
 _RE_ENTREGA = re.compile(r"F\.\s*Entrega\s*:?\s*(\d{1,2}/\d{2}/\d{4})", re.IGNORECASE)
 
+# Lineas de UI de la app BsSoft que NO son nombre de bodega
+_BODEGA_NAME_BLACKLIST = ("BSSOFT", "BSOFT", "BEESOFT", "MODIFICAR PEDIDO", "MODIFICAR")
+
+
+_FIELD_PATTERNS = (_RE_UNIDAD, _RE_CANTIDAD, _RE_PRECIO, _RE_TOTAL)
+
+
+def _next_codigo_idx(lines: list[str], start: int) -> int:
+    """Indice de la siguiente linea con 'Codigo :', o len(lines) si no hay."""
+    for j in range(start, len(lines)):
+        if _RE_CODIGO.search(lines[j]):
+            return j
+    return len(lines)
+
+
+def _descripcion_previa(lines: list[str], idx: int) -> str:
+    """Linea no vacia inmediatamente anterior al codigo.
+    Salta lineas en blanco (ruido OCR). Si la linea previa es un campo
+    (Unidad/Cantidad/Precio/Total/Codigo), es la cola del item anterior:
+    no hay descripcion."""
+    j = idx - 1
+    while j >= 0:
+        prev = lines[j].strip()
+        if prev:
+            if _RE_CODIGO.search(prev) or any(p.search(prev) for p in _FIELD_PATTERNS):
+                return ""
+            return prev
+        j -= 1
+    return ""
+
 
 def _parse_items_from_text(text: str) -> list[dict]:
     lines = text.split("\n")
     items = []
-    i = 0
+    i = _next_codigo_idx(lines, 0)
 
     while i < len(lines):
-        line = lines[i].strip()
-
-        m_codigo = _RE_CODIGO.search(line)
-        if not m_codigo:
-            if i + 1 < len(lines):
-                m_codigo = _RE_CODIGO.search(lines[i + 1].strip())
-                if m_codigo:
-                    descripcion = line
-                    i += 1
-                else:
-                    i += 1
-                    continue
-            else:
-                i += 1
-                continue
-        else:
-            descripcion = lines[i - 1].strip() if i > 0 else ""
-
+        m_codigo = _RE_CODIGO.search(lines[i])
         sku = _normalize_sku(m_codigo.group(1))
+        descripcion = _descripcion_previa(lines, i)
+
+        next_idx = _next_codigo_idx(lines, i + 1)
 
         unidad_tipo = ""
         pack_qty = 1
@@ -123,7 +139,11 @@ def _parse_items_from_text(text: str) -> list[dict]:
         precio = 0.0
         total = 0.0
 
-        search_window = "\n".join(lines[i:min(i + 6, len(lines))])
+        # Ventana acotada: nunca cruza al bloque del siguiente item
+        # (cap de 8 lineas para no leer el total general del ticket
+        # cuando el ultimo item no tiene su propio Total)
+        window_end = min(next_idx, i + 8, len(lines))
+        search_window = "\n".join(lines[i:window_end])
 
         m_unidad = _RE_UNIDAD.search(search_window)
         if m_unidad:
@@ -168,7 +188,7 @@ def _parse_items_from_text(text: str) -> list[dict]:
             "es_bonificacion": es_bonificacion,
         })
 
-        i += 5
+        i = next_idx
 
     return items
 
@@ -196,6 +216,9 @@ def _extract_bodega_name(text: str) -> str:
             continue
         # Check if it looks like a name (mostly uppercase letters)
         cleaned = re.sub(r'^[^A-Za-zÁÉÍÓÚÑ]+', '', l)
+        # Filtrar texto de UI de la app (BsSoft, Modificar Pedido, etc.)
+        if cleaned and any(b in cleaned.upper() for b in _BODEGA_NAME_BLACKLIST):
+            continue
         if cleaned and len(cleaned) > 3:
             if not found_start:
                 found_start = True
@@ -264,7 +287,8 @@ def merge_items_multiples(lista_parseos: list[dict]) -> dict:
         raw_texts.append(parseo.get("raw_text", ""))
 
         for item in parseo.get("items", []):
-            sku = item["sku"]
+            sku = _normalize_sku(item.get("sku", ""))
+            item["sku"] = sku
             if sku in merged:
                 pass  # Dedup: mantener primera ocurrencia, ignorar duplicados
             else:
