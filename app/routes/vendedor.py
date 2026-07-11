@@ -1163,7 +1163,25 @@ async def upload_imagenes_preventa(
             pc = pc_map.get(cat_row["producto_circa_id"], {})
             unidades = cat_row.get("unidades") or {}
             pack_size = ocr_item["pack_size"]
-            precio = unidades.get(pack_size, ocr_item["precio"])
+
+            # Precio del ticket como fuente de verdad. Catalogo solo referencia.
+            # Fallback al catalogo solo si el OCR no leyo precio (bonif o error).
+            precio_ocr = float(ocr_item.get("precio") or 0)
+            precio_catalogo_raw = unidades.get(pack_size)
+            precio_catalogo = float(precio_catalogo_raw) if precio_catalogo_raw is not None else None
+
+            if precio_ocr > 0:
+                precio = precio_ocr
+            elif precio_catalogo is not None:
+                precio = precio_catalogo
+            else:
+                precio = 0.0
+
+            # Flag para preview: precio OCR difiere del catalogo > 2%
+            precio_difiere = False
+            if precio_ocr > 0 and precio_catalogo and precio_catalogo > 0:
+                diff = abs(precio_ocr - precio_catalogo) / precio_catalogo
+                precio_difiere = diff > 0.02
 
             items_matched.append({
                 "catalogo_id": cat_row["id"],
@@ -1171,8 +1189,10 @@ async def upload_imagenes_preventa(
                 "marca": pc.get("marca", ""),
                 "pack_size": pack_size,
                 "cantidad": ocr_item["cantidad"],
-                "precio": float(precio),
-                "subtotal": round(float(precio) * ocr_item["cantidad"], 2),
+                "precio": round(precio, 2),
+                "precio_catalogo": precio_catalogo,
+                "precio_difiere": precio_difiere,
+                "subtotal": round(precio * ocr_item["cantidad"], 2),
                 "es_bonificacion": ocr_item["es_bonificacion"],
                 "sku": sku,
             })
