@@ -12,11 +12,13 @@ URLs:
 """
 from fastapi import APIRouter, HTTPException, Path, Query
 from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi import UploadFile, File, Request
+from fastapi import UploadFile, File, Request, Form
 from datetime import datetime, timezone
 import os, httpx, logging
 
 from app.services.vendedor_wa import _bodega_identificacion
+from app.services.identity import consultar_dni, validate_dni_format
+from app.services.db import sb
 
 router = APIRouter(prefix="/v", tags=["vendedor"])
 logger = logging.getLogger("circa")
@@ -180,6 +182,10 @@ def vendedor_home(token: str = Path(..., min_length=16, max_length=64)):
     <a href="/v/{token}/preventa" class="menu-btn">
       Hacer preventa
       <span class="desc">Arma un pedido para tu cliente</span>
+    </a>
+    <a href="/v/{token}/afiliar" class="menu-btn">
+      Afiliar bodega
+      <span class="desc">[COPY: precarga los datos de una bodega nueva]</span>
     </a>
     <a href="/v/{token}/mis-pedidos" class="menu-btn secondary">
       Mis preventas
@@ -1254,5 +1260,266 @@ async def upload_imagenes_preventa(
         "headers": merged.get("headers", []),
         "bodega_sugerida": bodega_sugerida,
         "candidatos": candidatos,
+    })
+
+
+# ==========================================================
+# FAST TRACK AFILIACIÓN  —  formulario de precarga de bodega
+# ==========================================================
+DIST_DIMAX_ID = "d1a2b3c4-0001-4000-8000-000000000002"
+BUCKET_DNI = "dni_fotos"
+BUCKET_LOCAL = "sustentos"  # foto de fachada va aquí bajo prefijo prospecto/
+
+
+@router.get("/{token}/afiliar", response_class=HTMLResponse)
+def afiliar_form(token: str = Path(..., min_length=16, max_length=64)):
+    """Formulario de precarga de bodega nueva (Fast Track)."""
+    vendedor = _get_vendedor_by_token(token)
+    if not vendedor:
+        raise HTTPException(status_code=404, detail="Acceso no encontrado")
+
+    html = f"""<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
+  <title>Circa · Afiliar bodega</title>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    {CSS_BASE}
+    .field{{margin-top:22px}}
+    .hint{{font-size:11px;color:rgba(255,255,255,0.4);margin-top:6px;line-height:1.4}}
+    .filebtn{{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:16px;background:rgba(255,255,255,0.05);border:1px dashed rgba(255,255,255,0.2);border-radius:14px;color:rgba(255,255,255,0.7);font-size:14px;cursor:pointer}}
+    .filebtn.done{{border-style:solid;border-color:#22D3EE;color:#22D3EE}}
+    input[type=file]{{display:none}}
+    .row{{display:flex;gap:10px}}
+    .row .field{{flex:1}}
+    #msg{{margin-top:18px}}
+  </style>
+</head>
+<body>
+  <div class="logo">circa<span>.</span></div>
+  <a href="/v/{token}" class="back" style="margin-top:16px;">&larr; Menú</a>
+  <div class="titulo">[COPY: Afiliar bodega]</div>
+  <div class="subtitulo">[COPY: instrucción corta — precarga los datos, el dueño termina por WhatsApp]</div>
+
+  <div class="field">
+    <label class="label">WHATSAPP DEL DUEÑO</label>
+    <input class="input" id="tel" type="tel" inputmode="numeric" placeholder="9XX XXX XXX" maxlength="9">
+    <div class="hint">[COPY: número personal del dueño — es su identidad en Circa]</div>
+  </div>
+
+  <div class="field">
+    <label class="label">DNI DEL REPRESENTANTE</label>
+    <input class="input" id="dni" type="tel" inputmode="numeric" placeholder="8 dígitos" maxlength="8">
+  </div>
+
+  <div class="field">
+    <label class="label">RUC (OPCIONAL)</label>
+    <input class="input" id="ruc" type="tel" inputmode="numeric" placeholder="11 dígitos — deja vacío si no tiene" maxlength="11">
+  </div>
+
+  <div class="field">
+    <label class="label">FOTO DEL DNI</label>
+    <label class="filebtn" id="lbl_dni" for="foto_dni">📷 [COPY: Subir foto del DNI]</label>
+    <input type="file" id="foto_dni" accept="image/*" capture="environment">
+  </div>
+
+  <div class="field">
+    <label class="label">FOTO DEL LOCAL (OPCIONAL)</label>
+    <label class="filebtn" id="lbl_local" for="foto_local">📷 [COPY: Subir foto de la bodega]</label>
+    <input type="file" id="foto_local" accept="image/*" capture="environment">
+  </div>
+
+  <button class="btn" id="submit" onclick="enviar()">[COPY: Afiliar bodega]</button>
+  <div id="msg"></div>
+
+  <script>
+    const TOKEN = "{token}";
+    document.getElementById('foto_dni').addEventListener('change', e => {{
+      if (e.target.files.length) {{ const l=document.getElementById('lbl_dni'); l.textContent='✓ [COPY: DNI listo]'; l.classList.add('done'); }}
+    }});
+    document.getElementById('foto_local').addEventListener('change', e => {{
+      if (e.target.files.length) {{ const l=document.getElementById('lbl_local'); l.textContent='✓ [COPY: Foto lista]'; l.classList.add('done'); }}
+    }});
+
+    async function enviar() {{
+      const tel = document.getElementById('tel').value.replace(/\\D/g,'');
+      const dni = document.getElementById('dni').value.replace(/\\D/g,'');
+      const ruc = document.getElementById('ruc').value.replace(/\\D/g,'');
+      const fotoDni = document.getElementById('foto_dni').files[0];
+      const fotoLocal = document.getElementById('foto_local').files[0];
+      const msg = document.getElementById('msg');
+      const btn = document.getElementById('submit');
+
+      if (tel.length !== 9) {{ msg.innerHTML='<div class="error">[COPY: Ingresa un WhatsApp válido de 9 dígitos]</div>'; return; }}
+      if (dni.length !== 8) {{ msg.innerHTML='<div class="error">[COPY: El DNI debe tener 8 dígitos]</div>'; return; }}
+      if (!fotoDni) {{ msg.innerHTML='<div class="error">[COPY: Falta la foto del DNI]</div>'; return; }}
+
+      btn.disabled = true; btn.textContent = '[COPY: Afiliando...]';
+      msg.innerHTML = '';
+
+      const fd = new FormData();
+      fd.append('telefono', tel);
+      fd.append('dni', dni);
+      fd.append('ruc', ruc);
+      fd.append('foto_dni', fotoDni);
+      if (fotoLocal) fd.append('foto_local', fotoLocal);
+
+      try {{
+        const r = await fetch('/v/'+TOKEN+'/api/afiliar', {{method:'POST', body:fd}});
+        const data = await r.json();
+        if (!r.ok || data.error) {{
+          msg.innerHTML = '<div class="error">'+(data.error||'[COPY: No se pudo afiliar]')+'</div>';
+          btn.disabled=false; btn.textContent='[COPY: Afiliar bodega]';
+          return;
+        }}
+        msg.innerHTML = '<div class="card"><div class="nombre">✓ '+data.razon_social+'</div>'+
+          '<div class="meta">DNI '+data.dni+(data.ruc?' · RUC '+data.ruc:'')+'</div>'+
+          '<div class="meta" style="margin-top:10px;">[COPY: Bodega precargada. Cuando tenga línea asignada, el dueño escribe Hola al 986 311 567 y termina su afiliación.]</div></div>'+
+          '<a href="/v/'+TOKEN+'/afiliar" class="btn secondary">[COPY: Afiliar otra]</a>';
+        btn.style.display='none';
+      }} catch (err) {{
+        msg.innerHTML = '<div class="error">[COPY: Error de conexión. Reintenta.]</div>';
+        btn.disabled=false; btn.textContent='[COPY: Afiliar bodega]';
+      }}
+    }}
+  </script>
+</body>
+</html>"""
+    return HTMLResponse(content=html)
+
+
+def _subir_foto(bucket: str, path: str, data: bytes, content_type: str) -> bool:
+    """Sube bytes a un bucket de Supabase Storage. Best-effort, no rompe el alta."""
+    try:
+        sb.storage.from_(bucket).upload(
+            path=path, file=data,
+            file_options={"content-type": content_type, "upsert": "true"},
+        )
+        return True
+    except Exception as e:
+        logger.warning(f"No se pudo subir foto a {bucket}/{path}: {e}")
+        return False
+
+
+@router.post("/{token}/api/afiliar")
+async def api_afiliar(
+    token: str,
+    telefono: str = Form(...),
+    dni: str = Form(...),
+    ruc: str = Form(""),
+    foto_dni: UploadFile = File(...),
+    foto_local: UploadFile = File(None),
+):
+    """
+    Precarga una bodega nueva (Fast Track). NO libera línea (linea_disponible=0,
+    linea_aprobada=NULL). El dueño termina el onboarding por WhatsApp después.
+    """
+    from fastapi.responses import JSONResponse
+
+    vendedor = _get_vendedor_by_token(token)
+    if not vendedor or not vendedor.get("activo"):
+        return JSONResponse({"error": "Vendedor no válido"}, status_code=403)
+
+    tel_digits = re.sub(r"\D", "", telefono or "")
+    dni_digits = re.sub(r"\D", "", dni or "")
+    ruc_digits = re.sub(r"\D", "", ruc or "")
+
+    if len(tel_digits) != 9:
+        return JSONResponse({"error": "[COPY: WhatsApp inválido]"}, status_code=400)
+    tel_e164 = "+51" + tel_digits
+
+    ok_fmt, msg_fmt = validate_dni_format(dni_digits)
+    if not ok_fmt:
+        return JSONResponse({"error": msg_fmt}, status_code=400)
+
+    # Validar DNI contra RENIEC (mismo proveedor que el onboarding)
+    persona = await consultar_dni(dni_digits)
+    if not persona or not persona.get("nombre_completo"):
+        return JSONResponse(
+            {"error": "[COPY: No se pudo validar el DNI en RENIEC. Verifica el número.]"},
+            status_code=400,
+        )
+    razon_social = persona["nombre_completo"]
+
+    # ── Dedup: no duplicar bodega existente ─────────────────────────────────
+    filtro = f"or=(dni_representante.eq.{dni_digits},telefono_whatsapp.eq.{tel_e164}"
+    if ruc_digits:
+        filtro += f",ruc.eq.{ruc_digits}"
+    filtro += ")"
+    existentes = sb.table("bodegas").select("id, razon_social, telefono_whatsapp") \
+        .or_(f"dni_representante.eq.{dni_digits},telefono_whatsapp.eq.{tel_e164}") \
+        .limit(1).execute().data
+
+    solo_dni = len(ruc_digits) != 11
+
+    # ── Subir foto de DNI (bucket privado) ──────────────────────────────────
+    dni_bytes = await foto_dni.read()
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+    dni_ct = foto_dni.content_type or "image/jpeg"
+    dni_ext = {"image/png": "png", "image/webp": "webp"}.get(dni_ct, "jpg")
+    dni_path = f"prospecto/{tel_e164}/dni_{ts}.{dni_ext}"
+    _subir_foto(BUCKET_DNI, dni_path, dni_bytes, dni_ct)
+
+    if foto_local is not None:
+        loc_bytes = await foto_local.read()
+        loc_ct = foto_local.content_type or "image/jpeg"
+        loc_ext = {"image/png": "png", "image/webp": "webp"}.get(loc_ct, "jpg")
+        _subir_foto(BUCKET_LOCAL, f"prospecto/{tel_e164}/local_{ts}.{loc_ext}", loc_bytes, loc_ct)
+
+    if existentes:
+        # Ya existe: completar solo campos vacíos, NUNCA pisar. No re-crear.
+        b = existentes[0]
+        patch = {"dni_foto_url": dni_path, "kyc_nivel": "dni"}
+        try:
+            sb.table("bodegas").update(patch).eq("id", b["id"]).execute()
+        except Exception as e:
+            logger.warning(f"No se pudo actualizar bodega existente {b['id']}: {e}")
+        return JSONResponse({
+            "ok": True, "razon_social": b.get("razon_social") or razon_social,
+            "dni": dni_digits, "ruc": ruc_digits, "duplicado": True,
+        })
+
+    # ── Crear bodega precargada ─────────────────────────────────────────────
+    nueva = {
+        "razon_social": razon_social,
+        "representante_legal": razon_social,
+        "representante_nombre_corto": _primer_nombre(razon_social),
+        "dni_representante": dni_digits,
+        "dni_foto_url": dni_path,
+        "telefono_whatsapp": tel_e164,
+        "ruc": ruc_digits if ruc_digits else None,
+        "solo_dni_sin_ruc": solo_dni,
+        "linea_disponible": 0,          # D-003: nunca liberar aquí
+        # linea_aprobada se deja NULL: la asigna el modelo cuando llegue el histórico
+        "distribuidor_id": vendedor["distribuidor_id"],
+        "estado": "inactivo",
+        "kyc_nivel": "dni",             # DNI validado, selfie pendiente
+        "onboarding_fase": "precargada",
+        "es_test": False,
+        "en_piloto": True,
+    }
+    try:
+        res = sb.table("bodegas").insert(nueva).execute()
+        bodega_id = res.data[0]["id"]
+    except Exception as e:
+        logger.error(f"Fallo al crear bodega precargada: {e}")
+        return JSONResponse({"error": f"[COPY: No se pudo crear la bodega] ({e})"}, status_code=500)
+
+    # ── Mapeo bodega ↔ vendedor (atribución comercial) ──────────────────────
+    try:
+        sb.table("bodega_vendedores").insert({
+            "bodega_id": bodega_id,
+            "vendedor_id": vendedor["id"],
+            "rol": "ABN",
+            "activo": True,
+        }).execute()
+    except Exception as e:
+        logger.warning(f"No se pudo mapear bodega_vendedores: {e}")
+
+    return JSONResponse({
+        "ok": True, "razon_social": razon_social,
+        "dni": dni_digits, "ruc": ruc_digits, "bodega_id": bodega_id,
     })
 
