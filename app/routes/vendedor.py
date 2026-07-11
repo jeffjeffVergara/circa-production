@@ -175,7 +175,7 @@ def vendedor_home(token: str = Path(..., min_length=16, max_length=64)):
   <div class="menu">
     <a href="/v/{token}/preventa/subir" class="menu-btn">
       Subir preventa
-      <span class="desc">Sube el Excel de DIMAX y confirma la bodega</span>
+      <span class="desc">Sube el Excel de ZOOM y confirma la bodega</span>
     </a>
     <a href="/v/{token}/preventa" class="menu-btn">
       Hacer preventa
@@ -763,10 +763,10 @@ input[type=file]{display:none}
 </style></head>
 <body><div class="wrap">
   <div class="top"><a href="/v/__TOKEN__">&larr;</a><div class="titulo">Subir preventa</div></div>
-  <div class="sub">Sube el Excel que sale de DIMAX. Confirmas la bodega y listo.</div>
+  <div class="sub">Sube el Excel que sale de ZOOM. Confirmas la bodega y listo.</div>
 
   <div class="card">
-    <h3>1 &middot; Archivo de DIMAX</h3>
+    <h3>1 &middot; Archivo de ZOOM</h3>
     <div style="display:flex;gap:6px;margin-bottom:12px">
       <button type="button" id="btnModoExcel" onclick="setModo('excel')" style="flex:1;padding:10px;border-radius:10px;border:2px solid #22D3EE;background:#22D3EE;color:#04222a;font-weight:700;cursor:pointer;font-size:13px;font-family:inherit">&#128196; Excel</button>
       <button type="button" id="btnModoFoto" onclick="setModo('foto')" style="flex:1;padding:10px;border-radius:10px;border:2px solid #22D3EE;background:transparent;color:#22D3EE;font-weight:700;cursor:pointer;font-size:13px;font-family:inherit">&#128247; Fotos ticket</button>
@@ -797,7 +797,7 @@ input[type=file]{display:none}
     <div class="row"><span class="k">Fecha</span><span class="v" id="pvFecha">-</span></div>
     <div class="row"><span class="k">Productos</span><span class="v" id="pvItems">-</span></div>
     <div class="row"><span class="k">Regalos</span><span class="v" id="pvReg">-</span></div>
-    <div class="row"><span class="k">Descuento DIMAX</span><span class="v" id="pvDesc">-</span></div>
+    <div class="row"><span class="k">Descuento ZOOM</span><span class="v" id="pvDesc">-</span></div>
     <div class="row"><span class="k">Total a cobrar</span><span class="tot" id="pvTot">-</span></div>
     <div id="pvWarn"></div>
     <div id="pvItems2" style="margin-top:10px"></div>
