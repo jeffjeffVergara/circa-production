@@ -451,9 +451,43 @@ async def meta_webhook_incoming(request: Request):
             },
         )
         
-        # Handle image (selfie for biometria)
+        # Handle image (selfie for biometria / fotos prospecto)
         if msg["type"] == "image" and msg["media_id"]:
             media_url = msg["media_id"]  # Pass media_id to state machine
+            # 2.2: número sin bodega → persistir YA (Meta purge ~2-3 semanas),
+            # aunque soporte humano tome el hilo después.
+            if not bodega_id_msg:
+                try:
+                    from app.services import prospect_media as pm
+                    sess = db.get_session(telefono)
+                    datos = pm.session_datos(sess) if sess and sess.get("fase") == "prospecto" else {}
+                    paso = datos.get("paso") or "esperando_datos"
+                    if paso == "esperando_local_foto":
+                        kind = "local"
+                    elif paso == "esperando_dni_foto":
+                        kind = "dni"
+                    elif not datos.get("dni_foto_path"):
+                        kind = "dni"
+                    elif not datos.get("local_foto_path"):
+                        kind = "local"
+                    else:
+                        kind = "otro"
+                    already = any(
+                        (f or {}).get("media_id") == media_url
+                        for f in (datos.get("fotos") or [])
+                    )
+                    if not already:
+                        saved = await pm.persist_image_from_media_id_async(
+                            telefono, media_url, kind, msg.get("mime_type") or None,
+                        )
+                        if saved:
+                            datos = pm.ensure_prospecto_session(telefono, sess)
+                            sess2 = db.get_session(telefono)
+                            datos = pm.session_datos(sess2)
+                            datos = pm.record_foto(datos, saved, media_url)
+                            db.upsert_session(telefono, "prospecto", datos, None)
+                except Exception as e:
+                    logger.warning("prospect_media early persist failed: %s", e)
 
         # Human support inbox: bot + commerce handlers stand down while agent owns thread
         from app.support.webhook_gate import process_meta_inbound

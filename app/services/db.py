@@ -537,6 +537,47 @@ def get_distribuidor_de_bodega(bodega_id: str) -> str:
     return sorted(ids)[0] if ids else DIMAX_DISTRIBUIDOR_ID
 
 
+def get_nombre_comercial_distribuidor(
+    telefono: str | None = None,
+    bodega_id: str | None = None,
+    distribuidor_id: str | None = None,
+) -> str:
+    """
+    Nombre comercial del distribuidor para mensajes al cliente.
+    Internamente el id puede seguir siendo DIMAX; al cliente se muestra
+    `distribuidores.nombre_comercial` (p.ej. ZOOM).
+    """
+    from app.services.distribuidor_routing import DIMAX_DISTRIBUIDOR_ID
+
+    dist_id = distribuidor_id
+    if not dist_id and bodega_id:
+        dist_id = get_distribuidor_pedido_de_bodega(bodega_id) or get_distribuidor_de_bodega(bodega_id)
+    if not dist_id and telefono:
+        b = get_bodega_by_phone(telefono)
+        if b:
+            dist_id = (
+                get_distribuidor_pedido_de_bodega(b["id"])
+                or get_distribuidor_de_bodega(b["id"])
+            )
+    if not dist_id:
+        dist_id = DIMAX_DISTRIBUIDOR_ID
+    try:
+        r = (
+            sb.table("distribuidores")
+            .select("nombre_comercial")
+            .eq("id", dist_id)
+            .limit(1)
+            .execute()
+        )
+        nombre = (r.data or [{}])[0].get("nombre_comercial")
+        if nombre:
+            return str(nombre).strip()
+    except Exception as e:
+        import logging
+        logging.warning(f"get_nombre_comercial_distribuidor: {e}")
+    return "ZOOM"
+
+
 def get_distribuidor_pedido_de_bodega(bodega_id: str) -> str | None:
     """Distribuidor que debe recibir el pedido en su portal."""
     from app.services.distribuidor_routing import distribuidor_id_para_pedido

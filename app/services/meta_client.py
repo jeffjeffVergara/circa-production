@@ -344,12 +344,14 @@ async def send_menu(to: str, linea_disponible: float, preventa_pendiente: dict =
     ]
     
     if preventa_pendiente:
+        from app.services.db import get_nombre_comercial_distribuidor
+        dist_nombre = get_nombre_comercial_distribuidor(telefono=to)
         total = float(preventa_pendiente.get("total_pedido") or 0)
         pid = preventa_pendiente["id"]
         primera = {
             "id": f"PAGAR_PREVENTA_{pid}",
             "title": "🛒 Pagar mi preventa",
-            "description": f"S/{total:.2f} de DIMAX — listo para despacho",
+            "description": f"S/{total:.2f} de {dist_nombre} — listo para despacho",
         }
         rows = [primera] + rows_normales
         body_text = "Tienes una preventa lista. ¿Qué deseas hacer?"
@@ -598,6 +600,8 @@ async def send_pin_request(to: str, mode: str = "create", bodega_id: str = ""):
 
 async def send_cuenta_activa(to: str, linea: float):
     """Send account ready (T04) + benefits (T05) + menu."""
+    from app.services.db import get_nombre_comercial_distribuidor
+    dist_nombre = get_nombre_comercial_distribuidor(telefono=to)
     # T04 - cuenta lista
     await send_text(
         to=to,
@@ -605,7 +609,7 @@ async def send_cuenta_activa(to: str, linea: float):
             f"🎉 *¡Tu cuenta ya está lista!*\n\n"
             f"Con Circa puedes pedir hasta:\n"
             f"*S/{linea:.0f}* con pago después\n\n"
-            f"DIMAX seguirá entregándote como siempre 🚚"
+            f"{dist_nombre} seguirá entregándote como siempre 🚚"
         )
     )
     # T05 - beneficios

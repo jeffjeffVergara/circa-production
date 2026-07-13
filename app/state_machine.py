@@ -261,6 +261,99 @@ def _reset_vend_session_to_bodega(telefono: str, bodega: dict | None, session: d
     return db.get_session(telefono) or session
 
 
+def _handle_prospecto(
+    telefono: str,
+    body_raw: str,
+    body_n: str,
+    media_url: str | None,
+    session: dict | None,
+) -> list:
+    """
+    Afiliación cold-start: número sin bodega.
+    Guarda fotos en Storage etiquetadas por paso (DNI → local).
+    """
+    from app.services import prospect_media as pm
+
+    datos = pm.ensure_prospecto_session(telefono, session)
+    paso = datos.get("paso") or "esperando_datos"
+    is_new = not session or session.get("fase") != "prospecto"
+
+    # ── Imagen ──
+    if media_url:
+        if paso == "esperando_dni_foto":
+            kind = "dni"
+        elif paso == "esperando_local_foto":
+            kind = "local"
+        elif not datos.get("dni_foto_path"):
+            kind = "dni"
+        elif not datos.get("local_foto_path"):
+            kind = "local"
+        else:
+            kind = "otro"
+
+        already = any(
+            (f or {}).get("media_id") == media_url for f in (datos.get("fotos") or [])
+        )
+        saved = None
+        if not already:
+            saved = pm.persist_image_from_media_id(telefono, media_url, kind)
+            if not saved:
+                return [pm.MSG_REENVIA_FOTO]
+            datos = pm.record_foto(datos, saved, media_url)
+
+        if kind == "dni" or (saved and saved.get("kind") == "dni"):
+            if not datos.get("ruc") and not datos.get("dni"):
+                datos["paso"] = "esperando_datos"
+                db.upsert_session(telefono, "prospecto", datos, None)
+                return [
+                    "✅ Foto de DNI guardada.\n\n"
+                    "Ahora mándame tu *RUC* (11 dígitos) o *DNI* (8 dígitos) por escrito."
+                ]
+            datos["paso"] = "esperando_local_foto"
+            db.upsert_session(telefono, "prospecto", datos, None)
+            return [pm.MSG_PEDIR_LOCAL_FOTO]
+
+        if kind == "local" or (saved and saved.get("kind") == "local"):
+            datos["paso"] = "completo"
+            db.upsert_session(telefono, "prospecto", datos, None)
+            return [pm.MSG_COMPLETO]
+
+        db.upsert_session(telefono, "prospecto", datos, None)
+        return [pm.MSG_COMPLETO if paso == "completo" else pm.MSG_ESPERA_LOCAL_FOTO]
+
+    # ── Texto ──
+    if paso == "completo":
+        return [pm.MSG_COMPLETO]
+    if paso == "esperando_dni_foto":
+        return [pm.MSG_ESPERA_DNI_FOTO]
+    if paso == "esperando_local_foto":
+        return [pm.MSG_ESPERA_LOCAL_FOTO]
+
+    # esperando_datos
+    ruc, dni = pm.parse_ruc_o_dni(body_raw)
+    if ruc or dni:
+        if ruc:
+            datos["ruc"] = ruc
+        if dni:
+            datos["dni"] = dni
+        if datos.get("dni_foto_path") and datos.get("local_foto_path"):
+            datos["paso"] = "completo"
+            db.upsert_session(telefono, "prospecto", datos, None)
+            return [pm.MSG_COMPLETO]
+        if datos.get("dni_foto_path"):
+            datos["paso"] = "esperando_local_foto"
+            db.upsert_session(telefono, "prospecto", datos, None)
+            return [pm.MSG_PEDIR_LOCAL_FOTO]
+        datos["paso"] = "esperando_dni_foto"
+        db.upsert_session(telefono, "prospecto", datos, None)
+        return [pm.MSG_PEDIR_DNI_FOTO]
+
+    db.upsert_session(telefono, "prospecto", datos, None)
+    if is_new or body_n in ("HOLA", "HI", "MENU", ""):
+        return [pm.MSG_BIENVENIDA]
+    return [pm.MSG_ESPERA_TEXTO]
+
+
 def handle_message(telefono: str, body: str, media_url: str = None) -> list:
     body_raw = (body or "").strip()
     body_n = normalize(body_raw)
@@ -298,43 +391,33 @@ def handle_message(telefono: str, body: str, media_url: str = None) -> list:
     if preventa_token and bodega and bodega.get("estado") == "activo":
         return _handler_preventa_propuesta(telefono, preventa_token, bodega)
 
+    # ── PROSPECTO (número sin bodega): capturar fotos antes de que Meta las purge ──
+    if not bodega:
+        if not session or session.get("fase") == "prospecto":
+            return _handle_prospecto(telefono, body_raw, body_n, media_url, session)
+        # Sesión huérfana (fase onboarding/menu sin bodega) → reiniciar captación
+        return _handle_prospecto(telefono, body_raw, body_n, media_url, None)
+
     # ── NO SESSION ──
     if not session:
-        if bodega:
-            if bodega["estado"] == "activo":
-                db.upsert_session(telefono, "menu", {}, bodega["id"])
-                return [{"signal": "MENU", "linea": bodega["linea_disponible"]}]
-            else:
-                dist = (
-                    db.sb.table("distribuidores")
-                    .select("nombre_comercial")
-                    .eq("id", bodega["distribuidor_id"])
-                    .single()
-                    .execute()
-                    .data
-                )
-                db.upsert_session(telefono, "welcome", {}, bodega["id"])
-                return [{
-                    "signal": "WELCOME",
-                    "nombre": bodega["nombre_comercial"] or bodega["razon_social"],
-                    "linea": bodega["linea_aprobada"],
-                    "distribuidor": dist["nombre_comercial"],
-                }]
-        return ["""¡Hola, Bienvenido a Circa! 👋 Qué bueno que nos escribes.
-
-Te cuento rapidito cómo funciona Circa Lab:
-
-Somos el sistema que ayuda a tu negocio a crecer. Te damos una línea de crédito para que compres tu mercadería sin descapitalizarte — compras hoy, pagas cuando vendes. Sin ir al banco, sin papeleos, sin demoras. Solo necesitamos conocer con que distribuidores trabajas.
-
-Para afiliarte solo necesitas:
-
-1️⃣ Tener un negocio (bodega, minimarket, puesto) con al menos 6 meses de operación - nos envias tu RUC y/o # DNI de representante legal
-2️⃣ Enviarnos tu DNI (foto por ambos lados)
-3️⃣ Una foto de tu local
-
-En menos de 24 horas validamos tu solicitud y activamos tu línea. Empiezas comprando hasta S/500 y esa línea va creciendo según tu historial con nosotros.
-
-¿Te animas a empezar? Mándame los datos y arrancamos hoy mismo. 🚀"""]
+        if bodega["estado"] == "activo":
+            db.upsert_session(telefono, "menu", {}, bodega["id"])
+            return [{"signal": "MENU", "linea": bodega["linea_disponible"]}]
+        dist = (
+            db.sb.table("distribuidores")
+            .select("nombre_comercial")
+            .eq("id", bodega["distribuidor_id"])
+            .single()
+            .execute()
+            .data
+        )
+        db.upsert_session(telefono, "welcome", {}, bodega["id"])
+        return [{
+            "signal": "WELCOME",
+            "nombre": bodega["nombre_comercial"] or bodega["razon_social"],
+            "linea": bodega["linea_aprobada"],
+            "distribuidor": dist["nombre_comercial"],
+        }]
 
     fase = session["fase"]
     datos = json.loads(session["datos"]) if isinstance(session["datos"], str) else (session["datos"] or {})
