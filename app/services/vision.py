@@ -53,6 +53,37 @@ def download_whatsapp_media_sync(media_id: str) -> bytes | None:
     return r2.content
 
 
+def download_dni_reference_bytes(
+    *,
+    media_id: str | None = None,
+    storage_path: str | None = None,
+    bucket: str = "dni_fotos",
+) -> bytes | None:
+    """Carga bytes de foto DNI: URL http(s), path de Storage, o media_id de WhatsApp."""
+    path = (storage_path or "").strip()
+    if path.startswith("http://") or path.startswith("https://"):
+        try:
+            r = httpx.get(path, timeout=20)
+            if r.status_code == 200 and r.content:
+                return r.content
+            logger.error("DNI URL download failed: %s", r.status_code)
+        except Exception as e:
+            logger.error("DNI URL download error: %s", e)
+        return None
+    if path:
+        try:
+            from app.services.db import sb
+            data = sb.storage.from_(bucket).download(path)
+            if data:
+                return data if isinstance(data, (bytes, bytearray)) else bytes(data)
+        except Exception as e:
+            logger.error("DNI storage download error %s/%s: %s", bucket, path, e)
+    mid = (media_id or "").strip()
+    if mid:
+        return download_whatsapp_media_sync(mid)
+    return None
+
+
 def verify_selfie(image_bytes: bytes, strict: bool = True) -> dict:
     """
     Use Claude Vision to verify a selfie.

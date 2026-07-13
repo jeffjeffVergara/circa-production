@@ -48,6 +48,42 @@ from app.config import (
 )
 
 
+def _bodega_tiene_ruc(bodega: dict | None) -> bool:
+    return bool(((bodega or {}).get("ruc") or "").strip())
+
+
+def _bodega_dni_precargado(bodega: dict | None) -> bool:
+    """Fast Track: kyc_nivel=dni + DNI + foto en storage (las 3 juntas)."""
+    b = bodega or {}
+    return (
+        (b.get("kyc_nivel") or "") == "dni"
+        and bool((b.get("dni_representante") or "").strip())
+        and bool((b.get("dni_foto_url") or "").strip())
+    )
+
+
+def _enter_reg_dni(telefono: str, bodega: dict, datos: dict | None = None) -> list:
+    """Entra a reg_dni; si DNI ya viene precargado, pide confirmación Sí/No."""
+    datos = dict(datos or {})
+    datos["bodega_id"] = bodega["id"]
+    if _bodega_dni_precargado(bodega) and not datos.get("dni_prefill_rejected"):
+        datos["dni_prefill_pending"] = True
+        db.upsert_session(telefono, "reg_dni", datos, bodega["id"])
+        return [{
+            "signal": "DNI_PREFILL_CONFIRM",
+            "dni": bodega.get("dni_representante") or "",
+            "nombre": (
+                bodega.get("representante_legal")
+                or bodega.get("razon_social")
+                or bodega.get("nombre_comercial")
+                or ""
+            ),
+        }]
+    datos.pop("dni_prefill_pending", None)
+    db.upsert_session(telefono, "reg_dni", datos, bodega["id"])
+    return [{"signal": "DNI_ASK"}]
+
+
 def normalize(text: str) -> str:
     text = (text or "").strip().upper()
     nfkd = unicodedata.normalize("NFKD", text)
@@ -316,14 +352,9 @@ En menos de 24 horas validamos tu solicitud y activamos tu línea. Empiezas comp
     # ═══ WELCOME ═══
     if fase == "welcome":
         if body_n in ("SI", "ACTIVAR", "1", "HOLA", "HI", "MAS_INFO", "MAS INFO"):
-            if bodega and bodega.get("solo_dni_sin_ruc"):
-                db.upsert_session(
-                    telefono,
-                    "reg_dni",
-                    {"bodega_id": bodega["id"]},
-                    bodega["id"],
-                )
-                return [{"signal": "DNI_ASK"}]
+            # Skip RUC si ya viene poblado o es solo-DNI (Fast Track / precarga)
+            if bodega and (bodega.get("solo_dni_sin_ruc") or _bodega_tiene_ruc(bodega)):
+                return _enter_reg_dni(telefono, bodega, {"bodega_id": bodega["id"]})
             db.upsert_session(telefono, "reg_ruc", datos, bodega["id"] if bodega else None)
             return [{"signal": "RUC_ASK"}]
         return [{
@@ -335,8 +366,23 @@ En menos de 24 horas validamos tu solicitud y activamos tu línea. Empiezas comp
 
     # ═══ RUC ═══
     if fase == "reg_ruc":
+        # Branch: RUC ya en BD o solo_dni → no preguntar
+        if not datos.get("ruc"):
+            bodega_ruc = bodega
+            if not bodega_ruc and datos.get("bodega_id"):
+                rows = db.sb.table("bodegas").select("*").eq("id", datos["bodega_id"]).limit(1).execute().data
+                bodega_ruc = rows[0] if rows else None
+            if bodega_ruc and (bodega_ruc.get("solo_dni_sin_ruc") or _bodega_tiene_ruc(bodega_ruc)):
+                return _enter_reg_dni(telefono, bodega_ruc, datos)
+
         if datos.get("ruc"):
             if body_n in ("SI", "CONFIRMO", "CORRECTO"):
+                bodega_ok = bodega
+                if not bodega_ok and datos.get("bodega_id"):
+                    rows = db.sb.table("bodegas").select("*").eq("id", datos["bodega_id"]).limit(1).execute().data
+                    bodega_ok = rows[0] if rows else None
+                if bodega_ok:
+                    return _enter_reg_dni(telefono, bodega_ok, datos)
                 db.upsert_session(telefono, "reg_dni", datos, datos.get("bodega_id"))
                 return [{"signal": "DNI_ASK"}]
             if body_n in ("NO", "CORREGIR"):
@@ -404,6 +450,47 @@ En menos de 24 horas validamos tu solicitud y activamos tu línea. Empiezas comp
         if not bodega_data:
             db.upsert_session(telefono, "welcome", {}, None)
             return ["\u274c Error al consultar tu bodega. Escribe *Hola* para reiniciar."]
+
+        # ── Fast Track: confirmar DNI precargado (Sí / No) ──
+        if datos.get("dni_prefill_pending"):
+            if body_n in ("DNI_SOY_YO", "SI", "SI SOY YO", "SI, SOY YO", "1"):
+                dni = (bodega_data.get("dni_representante") or "").strip()
+                nombre = (
+                    bodega_data.get("representante_legal")
+                    or bodega_data.get("razon_social")
+                    or bodega_data.get("nombre_comercial")
+                    or ""
+                )
+                datos["dni_verified"] = True
+                datos["dni_number"] = dni
+                datos["dni_nombre"] = nombre
+                datos["dni_photo_verified"] = True
+                datos["dni_photo_storage_path"] = (bodega_data.get("dni_foto_url") or "").strip()
+                datos.pop("dni_prefill_pending", None)
+                db.upsert_session(telefono, "reg_biometria", datos, bodega_id)
+                saludo_rep = nombre_para_comunicar_representante(bodega_data, nombre)
+                return [
+                    f"\u2705 *Documento verificado*\nDNI {dni} \u2014 {nombre}\n\n"
+                    f"\U0001f512 Continuamos con tu selfie de seguridad.",
+                    {"signal": "BIOMETRIA_ASK", "representante": saludo_rep},
+                ]
+            if body_n in ("DNI_NO_MIS_DATOS", "NO", "NO SON MIS DATOS", "2"):
+                datos["dni_prefill_rejected"] = True
+                datos.pop("dni_prefill_pending", None)
+                datos.pop("dni_verified", None)
+                datos.pop("dni_photo_verified", None)
+                datos.pop("dni_photo_storage_path", None)
+                db.upsert_session(telefono, "reg_dni", datos, bodega_id)
+                return [{"signal": "DNI_ASK"}]
+            return [{
+                "signal": "DNI_PREFILL_CONFIRM",
+                "dni": bodega_data.get("dni_representante") or "",
+                "nombre": (
+                    bodega_data.get("representante_legal")
+                    or bodega_data.get("razon_social")
+                    or ""
+                ),
+            }]
 
         # ── Step 2: DNI number verified, waiting for photo of physical DNI ──
         if datos.get("dni_verified") and not datos.get("dni_photo_verified"):
@@ -608,6 +695,7 @@ En menos de 24 horas validamos tu solicitud y activamos tu línea. Empiezas comp
             try:
                 from app.services.vision import (
                     download_whatsapp_media_sync,
+                    download_dni_reference_bytes,
                     verify_selfie,
                     verify_selfie_vs_dni,
                 )
@@ -641,7 +729,8 @@ En menos de 24 horas validamos tu solicitud y activamos tu línea. Empiezas comp
                         telefono, bodega_bio, test_phones=TEST_PHONES,
                     ):
                         dni_media_id = datos.get("dni_photo_media_id")
-                        if not dni_media_id:
+                        dni_storage = datos.get("dni_photo_storage_path") or bodega_bio.get("dni_foto_url")
+                        if not dni_media_id and not dni_storage:
                             db.log_biometria_auditoria(
                                 bodega_id=bodega_id,
                                 telefono=telefono,
@@ -656,7 +745,10 @@ En menos de 24 horas validamos tu solicitud y activamos tu línea. Empiezas comp
                             )
                             return ["\u274c No pude validar el rostro contra tu DNI. Reenvía el anverso del DNI."]
 
-                        dni_front_bytes = download_whatsapp_media_sync(dni_media_id)
+                        dni_front_bytes = download_dni_reference_bytes(
+                            media_id=dni_media_id,
+                            storage_path=dni_storage,
+                        )
                         if not dni_front_bytes:
                             db.log_biometria_auditoria(
                                 bodega_id=bodega_id,

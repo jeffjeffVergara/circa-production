@@ -450,6 +450,24 @@ async def send_dni_request(to: str):
     )
 
 
+async def send_dni_prefill_confirm(to: str, dni: str, nombre: str):
+    """Confirmación de DNI precargado (Fast Track) — salta captura de DNI+foto."""
+    nombre = (nombre or "").strip() or "—"
+    dni = (dni or "").strip()
+    return await send_buttons(
+        to=to,
+        body=(
+            f"✅ *Documento verificado*\n"
+            f"DNI {dni} — {nombre}\n\n"
+            f"¿Confirmas que eres tú?"
+        ),
+        buttons=[
+            {"id": "DNI_SOY_YO", "title": "SÍ, soy yo"},
+            {"id": "DNI_NO_MIS_DATOS", "title": "NO son mis datos"},
+        ],
+    )
+
+
 async def send_biometria_request(to: str, nombre_rep: str):
     """Ask for selfie photo (T03 - tono humano, sin jerga banco)."""
     nombre_rep = (nombre_rep or "").strip()

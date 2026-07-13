@@ -560,6 +560,12 @@ async def meta_webhook_incoming(request: Request):
                         )
                     elif signal == "DNI_ASK":
                         await meta_client.send_dni_request(telefono)
+                    elif signal == "DNI_PREFILL_CONFIRM":
+                        await meta_client.send_dni_prefill_confirm(
+                            telefono,
+                            resp.get("dni", ""),
+                            resp.get("nombre", ""),
+                        )
                     elif signal == "BIOMETRIA_ASK":
                         await meta_client.send_biometria_request(
                             telefono, resp.get("representante", "")
