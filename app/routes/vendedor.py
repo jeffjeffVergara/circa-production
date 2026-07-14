@@ -14,7 +14,7 @@ from fastapi import APIRouter, HTTPException, Path, Query
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi import UploadFile, File, Request, Form
 from datetime import datetime, timezone
-import os, httpx, logging
+import os, re, httpx, logging
 
 from app.services.vendedor_wa import _bodega_identificacion
 from app.services.identity import consultar_dni, validate_dni_format
