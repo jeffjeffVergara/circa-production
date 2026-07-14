@@ -990,6 +990,51 @@ async def _aplicar_promociones_a_cart(bodega_id: str, items_list: list) -> tuple
     bruto = round(sum(float(i.get("subtotal") or 0) for i in items_list), 2)
     if not items_list:
         return items_list, bruto, 0.0
+
+    # Resolver formato string desde pack_size numerico + catalogo.unidades.
+    # El motor de promos matchea contra keys del JSONB (ej "CJA x 12"), no
+    # contra el numero pack_size. Sin esta conversion NINGUNA promo aplica.
+    formatos_resueltos = {}
+    try:
+        _cat_ids = list({i.get("catalogo_id") for i in items_list if i.get("catalogo_id")})
+        if _cat_ids:
+            _rows = db.sb.table("catalogo_distribuidor").select(
+                "id, unidades"
+            ).in_("id", _cat_ids).execute().data or []
+            _unidades_por_catid = {r["id"]: (r.get("unidades") or {}) for r in _rows}
+            for _it in items_list:
+                _cid = _it.get("catalogo_id")
+                _pack = _it.get("pack_size")
+                if not _cid or _pack is None:
+                    continue
+                _unid = _unidades_por_catid.get(_cid) or {}
+                _suffix = f" x {_pack}"
+                _cands = [k for k in _unid.keys() if k.endswith(_suffix)]
+                if len(_cands) == 1:
+                    formatos_resueltos[(_cid, _pack)] = _cands[0]
+                elif len(_cands) > 1:
+                    _prc = float(_it.get("precio") or 0)
+                    _match = None
+                    for _k in _cands:
+                        _v = _unid.get(_k)
+                        if _v is not None and abs(float(_v) - _prc) < 0.01:
+                            _match = _k
+                            break
+                    formatos_resueltos[(_cid, _pack)] = _match or _cands[0]
+    except Exception as _e:
+        logger.error(
+            "submit-cart: resolver formato fallo (%s); usando pack_size raw", _e
+        )
+
+    def _formato_para(i):
+        _cid = i.get("catalogo_id")
+        _pack = i.get("pack_size")
+        _f = formatos_resueltos.get((_cid, _pack))
+        if _f:
+            return _f
+        # Fallback: comportamiento previo (guarda sin descuento si el motor rechaza)
+        return str(_pack) if _pack is not None else ""
+
     try:
         req = _EvaluarPromocionesReq(
             bodega_id=bodega_id,
@@ -997,7 +1042,7 @@ async def _aplicar_promociones_a_cart(bodega_id: str, items_list: list) -> tuple
                 _CartItem(
                     catalogo_id=i.get("catalogo_id"),
                     cantidad=int(i.get("cantidad") or 1),
-                    formato=i.get("pack_size") or "",
+                    formato=_formato_para(i),
                     precio_unitario_formato=float(i.get("precio") or 0),
                 )
                 for i in items_list
