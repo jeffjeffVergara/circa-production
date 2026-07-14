@@ -185,7 +185,7 @@ def vendedor_home(token: str = Path(..., min_length=16, max_length=64)):
     </a>
     <a href="/v/{token}/afiliar" class="menu-btn">
       Afiliar bodega
-      <span class="desc">[COPY: precarga los datos de una bodega nueva]</span>
+      <span class="desc">Precarga una bodega nueva</span>
     </a>
     <a href="/v/{token}/mis-pedidos" class="menu-btn secondary">
       Mis preventas
@@ -1300,13 +1300,13 @@ def afiliar_form(token: str = Path(..., min_length=16, max_length=64)):
 <body>
   <div class="logo">circa<span>.</span></div>
   <a href="/v/{token}" class="back" style="margin-top:16px;">&larr; Menú</a>
-  <div class="titulo">[COPY: Afiliar bodega]</div>
-  <div class="subtitulo">[COPY: instrucción corta — precarga los datos, el dueño termina por WhatsApp]</div>
+  <div class="titulo">Afiliar bodega</div>
+  <div class="subtitulo">Precarga los datos. El dueño confirma por WhatsApp.</div>
 
   <div class="field">
     <label class="label">WHATSAPP DEL DUEÑO</label>
     <input class="input" id="tel" type="tel" inputmode="numeric" placeholder="9XX XXX XXX" maxlength="9">
-    <div class="hint">[COPY: número personal del dueño — es su identidad en Circa]</div>
+    <div class="hint">Número personal del dueño</div>
   </div>
 
   <div class="field">
@@ -1321,26 +1321,26 @@ def afiliar_form(token: str = Path(..., min_length=16, max_length=64)):
 
   <div class="field">
     <label class="label">FOTO DEL DNI</label>
-    <label class="filebtn" id="lbl_dni" for="foto_dni">📷 [COPY: Subir foto del DNI]</label>
+    <label class="filebtn" id="lbl_dni" for="foto_dni">🪪 Foto del DNI</label>
     <input type="file" id="foto_dni" accept="image/*" capture="environment">
   </div>
 
   <div class="field">
     <label class="label">FOTO DEL LOCAL (OPCIONAL)</label>
-    <label class="filebtn" id="lbl_local" for="foto_local">📷 [COPY: Subir foto de la bodega]</label>
+    <label class="filebtn" id="lbl_local" for="foto_local">🏪 Foto de la bodega</label>
     <input type="file" id="foto_local" accept="image/*" capture="environment">
   </div>
 
-  <button class="btn" id="submit" onclick="enviar()">[COPY: Afiliar bodega]</button>
+  <button class="btn" id="submit" onclick="enviar()">Precargar bodega</button>
   <div id="msg"></div>
 
   <script>
     const TOKEN = "{token}";
     document.getElementById('foto_dni').addEventListener('change', e => {{
-      if (e.target.files.length) {{ const l=document.getElementById('lbl_dni'); l.textContent='✓ [COPY: DNI listo]'; l.classList.add('done'); }}
+      if (e.target.files.length) {{ const l=document.getElementById('lbl_dni'); l.textContent='🪪 ✓ DNI listo'; l.classList.add('done'); }}
     }});
     document.getElementById('foto_local').addEventListener('change', e => {{
-      if (e.target.files.length) {{ const l=document.getElementById('lbl_local'); l.textContent='✓ [COPY: Foto lista]'; l.classList.add('done'); }}
+      if (e.target.files.length) {{ const l=document.getElementById('lbl_local'); l.textContent='🏪 ✓ Foto lista'; l.classList.add('done'); }}
     }});
 
     async function enviar() {{
@@ -1352,11 +1352,11 @@ def afiliar_form(token: str = Path(..., min_length=16, max_length=64)):
       const msg = document.getElementById('msg');
       const btn = document.getElementById('submit');
 
-      if (tel.length !== 9) {{ msg.innerHTML='<div class="error">[COPY: Ingresa un WhatsApp válido de 9 dígitos]</div>'; return; }}
-      if (dni.length !== 8) {{ msg.innerHTML='<div class="error">[COPY: El DNI debe tener 8 dígitos]</div>'; return; }}
-      if (!fotoDni) {{ msg.innerHTML='<div class="error">[COPY: Falta la foto del DNI]</div>'; return; }}
+      if (tel.length !== 9) {{ msg.innerHTML='<div class="error">Ingresa un WhatsApp válido de 9 dígitos</div>'; return; }}
+      if (dni.length !== 8) {{ msg.innerHTML='<div class="error">El DNI debe tener 8 dígitos</div>'; return; }}
+      if (!fotoDni) {{ msg.innerHTML='<div class="error">Falta la foto del DNI</div>'; return; }}
 
-      btn.disabled = true; btn.textContent = '[COPY: Afiliando...]';
+      btn.disabled = true; btn.textContent = 'Precargando...';
       msg.innerHTML = '';
 
       const fd = new FormData();
@@ -1370,18 +1370,18 @@ def afiliar_form(token: str = Path(..., min_length=16, max_length=64)):
         const r = await fetch('/v/'+TOKEN+'/api/afiliar', {{method:'POST', body:fd}});
         const data = await r.json();
         if (!r.ok || data.error) {{
-          msg.innerHTML = '<div class="error">'+(data.error||'[COPY: No se pudo afiliar]')+'</div>';
-          btn.disabled=false; btn.textContent='[COPY: Afiliar bodega]';
+          msg.innerHTML = '<div class="error">'+(data.error||'No se pudo precargar')+'</div>';
+          btn.disabled=false; btn.textContent='Precargar bodega';
           return;
         }}
         msg.innerHTML = '<div class="card"><div class="nombre">✓ '+data.razon_social+'</div>'+
           '<div class="meta">DNI '+data.dni+(data.ruc?' · RUC '+data.ruc:'')+'</div>'+
-          '<div class="meta" style="margin-top:10px;">[COPY: Bodega precargada. Cuando tenga línea asignada, el dueño escribe Hola al 986 311 567 y termina su afiliación.]</div></div>'+
-          '<a href="/v/'+TOKEN+'/afiliar" class="btn secondary">[COPY: Afiliar otra]</a>';
+          '<div class="meta" style="margin-top:10px;">Bodega precargada. Cuando su línea esté lista, el dueño escribe Hola al 986 311 567 y activa su cuenta.</div></div>'+
+          '<a href="/v/'+TOKEN+'/afiliar" class="btn secondary">Precargar otra</a>';
         btn.style.display='none';
       }} catch (err) {{
-        msg.innerHTML = '<div class="error">[COPY: Error de conexión. Reintenta.]</div>';
-        btn.disabled=false; btn.textContent='[COPY: Afiliar bodega]';
+        msg.innerHTML = '<div class="error">Error de conexión. Reintenta.</div>';
+        btn.disabled=false; btn.textContent='Precargar bodega';
       }}
     }}
   </script>
@@ -1427,21 +1427,30 @@ async def api_afiliar(
     ruc_digits = re.sub(r"\D", "", ruc or "")
 
     if len(tel_digits) != 9:
-        return JSONResponse({"error": "[COPY: WhatsApp inválido]"}, status_code=400)
+        return JSONResponse({"error": "WhatsApp inválido"}, status_code=400)
     tel_e164 = "+51" + tel_digits
 
     ok_fmt, msg_fmt = validate_dni_format(dni_digits)
     if not ok_fmt:
         return JSONResponse({"error": msg_fmt}, status_code=400)
 
-    # Validar DNI contra RENIEC (mismo proveedor que el onboarding)
-    persona = await consultar_dni(dni_digits)
-    if not persona or not persona.get("nombre_completo"):
-        return JSONResponse(
-            {"error": "[COPY: No se pudo validar el DNI en RENIEC. Verifica el número.]"},
-            status_code=400,
-        )
-    razon_social = persona["nombre_completo"]
+    # Validar DNI contra RENIEC. BEST-EFFORT: si falla, NO bloquea el alta.
+    # El vendedor esta presente con el DNI fisico y la foto queda de respaldo.
+    try:
+        persona = await consultar_dni(dni_digits)
+    except Exception as e:
+        logger.warning(f"RENIEC fallo para DNI {dni_digits}: {e}")
+        persona = None
+
+    if persona and persona.get("nombre_completo"):
+        razon_social = persona["nombre_completo"]
+        kyc = "dni"          # DNI verificado contra RENIEC
+        verificado = True
+    else:
+        logger.warning(f"RENIEC sin datos para DNI {dni_digits}. Alta sin verificar.")
+        razon_social = f"PENDIENTE VERIFICAR - DNI {dni_digits}"
+        kyc = "ninguno"      # DNI no verificado: revisar contra la foto
+        verificado = False
 
     # ── Dedup: no duplicar bodega existente ─────────────────────────────────
     filtro = f"or=(dni_representante.eq.{dni_digits},telefono_whatsapp.eq.{tel_e164}"
@@ -1471,7 +1480,7 @@ async def api_afiliar(
     if existentes:
         # Ya existe: completar solo campos vacíos, NUNCA pisar. No re-crear.
         b = existentes[0]
-        patch = {"dni_foto_url": dni_path, "kyc_nivel": "dni"}
+        patch = {"dni_foto_url": dni_path, "kyc_nivel": kyc}
         try:
             sb.table("bodegas").update(patch).eq("id", b["id"]).execute()
         except Exception as e:
@@ -1495,7 +1504,7 @@ async def api_afiliar(
         # linea_aprobada se deja NULL: la asigna el modelo cuando llegue el histórico
         "distribuidor_id": vendedor["distribuidor_id"],
         "estado": "inactivo",
-        "kyc_nivel": "dni",             # DNI validado, selfie pendiente
+        "kyc_nivel": kyc,               # "dni" si RENIEC valido, "ninguno" si no
         "onboarding_fase": "precargada",
         "es_test": False,
         "en_piloto": True,
@@ -1505,7 +1514,7 @@ async def api_afiliar(
         bodega_id = res.data[0]["id"]
     except Exception as e:
         logger.error(f"Fallo al crear bodega precargada: {e}")
-        return JSONResponse({"error": f"[COPY: No se pudo crear la bodega] ({e})"}, status_code=500)
+        return JSONResponse({"error": f"No se pudo crear la bodega ({e})"}, status_code=500)
 
     # ── Mapeo bodega ↔ vendedor (atribución comercial) ──────────────────────
     try:
