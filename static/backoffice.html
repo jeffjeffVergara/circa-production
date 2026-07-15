@@ -4013,16 +4013,95 @@ function renderBodegaPerfil(d){
     }).join('') + '</div>';
   }
 
+  var deuda = d.deuda || {};
+  var deudaItems = deuda.items || [];
+  var dr = deuda.resumen || {};
+  var deudaHtml = '';
+  if(!deudaItems.length){
+    deudaHtml = '<div class="empty" style="padding:20px">Sin deuda financiada abierta</div>';
+  } else {
+    function _fmtMoney(n){ return 'S/ '+Number(n||0).toFixed(2); }
+    function _fmtDate(v){
+      if(!v) return '—';
+      try { return new Date(v).toLocaleDateString('es-PE'); } catch(e){ return String(v).slice(0,10); }
+    }
+    function _statusBadge(st){
+      if(st === 'vencido') return '<span style="color:var(--red);font-weight:600">Vencido</span>';
+      if(st === 'escalonado') return '<span style="color:var(--orange);font-weight:600">Fee escalonado</span>';
+      return '<span style="color:var(--yellow);font-weight:600">Al día</span>';
+    }
+    deudaHtml =
+      '<div class="info-grid" style="margin-bottom:14px">'+
+        '<div class="info-card"><div class="info-label">Pedidos abiertos</div><div class="info-value">'+(dr.n_abiertos||0)+'</div></div>'+
+        '<div class="info-card"><div class="info-label">Vencidos / escalonados</div><div class="info-value" style="font-size:16px">'+(dr.n_vencidos||0)+' / '+(dr.n_escalonados||0)+'</div></div>'+
+        '<div class="info-card"><div class="info-label">Mora (interés)</div><div class="info-value" style="color:var(--red)">'+_fmtMoney(dr.mora_monto)+'</div></div>'+
+        '<div class="info-card"><div class="info-label">Total a pagar</div><div class="info-value" style="color:var(--orange)">'+_fmtMoney(dr.total_pagar)+'</div></div>'+
+      '</div>'+
+      '<p style="font-size:12px;color:var(--muted);margin:0 0 12px;line-height:1.45">'+
+        'Desglose con fee vigente (true-up 15/30 desde entrega) + mora 0.03%/día solo en ventana pre-escalón. '+
+        'Principal '+_fmtMoney(dr.principal)+' · fee origen '+_fmtMoney(dr.fee_congelado)+
+        (dr.fee_delta > 0 ? ' · true-up +'+_fmtMoney(dr.fee_delta) : '')+
+        ' · fee vigente '+_fmtMoney(dr.fee_vigente)+
+      '</p>'+
+      '<div class="table-wrap"><table style="width:100%;font-size:12px"><thead><tr>'+
+        '<th>Pedido</th><th>Estado deuda</th><th>Entrega</th><th>Vence</th><th>Plazo</th>'+
+        '<th>Principal</th><th>Fee</th><th>Mora</th><th>Total</th>'+
+      '</tr></thead><tbody>';
+    deudaHtml += deudaItems.map(function(it){
+      var feeCell = _fmtMoney(it.fee_vigente);
+      if(it.fee_delta > 0){
+        feeCell += '<div style="font-size:10px;color:var(--orange)">+'+_fmtMoney(it.fee_delta)+' true-up</div>';
+      } else {
+        feeCell += '<div style="font-size:10px;color:var(--muted)">plan '+(it.plazo_origen||it.plazo_dias||'?')+'d</div>';
+      }
+      var moraCell = it.mora_monto > 0
+        ? ('<span style="color:var(--red);font-weight:600">'+_fmtMoney(it.mora_monto)+'</span>'+
+           '<div style="font-size:10px;color:var(--muted)">'+it.mora_dias+'d atraso</div>')
+        : '<span style="color:var(--muted)">S/ 0.00</span>';
+      var plazoLabel = (it.plazo_origen || it.plazo_dias || '—') + 'd';
+      if(it.escalonado && it.plazo_vigente && it.plazo_vigente !== it.plazo_origen){
+        plazoLabel += ' → '+it.plazo_vigente+'d';
+      }
+      if(it.dias_desde_entrega != null){
+        plazoLabel += '<div style="font-size:10px;color:var(--muted)">día '+it.dias_desde_entrega+' desde entrega</div>';
+      }
+      return '<tr>'+
+        '<td><button type="button" class="pedido-link mono" onclick="openPedidoFlujo(\''+it.pedido_id+'\')">'+(it.numero||'—')+'</button>'+
+          '<div style="font-size:10px;color:var(--muted)">'+(it.estado||'')+'</div></td>'+
+        '<td>'+_statusBadge(it.status)+'</td>'+
+        '<td style="font-size:11px">'+_fmtDate(it.fecha_entregado)+'</td>'+
+        '<td style="font-size:11px">'+_fmtDate(it.fecha_vencimiento)+'</td>'+
+        '<td style="font-size:11px">'+plazoLabel+'</td>'+
+        '<td class="mono">'+_fmtMoney(it.monto_financiado)+'</td>'+
+        '<td class="mono">'+feeCell+'</td>'+
+        '<td class="mono">'+moraCell+'</td>'+
+        '<td class="mono" style="font-weight:700">'+_fmtMoney(it.total_pagar)+'</td>'+
+      '</tr>';
+    }).join('');
+    deudaHtml += '</tbody></table></div>'+
+      '<div style="margin-top:14px;padding:14px 16px;background:var(--card);border:1px solid var(--border);border-radius:10px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">'+
+        '<div style="font-size:13px;color:var(--muted)">Suma de totales vigentes</div>'+
+        '<div style="font-size:22px;font-weight:800;color:var(--orange);font-variant-numeric:tabular-nums">'+_fmtMoney(dr.total_pagar)+'</div>'+
+      '</div>';
+  }
+
+  var deudaTabLabel = 'Deuda';
+  if((dr.n_abiertos||0) > 0){
+    deudaTabLabel += ' ('+(dr.n_abiertos||0)+')';
+  }
+
   return scoreHero +
     '<div class="perfil-tabs">'+
       '<button type="button" class="perfil-tab active" data-tab="perfilTabResumen" onclick="switchPerfilTab(\'perfilTabResumen\')">Resumen</button>'+
       '<button type="button" class="perfil-tab" data-tab="perfilTabDatos" onclick="switchPerfilTab(\'perfilTabDatos\')">Datos</button>'+
+      '<button type="button" class="perfil-tab" data-tab="perfilTabDeuda" onclick="switchPerfilTab(\'perfilTabDeuda\')">'+deudaTabLabel+'</button>'+
       '<button type="button" class="perfil-tab" data-tab="perfilTabPedidos" onclick="switchPerfilTab(\'perfilTabPedidos\')">Pedidos ('+pedidos.length+')</button>'+
       '<button type="button" class="perfil-tab" data-tab="perfilTabActividad" onclick="switchPerfilTab(\'perfilTabActividad\')">Actividad</button>'+
       '<button type="button" class="perfil-tab" data-tab="perfilTabClave" onclick="switchPerfilTab(\'perfilTabClave\')">Clave</button>'+
     '</div>'+
     '<div id="perfilTabResumen" class="perfil-panel active">'+resumenGrid+'</div>'+
     '<div id="perfilTabDatos" class="perfil-panel">'+datosGrid+'</div>'+
+    '<div id="perfilTabDeuda" class="perfil-panel">'+deudaHtml+'</div>'+
     '<div id="perfilTabPedidos" class="perfil-panel">'+pedidosHtml+'</div>'+
     '<div id="perfilTabActividad" class="perfil-panel">'+timelineHtml+'</div>'+
     '<div id="perfilTabClave" class="perfil-panel">'+renderBodegaPinAdmin(b)+'</div>';

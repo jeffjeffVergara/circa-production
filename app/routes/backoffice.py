@@ -33,6 +33,7 @@ from app.services import dimax_bodega_excel as dimax_bod
 from app.services import excel_import as xls
 from app.services.preventa_excel import match_bodega_por_nombre, parse_preventa_excel
 from app.services.pedido_flow import build_pedido_flow_progress, flujo_resumen
+from app.services.fees import total_pagar_desde_pedido
 
 logger = logging.getLogger("circa.backoffice")
 router = APIRouter(prefix="/api/backoffice", tags=["backoffice"])
@@ -147,6 +148,88 @@ async def bodega_detalle(bodega_id: str, user: dict = Depends(get_backoffice_use
     return await dist.admin_bodega_detalle(bodega_id, admin=True)
 
 
+def _build_deuda_perfil(pedidos: list[dict]) -> dict:
+    """Desglose de deuda abierta con fee true-up + mora híbrida."""
+    items: list[dict] = []
+    tot_principal = 0.0
+    tot_fee_congelado = 0.0
+    tot_fee_vigente = 0.0
+    tot_mora = 0.0
+    tot_pagar = 0.0
+    n_vencidos = 0
+    n_escalonados = 0
+
+    for p in pedidos or []:
+        mf = float(p.get("monto_financiado") or 0)
+        if mf <= 0:
+            continue
+        estado = (p.get("estado") or "").lower()
+        if estado in ("pagado", "preventa_cancelada", "rechazado", "borrador", "preventa_borrador"):
+            continue
+        if p.get("fecha_pagado") or p.get("pagado_at"):
+            continue
+
+        tp = total_pagar_desde_pedido(p)
+        mora_m = float(tp.get("mora_monto") or 0)
+        mora_d = int(tp.get("mora_dias") or 0)
+        escalonado = bool(tp.get("escalonado"))
+        if mora_d > 0:
+            n_vencidos += 1
+            status = "vencido"
+        elif escalonado:
+            n_escalonados += 1
+            status = "escalonado"
+        else:
+            status = "al_dia"
+
+        fee_c = float(tp.get("fee_congelado") or p.get("fee_monto") or 0)
+        fee_v = float(tp.get("fee_vigente") or fee_c)
+        total = float(tp.get("total_pagar") or 0)
+        tot_principal += mf
+        tot_fee_congelado += fee_c
+        tot_fee_vigente += fee_v
+        tot_mora += mora_m
+        tot_pagar += total
+
+        items.append({
+            "pedido_id": p.get("id"),
+            "numero": p.get("numero") or "—",
+            "estado": p.get("estado"),
+            "status": status,
+            "plazo_dias": p.get("plazo_dias"),
+            "plazo_origen": tp.get("plazo_origen"),
+            "plazo_vigente": tp.get("plazo_vigente"),
+            "dias_desde_entrega": tp.get("dias_desde_entrega"),
+            "fecha_entregado": p.get("fecha_entregado"),
+            "fecha_vencimiento": p.get("fecha_vencimiento"),
+            "monto_financiado": round(mf, 2),
+            "fee_congelado": round(fee_c, 2),
+            "fee_vigente": round(fee_v, 2),
+            "fee_delta": round(float(tp.get("fee_delta") or 0), 2),
+            "fee_tasa_vigente": tp.get("fee_tasa_vigente"),
+            "escalonado": escalonado,
+            "mora_dias": mora_d,
+            "mora_monto": round(mora_m, 2),
+            "saldo_adeudado": round(float(tp.get("saldo_adeudado") or 0), 2),
+            "total_pagar": round(total, 2),
+        })
+
+    return {
+        "items": items,
+        "resumen": {
+            "n_abiertos": len(items),
+            "n_vencidos": n_vencidos,
+            "n_escalonados": n_escalonados,
+            "principal": round(tot_principal, 2),
+            "fee_congelado": round(tot_fee_congelado, 2),
+            "fee_vigente": round(tot_fee_vigente, 2),
+            "fee_delta": round(tot_fee_vigente - tot_fee_congelado, 2),
+            "mora_monto": round(tot_mora, 2),
+            "total_pagar": round(tot_pagar, 2),
+        },
+    }
+
+
 @router.get("/bodega/{bodega_id}/perfil")
 async def bodega_perfil(bodega_id: str, user: dict = Depends(get_backoffice_user)):
     """Perfil completo de bodega con features analíticas y score."""
@@ -162,10 +245,12 @@ async def bodega_perfil(bodega_id: str, user: dict = Depends(get_backoffice_user
         stats=detalle.get("stats") or {},
         pedidos=detalle.get("pedidos") or [],
     )
+    deuda = _build_deuda_perfil(detalle.get("pedidos") or [])
     return {
         **detalle,
         "features": features,
         "score": score,
+        "deuda": deuda,
     }
 
 

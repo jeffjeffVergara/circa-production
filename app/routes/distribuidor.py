@@ -1179,8 +1179,9 @@ async def admin_bodega_detalle(
     try:
         pedidos = _sb_get("pedidos", {
             "select": "id,numero,estado,origen,monto_productos,monto_financiado,"
-                      "monto_contado,total_pedido,fee_monto,created_at,pagado_at,"
-                      "fecha_vencimiento,metodo_pago,dimax_pedido_id",
+                      "monto_contado,total_pedido,fee_monto,fee_tasa,plazo_dias,created_at,"
+                      "pagado_at,fecha_pagado,fecha_vencimiento,fecha_entregado,confirmado_at,"
+                      "metodo_pago,dimax_pedido_id",
             "bodega_id": f"eq.{bodega_id}",
             "order": "created_at.desc",
             "limit": "100",
