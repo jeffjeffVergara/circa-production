@@ -3907,7 +3907,6 @@ function renderBodegaPerfil(d){
   var b = d.bodega || {};
   var ses = b.sesion || {};
   var pedidos = d.pedidos || [];
-  var eventos = d.eventos || [];
   var stats = d.stats || {};
   var sc = d.score || {};
   var bd = sc.breakdown || {};
@@ -3999,20 +3998,6 @@ function renderBodegaPerfil(d){
     pedidosHtml += '</tbody></table></div>';
   }
 
-  var timelineHtml = '';
-  if(!eventos.length){
-    timelineHtml = '<div class="empty" style="padding:20px">Sin eventos registrados</div>';
-  } else {
-    timelineHtml = '<div class="timeline">' + eventos.map(function(ev){
-      var t = ev.created_at ? new Date(ev.created_at).toLocaleString('es-PE') : '';
-      return '<div class="timeline-item">'+
-        '<div class="timeline-time">'+t+'</div>'+
-        '<div class="timeline-event">'+(ev.event_type||'evento')+'</div>'+
-        (ev.payload ? '<div class="timeline-detail">'+JSON.stringify(ev.payload).slice(0,200)+'</div>' : '')+
-      '</div>';
-    }).join('') + '</div>';
-  }
-
   var deuda = d.deuda || {};
   var deudaItems = deuda.items || [];
   var dr = deuda.resumen || {};
@@ -4096,14 +4081,12 @@ function renderBodegaPerfil(d){
       '<button type="button" class="perfil-tab" data-tab="perfilTabDatos" onclick="switchPerfilTab(\'perfilTabDatos\')">Datos</button>'+
       '<button type="button" class="perfil-tab" data-tab="perfilTabDeuda" onclick="switchPerfilTab(\'perfilTabDeuda\')">'+deudaTabLabel+'</button>'+
       '<button type="button" class="perfil-tab" data-tab="perfilTabPedidos" onclick="switchPerfilTab(\'perfilTabPedidos\')">Pedidos ('+pedidos.length+')</button>'+
-      '<button type="button" class="perfil-tab" data-tab="perfilTabActividad" onclick="switchPerfilTab(\'perfilTabActividad\')">Actividad</button>'+
       '<button type="button" class="perfil-tab" data-tab="perfilTabClave" onclick="switchPerfilTab(\'perfilTabClave\')">Clave</button>'+
     '</div>'+
     '<div id="perfilTabResumen" class="perfil-panel active">'+resumenGrid+'</div>'+
     '<div id="perfilTabDatos" class="perfil-panel">'+datosGrid+'</div>'+
     '<div id="perfilTabDeuda" class="perfil-panel">'+deudaHtml+'</div>'+
     '<div id="perfilTabPedidos" class="perfil-panel">'+pedidosHtml+'</div>'+
-    '<div id="perfilTabActividad" class="perfil-panel">'+timelineHtml+'</div>'+
     '<div id="perfilTabClave" class="perfil-panel">'+renderBodegaPinAdmin(b)+'</div>';
 }
 
