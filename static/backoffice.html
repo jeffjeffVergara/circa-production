@@ -888,7 +888,7 @@ Busca una bodega y ejecuta acciones de soporte <strong>sin tocar código</strong
 <div class="table-wrap">
 <table class="bodegas-table">
 <thead><tr>
-<th></th><th>Bodega / Dueño</th><th>Vendedor</th><th>Teléfono</th><th>DNI</th><th>Enrolada</th><th>Fase bot</th><th>Actividad</th><th>Línea (disp/aprob)</th><th>Uso</th><th>Pedidos</th><th>Mora</th><th></th>
+<th></th><th>Bodega / Dueño</th><th>Vendedor</th><th>Teléfono</th><th>DNI</th><th>Enrolada</th><th>Fase bot</th><th>Actividad</th><th>Línea (disp/aprob)</th><th>Uso</th><th>Pedidos</th><th>Deuda</th><th></th>
 </tr></thead>
 <tbody id="bodegasBody"><tr><td colspan="13" class="empty">Cargando...</td></tr></tbody>
 </table>
@@ -3798,10 +3798,17 @@ function loadBodegas(){
       var aprob = (b.linea_aprobada||0).toLocaleString('es-PE',{maximumFractionDigits:0});
       var usoPct = b.uso_pct || 0;
       var usoColor = usoPct > 75 ? 'var(--red)' : usoPct > 50 ? 'var(--orange)' : usoPct > 0 ? 'var(--green)' : 'var(--muted)';
-      var moraTd = b.dias_mora > 0
-        ? '<span style="color:var(--red);font-weight:600">'+b.dias_mora+'d</span>'
-        : (b.saldo > 0 ? '<span style="color:var(--yellow)">S/'+b.saldo.toFixed(0)+'</span>' : '—');
-      var waLink = b.wa_link ? '<a href="'+b.wa_link+'" target="_blank" onclick="event.stopPropagation()" style="color:var(--green);text-decoration:none" title="Abrir WhatsApp">📱</a> ' : '';
+      var moraTd = '—';
+      if(b.dias_mora > 0){
+        // Vencido: días de atraso + monto vencido (no es el interés 0.03%)
+        var monVenc = (b.monto_vencido > 0 ? b.monto_vencido : b.saldo) || 0;
+        moraTd = '<div style="color:var(--red);font-weight:600;line-height:1.25">'+b.dias_mora+'d atraso</div>'+
+          '<div style="font-size:11px;color:var(--red)">S/'+Number(monVenc).toFixed(0)+'</div>';
+      } else if(b.saldo > 0){
+        // Deuda vigente, aún no vence — NO etiquetar como mora
+        moraTd = '<div style="color:var(--yellow);font-weight:600;line-height:1.25">Al día</div>'+
+          '<div style="font-size:11px;color:var(--muted)">S/'+Number(b.saldo).toFixed(0)+'</div>';
+      }      var waLink = b.wa_link ? '<a href="'+b.wa_link+'" target="_blank" onclick="event.stopPropagation()" style="color:var(--green);text-decoration:none" title="Abrir WhatsApp">📱</a> ' : '';
       var enrBadge = b.enrolada
         ? '<span style="color:var(--green);font-size:11px;font-weight:600">Sí</span>'
         : '<span style="color:var(--yellow);font-size:11px">No</span>';
