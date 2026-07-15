@@ -140,9 +140,13 @@ def _fetch_bodegas_map(bodega_ids: list[str]) -> dict[str, dict]:
 def compose_recordatorio_mensaje(pedido: dict, bodega: dict) -> dict[str, Any]:
     """Arma plantilla, variables y texto de vista previa (sin enviar)."""
     telefono = (bodega.get("telefono_whatsapp") or "").strip()
-    monto_fin = float(pedido.get("monto_financiado") or 0)
-    fee = float(pedido.get("fee_monto") or 0)
-    cuota = float(pedido.get("monto_total_credito") or 0) or round(monto_fin + fee, 2)
+    tp = total_pagar_desde_pedido(pedido)
+    # Cuota vigente: fee true-up + mora híbrida (no solo monto_total_credito congelado)
+    cuota = float(tp.get("total_pagar") or 0)
+    if cuota <= 0:
+        monto_fin = float(pedido.get("monto_financiado") or 0)
+        fee = float(pedido.get("fee_monto") or 0)
+        cuota = float(pedido.get("monto_total_credito") or 0) or round(monto_fin + fee, 2)
     linea = float(bodega.get("linea_aprobada") or 0)
     nombre = (bodega.get("representante_nombre_corto") or bodega.get("nombre_comercial") or "").strip()
     tkey = plantilla_recordatorio_key(pedido)
@@ -259,9 +263,12 @@ async def send_recordatorio_pedido(pedido_id: str) -> dict[str, Any]:
     if not tel:
         return {"ok": False, "error": "Bodega sin telefono"}
 
-    monto_fin = float(ped.get("monto_financiado") or 0)
-    fee = float(ped.get("fee_monto") or 0)
-    cuota = float(ped.get("monto_total_credito") or 0) or round(monto_fin + fee, 2)
+    tp = total_pagar_desde_pedido(ped)
+    cuota = float(tp.get("total_pagar") or 0)
+    if cuota <= 0:
+        monto_fin = float(ped.get("monto_financiado") or 0)
+        fee = float(ped.get("fee_monto") or 0)
+        cuota = float(ped.get("monto_total_credito") or 0) or round(monto_fin + fee, 2)
     if cuota <= 0:
         return {"ok": False, "error": "Este pedido no tiene saldo financiado por cobrar"}
 
