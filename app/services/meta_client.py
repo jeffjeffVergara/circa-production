@@ -470,6 +470,21 @@ async def send_dni_prefill_confirm(to: str, dni: str, nombre: str):
     )
 
 
+async def send_dni_foto_ask(to: str, dni: str, nombre: str):
+    """Atajo parcial: DNI ya en BD (Excel), solo falta foto del documento."""
+    nombre = (nombre or "").strip() or "—"
+    dni = (dni or "").strip()
+    return await send_text(
+        to=to,
+        text=(
+            f"*Paso 2 de 4: Verificar documento*\n\n"
+            f"Ya tenemos tu DNI *{dni}* — {nombre}.\n\n"
+            f"Solo falta la foto: envía una imagen del *anverso de tu DNI físico*.\n\n"
+            f"Si el DNI no es el tuyo, escribe *CORREGIR*."
+        ),
+    )
+
+
 async def send_biometria_request(to: str, nombre_rep: str):
     """Ask for selfie photo (T03 - tono humano, sin jerga banco)."""
     nombre_rep = (nombre_rep or "").strip()

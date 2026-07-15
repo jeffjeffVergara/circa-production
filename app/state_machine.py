@@ -53,7 +53,7 @@ def _bodega_tiene_ruc(bodega: dict | None) -> bool:
 
 
 def _bodega_dni_precargado(bodega: dict | None) -> bool:
-    """Fast Track: kyc_nivel=dni + DNI + foto en storage (las 3 juntas)."""
+    """Fast Track completo: kyc_nivel=dni + DNI + foto en storage (las 3 juntas)."""
     b = bodega or {}
     return (
         (b.get("kyc_nivel") or "") == "dni"
@@ -62,8 +62,17 @@ def _bodega_dni_precargado(bodega: dict | None) -> bool:
     )
 
 
+def _bodega_dni_sin_foto(bodega: dict | None) -> bool:
+    """Carga Excel/carga: hay DNI en BD pero falta foto KYC → atajo parcial (solo foto)."""
+    b = bodega or {}
+    return (
+        bool((b.get("dni_representante") or "").strip())
+        and not bool((b.get("dni_foto_url") or "").strip())
+    )
+
+
 def _enter_reg_dni(telefono: str, bodega: dict, datos: dict | None = None) -> list:
-    """Entra a reg_dni; si DNI ya viene precargado, pide confirmación Sí/No."""
+    """Entra a reg_dni; Fast Track completo, parcial (solo foto) o flujo normal."""
     datos = dict(datos or {})
     datos["bodega_id"] = bodega["id"]
     if _bodega_dni_precargado(bodega) and not datos.get("dni_prefill_rejected"):
@@ -79,7 +88,29 @@ def _enter_reg_dni(telefono: str, bodega: dict, datos: dict | None = None) -> li
                 or ""
             ),
         }]
+    # Atajo parcial: DNI ya en BD (Excel/carga) pero sin foto → no pedir número otra vez
+    if _bodega_dni_sin_foto(bodega) and not datos.get("dni_prefill_rejected"):
+        dni = (bodega.get("dni_representante") or "").strip()
+        nombre = (
+            bodega.get("representante_legal")
+            or bodega.get("razon_social")
+            or bodega.get("nombre_comercial")
+            or ""
+        )
+        datos["dni_verified"] = True
+        datos["dni_number"] = dni
+        datos["dni_nombre"] = nombre
+        datos["dni_parcial_sin_foto"] = True
+        datos.pop("dni_photo_verified", None)
+        datos.pop("dni_prefill_pending", None)
+        db.upsert_session(telefono, "reg_dni", datos, bodega["id"])
+        return [{
+            "signal": "DNI_FOTO_ASK",
+            "dni": dni,
+            "nombre": nombre,
+        }]
     datos.pop("dni_prefill_pending", None)
+    datos.pop("dni_parcial_sin_foto", None)
     db.upsert_session(telefono, "reg_dni", datos, bodega["id"])
     return [{"signal": "DNI_ASK"}]
 
@@ -577,9 +608,20 @@ def handle_message(telefono: str, body: str, media_url: str = None) -> list:
 
         # ── Step 2: DNI number verified, waiting for photo of physical DNI ──
         if datos.get("dni_verified") and not datos.get("dni_photo_verified"):
+            # Permitir corregir DNI precargado sin foto (carga Excel)
+            if body_n in ("CORREGIR", "NO", "NO ES MI DNI", "DNI_NO_MIS_DATOS", "2"):
+                datos["dni_prefill_rejected"] = True
+                datos.pop("dni_verified", None)
+                datos.pop("dni_number", None)
+                datos.pop("dni_nombre", None)
+                datos.pop("dni_parcial_sin_foto", None)
+                datos.pop("dni_photo_verified", None)
+                db.upsert_session(telefono, "reg_dni", datos, bodega_id)
+                return [{"signal": "DNI_ASK"}]
             if media_url:
                 try:
                     from app.services.vision import download_whatsapp_media_sync, verify_dni_photo
+                    from app.services import prospect_media as pm
                     image_bytes = download_whatsapp_media_sync(media_url)
                     if image_bytes:
                         if skip_biometria_checks(telefono, bodega_data, test_phones=TEST_PHONES):
@@ -629,6 +671,22 @@ def handle_message(telefono: str, body: str, media_url: str = None) -> list:
                         )
                         datos["dni_photo_verified"] = True
                         datos["dni_photo_media_id"] = media_url
+                        # Persistir foto en Storage + completar KYC (atajo Excel/parcial)
+                        saved = pm.persist_image_bytes(telefono, image_bytes, "dni")
+                        if saved:
+                            datos["dni_photo_storage_path"] = saved["path"]
+                            try:
+                                db.update_bodega(bodega_id, {
+                                    "dni_foto_url": saved["path"],
+                                    "kyc_nivel": "dni",
+                                    "dni_representante": datos.get("dni_number") or bodega_data.get("dni_representante"),
+                                })
+                            except Exception as e:
+                                import logging
+                                logging.getLogger("circa").warning(
+                                    "No se pudo guardar dni_foto_url bodega %s: %s", bodega_id, e
+                                )
+                        datos.pop("dni_parcial_sin_foto", None)
                         db.upsert_session(telefono, "reg_biometria", datos, bodega_id)
                         nombre = datos.get("dni_nombre", "")
                         saludo_rep = nombre_para_comunicar_representante(bodega_data, nombre)
@@ -672,6 +730,12 @@ def handle_message(telefono: str, body: str, media_url: str = None) -> list:
                         bodega_data, datos.get("dni_nombre"),
                     )
                     return [{"signal": "BIOMETRIA_ASK", "representante": saludo_rep}]
+            if datos.get("dni_parcial_sin_foto"):
+                return [{
+                    "signal": "DNI_FOTO_ASK",
+                    "dni": datos.get("dni_number", ""),
+                    "nombre": datos.get("dni_nombre", ""),
+                }]
             return [
                 "\U0001f4f8 Env\u00eda una *foto del anverso de tu DNI f\u00edsico* para verificar que lo tienes en tu poder.\n\n"
                 "\U0001f512 Tip: env\u00edala como *Vista \u00fanica* (\u2460) para mayor seguridad."
