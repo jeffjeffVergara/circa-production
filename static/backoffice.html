@@ -888,9 +888,9 @@ Busca una bodega y ejecuta acciones de soporte <strong>sin tocar código</strong
 <div class="table-wrap">
 <table class="bodegas-table">
 <thead><tr>
-<th></th><th>Bodega / Dueño</th><th>Vendedor</th><th>Teléfono</th><th>Enrolada</th><th>Fase bot</th><th>Actividad</th><th>Línea (disp/aprob)</th><th>Uso</th><th>Pedidos</th><th>Mora</th><th></th>
+<th></th><th>Bodega / Dueño</th><th>Vendedor</th><th>Teléfono</th><th>DNI</th><th>Enrolada</th><th>Fase bot</th><th>Actividad</th><th>Línea (disp/aprob)</th><th>Uso</th><th>Pedidos</th><th>Mora</th><th></th>
 </tr></thead>
-<tbody id="bodegasBody"><tr><td colspan="12" class="empty">Cargando...</td></tr></tbody>
+<tbody id="bodegasBody"><tr><td colspan="13" class="empty">Cargando...</td></tr></tbody>
 </table>
 </div>
 </div>
@@ -3695,9 +3695,9 @@ function clearBodegaFilters(){
 var _bodegasOpsCache = null;
 function exportBodegasCSV(){
   if(!_bodegasOpsCache || !_bodegasOpsCache.length) return;
-  var headers = ['Nombre','Razón Social','Representante','Teléfono','WA Link','Vendedor','Supervisor','Grupo','Estado','Enrolada','Onboarding','Fase Bot','Línea Aprob','Línea Disp','Uso %','Pedidos','Saldo','Mora días','Distrito','Última actividad'];
+  var headers = ['Nombre','Razón Social','Representante','DNI','Teléfono','WA Link','Vendedor','Supervisor','Grupo','Estado','Enrolada','Onboarding','Fase Bot','Línea Aprob','Línea Disp','Uso %','Pedidos','Saldo','Mora días','Distrito','Última actividad'];
   var rows = _bodegasOpsCache.map(function(b){
-    return [b.nombre_comercial,b.razon_social,b.representante,b.telefono_whatsapp,b.wa_link||'',b.vendedor_codigo,b.supervisor,b.grupo,b.estado,b.enrolada?'Sí':'No',b.onboarding_fase,b.fase_bot,b.linea_aprobada,b.linea_disponible,b.uso_pct,b.n_pedidos,b.saldo,b.dias_mora,b.distrito,b.last_activity||''].map(function(v){return '"'+(v===null||v===undefined?'':v)+'"'}).join(',');
+    return [b.nombre_comercial,b.razon_social,b.representante,b.dni||'',b.telefono_whatsapp,b.wa_link||'',b.vendedor_codigo,b.supervisor,b.grupo,b.estado,b.enrolada?'Sí':'No',b.onboarding_fase,b.fase_bot,b.linea_aprobada,b.linea_disponible,b.uso_pct,b.n_pedidos,b.saldo,b.dias_mora,b.distrito,b.last_activity||''].map(function(v){return '"'+(v===null||v===undefined?'':v)+'"'}).join(',');
   });
   downloadCSV([headers.join(',')].concat(rows), 'circa_bodegas_'+new Date().toISOString().slice(0,10)+'.csv');
 }
@@ -3776,13 +3776,14 @@ function loadBodegas(){
 
     if(!bodegas.length){
       document.getElementById('bodegasBody').innerHTML =
-        '<tr><td colspan="12" class="empty">Sin bodegas para los filtros aplicados</td></tr>';
+        '<tr><td colspan="13" class="empty">Sin bodegas para los filtros aplicados</td></tr>';
       return;
     }
     document.getElementById('bodegasBody').innerHTML = bodegas.map(function(b){
       var name = b.nombre_comercial || b.razon_social || '?';
       var dueno = b.representante || '';
       var tel = b.telefono_whatsapp || '';
+      var dni = b.dni || '—';
       var fase = b.fase_bot || '—';
       var la = b.last_activity;
       var hace = la ? hacecuanto(la) : '<span class="status-no-session">nunca</span>';
@@ -3809,6 +3810,7 @@ function loadBodegas(){
         '<td><div style="font-weight:600">'+name+'</div><div style="font-size:11px;color:var(--muted)">'+dueno+'</div></td>'+
         '<td style="font-size:11px;color:var(--muted)">'+b.vendedor_codigo+(b.supervisor?' <span style="color:var(--blue-light)">·</span> '+b.supervisor.split(' ')[0]:'')+'</td>'+
         '<td style="font-size:12px">'+waLink+tel+'</td>'+
+        '<td style="font-size:12px;font-variant-numeric:tabular-nums">'+(dni !== '—' ? dni : '<span style="color:var(--muted)">—</span>')+'</td>'+
         '<td style="text-align:center">'+enrBadge+'</td>'+
         '<td><span style="color:var(--blue-light);font-size:12px">'+fase+'</span></td>'+
         '<td style="font-size:12px">'+hace+'</td>'+
@@ -3821,7 +3823,7 @@ function loadBodegas(){
     }).join('');
   }).catch(function(e){
     document.getElementById('bodegasBody').innerHTML =
-      '<tr><td colspan="12" class="empty">Error: '+e.message+'</td></tr>';
+      '<tr><td colspan="13" class="empty">Error: '+e.message+'</td></tr>';
   });
 }
 
