@@ -157,7 +157,8 @@ async def _dni_apiinti(dni: str) -> dict | None:
         if r.status_code != 200:
             logger.warning(f"ApiInti DNI {dni}: HTTP {r.status_code}")
             return None
-        d = r.json()
+        resp = r.json()
+        d = resp.get("data", resp)
         nombres = d.get("nombres", "")
         ap = d.get("apellidoPaterno") or d.get("apellido_paterno", "")
         am = d.get("apellidoMaterno") or d.get("apellido_materno", "")
@@ -166,7 +167,7 @@ async def _dni_apiinti(dni: str) -> dict | None:
             "nombres": nombres,
             "apellido_paterno": ap,
             "apellido_materno": am,
-            "nombre_completo": f"{ap} {am} {nombres}".strip(),
+            "nombre_completo": d.get("nombreCompleto") or f"{ap} {am} {nombres}".strip(),
         }
 
 
