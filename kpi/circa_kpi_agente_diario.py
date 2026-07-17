@@ -185,6 +185,95 @@ if not bodegas_x.empty and "vendedor" in bodegas_x.columns:
     if not top_enrol.empty:
         vendedores = vendedores.merge(top_enrol, on=["vendedor","supervisor"], how="outer").fillna({"enroladas_mtd":0,"bodegas":0,"pedidos_fin":0,"gmv":0,"revenue":0})
 
+# ============ 2b. METRICAS OS (CEO/GROWTH/RIESGO) ============
+import numpy as np
+tel = pd.DataFrame(sb.table("bodegas").select("id,telefono_whatsapp").eq("es_test", False).execute().data)
+def add_tel(d, key="bodega_id"):
+    if d.empty or tel.empty: return d
+    return d.merge(tel, left_on=key, right_on="id", how="left", suffixes=("","_t"))
+
+# MAFM: bodegas que financiaron en el mes (actual vs anterior)
+def mafm_mes(p):
+    if PED_NIVEL.empty: return 0
+    m = PED_NIVEL[PED_NIVEL.fin & (pd.to_datetime(PED_NIVEL.f).dt.to_period("M")==p)]
+    return int(m.bodega_id.nunique())
+p_act = pd.Timestamp(HOY).to_period("M")
+mafm, mafm_prev = mafm_mes(p_act), mafm_mes(p_act-1)
+
+# Cartera y PAR (sobre monto financiado de pedidos no pagados)
+cart = kpi_ped[(kpi_ped.es_test==False) & (pd.to_numeric(kpi_ped.monto_financiado)>0) & (kpi_ped.pagado!=True)].copy() if not kpi_ped.empty else pd.DataFrame()
+cartera = float(pd.to_numeric(cart.monto_financiado).sum()) if not cart.empty else 0.0
+if not cart.empty:
+    cart["da"] = pd.to_numeric(cart.dias_atraso).fillna(0)
+    v7 = float(pd.to_numeric(cart[cart.da>7].monto_financiado).sum())
+    v30 = float(pd.to_numeric(cart[cart.da>30].monto_financiado).sum())
+    vencido_total = float(pd.to_numeric(cart[cart.vencido_activo==True].monto_financiado).sum())
+    n_venc = int((cart.vencido_activo==True).sum())
+else: v7=v30=vencido_total=0.0; n_venc=0
+par7 = round(v7/cartera*100,1) if cartera else 0.0
+par30 = round(v30/cartera*100,1) if cartera else 0.0
+
+# TTFF (enrolamiento -> 1er financiamiento, mediana) y TBP (dias entre compras, mediana)
+ttff = tbp = "NA"
+if not PED_NIVEL.empty and not bod_meta.empty:
+    fin1 = PED_NIVEL[PED_NIVEL.fin].groupby("bodega_id").f.min().reset_index(name="f1")
+    bm = bod_meta.copy()
+    bm["fe"] = (pd.to_datetime(bm.contrato_firmado_at, utc=True, format="ISO8601")-pd.Timedelta(hours=5)).dt.date
+    j = fin1.merge(bm[["id","fe"]], left_on="bodega_id", right_on="id")
+    j = j[j.fe.notna()]
+    if len(j): ttff = round(float(np.median([(a-b).days for a,b in zip(j.f1,j.fe)])),1)
+    difs = []
+    for _,g in PED_NIVEL.sort_values("f").groupby("bodega_id"):
+        fs = sorted(set(g.f))
+        difs += [(b-a).days for a,b in zip(fs,fs[1:])]
+    if difs: tbp = round(float(np.median(difs)),1)
+
+primer_fin_mtd = 0
+if not PED_NIVEL.empty:
+    f1 = PED_NIVEL[PED_NIVEL.fin].groupby("bodega_id").f.min()
+    primer_fin_mtd = int((f1 >= mtd0).sum())
+
+# Utilizacion
+util_prom = 0.0; sin_util = 0
+if not bodegas_kpi.empty:
+    bk = bodegas_kpi.copy()
+    for c in ["linea_aprobada","linea_disponible"]: bk[c] = pd.to_numeric(bk[c]).fillna(0)
+    con = bk[bk.linea_aprobada>0]
+    if len(con): util_prom = round(float(((con.linea_aprobada-con.linea_disponible)/con.linea_aprobada).mean())*100,1)
+    sin_util = int(((bk.linea_aprobada>0) & (pd.to_numeric(bk.dias_sin_pedir).fillna(999)>30)).sum())
+
+# Health score v0 (25 frec/25 pago/20 util/20 recur/10 antig)
+health = pd.DataFrame()
+if not bodegas_x.empty:
+    h = bodegas_x.copy()
+    for c in ["pedidos_por_semana","pagos_puntuales","pedidos_pagados","linea_aprobada","linea_disponible","dias_sin_pedir","dias_enrolada"]:
+        h[c] = pd.to_numeric(h.get(c)).fillna(0)
+    h["s_frec"] = (h.pedidos_por_semana/1.0).clip(0,1)*25
+    h["s_pago"] = np.where(h.pedidos_pagados>0, h.pagos_puntuales/h.pedidos_pagados, 0.5)*25
+    h["s_util"] = np.where(h.linea_aprobada>0,(h.linea_aprobada-h.linea_disponible)/h.linea_aprobada,0)*20
+    h["s_rec"]  = (1 - (h.dias_sin_pedir/30).clip(0,1))*20
+    h["s_ant"]  = (h.dias_enrolada/90).clip(0,1)*10
+    h["health"] = (h.s_frec+h.s_pago+h.s_util+h.s_rec+h.s_ant).round(0)
+    health = h.sort_values("health", ascending=False)
+
+# Vendedor quality score v0 (40 act/30 rec/20 cob/10 enrol)
+rk_vend = pd.DataFrame()
+if not bodegas_x.empty and "vendedor" in bodegas_x.columns:
+    q = bodegas_x.copy()
+    for c in ["pedidos_financiados","pedidos_pagados","pagos_puntuales"]: q[c]=pd.to_numeric(q[c]).fillna(0)
+    q["financio"] = q.pedidos_financiados>0
+    q["recompro"] = q.pedidos_financiados>1
+    grp = q.groupby(["vendedor"], dropna=False).agg(afiliadas=("bodega","count"),
+        pct_fin=("financio","mean"), pct_rec=("recompro","mean"),
+        pagos=("pagos_puntuales","sum"), pagados=("pedidos_pagados","sum")).reset_index()
+    grp["pct_cob"] = np.where(grp.pagados>0, grp.pagos/grp.pagados, 0.5)
+    if not top_enrol.empty:
+        grp = grp.merge(top_enrol.groupby("vendedor").enroladas_mtd.sum().reset_index(), on="vendedor", how="left")
+    grp["enroladas_mtd"] = pd.to_numeric(grp.get("enroladas_mtd")).fillna(0)
+    en_max = grp.enroladas_mtd.max() or 1
+    grp["score"] = (40*grp.pct_fin + 30*grp.pct_rec + 20*grp.pct_cob + 10*grp.enroladas_mtd/en_max).round(0)
+    rk_vend = grp.sort_values("score", ascending=False)
+
 # ============ 3. SNAPSHOT ============
 reporte = {"fecha": str(HOY), "inicio": str(INICIO), "acumulado": acumulado, "mtd": mtd,
     "mtd_vs_mes_ant": {m: pct(mtd, mtd_prev, m) for m in METRICAS},
@@ -338,8 +427,53 @@ with open(md,"w") as f:
             + (f"\n\n## Analisis\n{analisis}" if analisis else "")
             + f"\n\n## Detalle\n```json\n{json.dumps(reporte, indent=2, default=str)}\n```\n")
 
+# ============ 6. DASHBOARD HTML (Circa OS) ============
+from dashboard_html import build as build_html
+bx = add_tel(bodegas_x) if not bodegas_x.empty else bodegas_x
+def _rows(d, cols, n=25):
+    if d is None or d.empty: return []
+    return d.head(n)[cols].fillna("").values.tolist()
+usem = agg(lun-dt.timedelta(days=7), lun-dt.timedelta(days=1))
+lh = ab = zb = []
+if not bx.empty:
+    bx["dsp"] = pd.to_numeric(bx.dias_sin_pedir).fillna(0)
+    lhd = bx[(bx.dsp>=5)&(bx.dsp<=7)].sort_values("dsp")
+    lh = _rows(lhd, ["bodega","telefono_whatsapp","vendedor","ultimo_pedido","dsp","linea_disponible"])
+    abd = bx[bx.dsp>=15].copy()
+    abd["banda"] = np.where(abd.dsp>=30,"30d+",np.where(abd.dsp>=20,"20d","15d"))
+    ab = _rows(abd.sort_values("dsp",ascending=False), ["bodega","telefono_whatsapp","vendedor","ultimo_pedido","dsp","banda"])
+zbd = add_tel(estado_x[estado_x.estado_uso=="enrolada_sin_pedido"]) if not estado_x.empty else pd.DataFrame()
+zb = _rows(zbd, ["bodega","telefono_whatsapp","vendedor","dias_enrolada"]) if not zbd.empty else []
+elx = elegibles.merge(health[["bodega_id","health"]], on="bodega_id", how="left") if not elegibles.empty and not health.empty else elegibles
+vip = _rows(elx, ["bodega","linea_aprobada","linea_sugerida","pagos_puntuales","health"]) if not elx.empty else []
+osd = {"fecha": f"{HOY} {AHORA.strftime('%H:%M')}", "alertas": alertas,
+  "mafm": mafm, "mafm_delta": round((mafm-mafm_prev)/mafm_prev*100,1) if mafm_prev else "NA",
+  "enrol_mtd": int(mtd["afiliaciones"]) if mtd else 0, "enrol_delta": pct(mtd, mtd_prev, "afiliaciones"),
+  "enroladas": enroladas, "activas30": activas30, "primer_fin_mtd": primer_fin_mtd,
+  "rec7": rec.get("pct_recompra_7d","NA"), "rec14": rec.get("pct_recompra_14d","NA"),
+  "meta_rec7": METAS["recompra_7d"], "meta_rec14": METAS["recompra_14d"],
+  "gmv_sem": (sem_cur or {}).get("gmv",0), "gmv_sem_delta": pct(sem_cur, usem, "gmv"),
+  "gmv_mtd": (mtd or {}).get("gmv",0), "gmv_mtd_delta": pct(mtd, mtd_prev, "gmv"),
+  "rev_mtd": (mtd or {}).get("revenue_fee",0),
+  "ticket_mtd": round((mtd or {}).get("gmv",0)/max((mtd or {}).get("pedidos",1),1),0),
+  "cartera": cartera, "par7": par7, "par30": par30, "vencido": vencido_total, "n_vencidos": n_venc,
+  "util_prom": util_prom, "sin_util": sin_util, "ttff": ttff, "tbp": tbp,
+  "llamar_hoy": lh, "zombies": zb, "abandono": ab, "vip": vip,
+  "limbo": _rows(pipeline, ["numero","nombre_comercial","estado","monto","dias_en_limbo"]) if not pipeline.empty else [],
+  "rk_vend": _rows(rk_vend.assign(pf=(rk_vend.pct_fin*100).round(0), pr=(rk_vend.pct_rec*100).round(0),
+        pc=(rk_vend.pct_cob*100).round(0)), ["vendedor","score","afiliadas","pf","pr","pc","enroladas_mtd"]) if not rk_vend.empty else [],
+  "subir": _rows(elegibles, ["bodega","linea_aprobada","linea_sugerida","pagos_puntuales"]) if not elegibles.empty else [],
+  "cobrar": _rows(cobranza, ["numero","bodega","vendedor","monto_financiado","dias_atraso"]) if not cobranza.empty else [],
+  "health": _rows(health.assign(fq=health.pedidos_por_semana.round(2)),
+        ["bodega","health","fq","pagos_puntuales","s_util","dias_sin_pedir","segmento"], 40) if not health.empty else []}
+html_path = f"{out}/circa_os_{HOY}.html"
+open(html_path,"w").write(build_html(osd))
+hoja("HEALTH_SCORE", health[["codigo_afiliado","bodega","health","s_frec","s_pago","s_util","s_rec","s_ant","segmento","vendedor"]] if not health.empty else pd.DataFrame())
+hoja("RK_VENDEDOR_CALIDAD", rk_vend)
+wb.save(xlsx)
+
 try:
-    for path, ct in [(xlsx,"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),(md,"text/markdown")]:
+    for path, ct in [(xlsx,"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),(md,"text/markdown"),(html_path,"text/html")]:
         with open(path,"rb") as fh:
             sb.storage.from_("reportes-kpi").upload(path.split("/")[-1], fh.read(),
                 file_options={"content-type": ct, "upsert": "true"})
