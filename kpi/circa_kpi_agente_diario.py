@@ -128,8 +128,16 @@ dq          = df_safe("vw_kpi_dq_v2")
 comercial   = df_safe("vw_bodega_comercial")
 ult_compra  = df_safe("vw_kpi_ultima_compra_v2")
 kpi_ped     = df_safe("vw_kpi_pedidos")
-bod_meta = pd.DataFrame(sb.table("bodegas").select("id,codigo_afiliado,contrato_firmado_at,es_test")
+bod_meta = pd.DataFrame(sb.table("bodegas").select("id,codigo_afiliado,ruc,dni_representante,contrato_firmado_at,es_test")
                         .eq("es_test", False).execute().data)
+if not bod_meta.empty:
+    bod_meta["documento"] = bod_meta.ruc.fillna(bod_meta.dni_representante)
+bv_dias = pd.DataFrame(sb.table("bodega_vendedores").select("bodega_id,rol,dia_visita,dia_entrega,activo")
+                       .eq("activo", True).execute().data)
+if not bv_dias.empty:
+    bv_dias["pr"] = (bv_dias.rol != "ABN").astype(int)
+    bv_dias = (bv_dias.sort_values("pr").groupby("bodega_id")
+               .agg(dia_visita=("dia_visita","first"), dia_entrega=("dia_entrega","first")).reset_index())
 
 def join_com(d, key="bodega_id"):
     if d.empty or comercial.empty: return d
@@ -137,12 +145,12 @@ def join_com(d, key="bodega_id"):
 
 def join_cod(d, key="bodega_id"):
     if d.empty or bod_meta.empty: return d
-    out = d.merge(bod_meta[["id","codigo_afiliado"]], left_on=key, right_on="id",
+    out = d.merge(bod_meta[["id","codigo_afiliado","documento"]], left_on=key, right_on="id",
                   how="left", suffixes=("", "_b"))
     drop = [c for c in ("id_b","id") if c in out.columns and c != key]
     out = out.drop(columns=drop)
-    cols = ["codigo_afiliado"] + [c for c in out.columns if c != "codigo_afiliado"]
-    return out[cols]
+    first = [c for c in ("codigo_afiliado","documento") if c in out.columns]
+    return out[first + [c for c in out.columns if c not in first]]
 
 bodegas_x = join_cod(join_com(bodegas_kpi))
 estado_x  = join_cod(join_com(estado_uso))
@@ -256,6 +264,22 @@ if not bodegas_x.empty:
     h["health"] = (h.s_frec+h.s_pago+h.s_util+h.s_rec+h.s_ant).round(0)
     health = h.sort_values("health", ascending=False)
 
+# Vendedores: vista MES (pedidos del MTD, vendedor de ENROLAMIENTO) y ACUMULADO
+vend_mes = pd.DataFrame()
+if not kpi_ped.empty and not comercial.empty:
+    vm = kpi_ped[(kpi_ped.es_test==False) & kpi_ped.numero.notna()
+                 & kpi_ped.estado.astype(str).isin(["confirmado","en_camino","pago_reportado","entregado","pagado","recibido","preventa_aceptada"])].copy()
+    vm["fp"] = pd.to_datetime(vm.fecha_pedido).dt.date
+    vm = vm[vm.fp >= mtd0].merge(comercial, on="bodega_id", how="left", suffixes=("_ped",""))
+    for c in ["total_pedido","monto_financiado","revenue_circa"]: vm[c] = pd.to_numeric(vm[c]).fillna(0)
+    vend_mes = (vm.groupby(["vendedor","supervisor"], dropna=False)
+        .agg(pedidos=("numero","count"), pedidos_fin=("monto_financiado", lambda x:int((x>0).sum())),
+             gmv=("total_pedido","sum"), revenue=("revenue_circa","sum"),
+             bodegas=("bodega_id","nunique")).round(2).reset_index())
+    if not top_enrol.empty:
+        vend_mes = vend_mes.merge(top_enrol, on=["vendedor","supervisor"], how="outer")
+    vend_mes = vend_mes.fillna(0).sort_values("gmv", ascending=False)
+
 # Vendedor quality score v0 (40 act/30 rec/20 cob/10 enrol)
 rk_vend = pd.DataFrame()
 if not bodegas_x.empty and "vendedor" in bodegas_x.columns:
@@ -315,7 +339,8 @@ if os.environ.get("ANTHROPIC_API_KEY"):
 
 # ============ 5. EXCEL EJECUTIVO ============
 F = lambda b=False, sz=10, col="000000": Font(name="Arial", bold=b, size=sz, color=col)
-NAVY, GRAY, RED = "1F3864", "D9D9D9", "C00000"
+NAVY, GRAY, RED = "2A2A3E", "D9D9D9", "C00000"
+TITULO = "1A1A2E"
 fill = lambda c: PatternFill("solid", start_color=c)
 thin = Border(*[Side(style="thin", color="BFBFBF")]*4)
 MON, NUM, PCT_F = '"S/ "#,##0.00', '#,##0', '0.0"%"'
@@ -324,7 +349,7 @@ wb = Workbook(); ws = wb.active; ws.title = "DASHBOARD"
 ws.sheet_view.showGridLines = False
 for col, wdt in zip("ABCDEFGHI", [22,13,13,13,12,10,10,10,12]): ws.column_dimensions[col].width = wdt
 r = 1
-ws.cell(r,1,"CIRCA — DASHBOARD EJECUTIVO").font = F(True,16,NAVY); r+=1
+ws.cell(r,1,"CIRCA — DASHBOARD EJECUTIVO").font = F(True,16,TITULO); r+=1
 ws.cell(r,1,f"Actualizado {AHORA.strftime('%d/%m/%Y %H:%M')} Lima · piloto ZOOM-DIMAX · GMV=neto, fechas Lima, pedidos con codigo Circa").font = F(False,9,"666666"); r+=2
 
 def seccion(titulo):
@@ -398,19 +423,35 @@ if analisis:
 
 def hoja(nombre, d):
     if d is None or (hasattr(d,"empty") and d.empty): return
+    d = d.drop(columns=[c for c in ("bodega_id","vendedor_id","id","id_b","id_t","distribuidor_id","pr") if c in d.columns])
     w2 = wb.create_sheet(nombre)
     for row in dataframe_to_rows(d, index=False, header=True): w2.append(row)
-    for c in w2[1]: c.font = F(True,9); c.fill = fill(GRAY)
+    for c in w2[1]:
+        c.font = F(True,10,"FFFFFF"); c.fill = fill(NAVY)
+        c.alignment = Alignment(horizontal="center")
+    for row in w2.iter_rows(min_row=2):
+        for c in row: c.font = F(False,9)
+    w2.freeze_panes = "A2"
     for col in w2.columns:
-        w2.column_dimensions[col[0].column_letter].width = min(28, max(10, max((len(str(c.value or "")) for c in col[:50]))+2))
+        w2.column_dimensions[col[0].column_letter].width = min(36, max(11, max((len(str(c.value or "")) for c in col[:60]))+3))
 
 hoja("BODEGAS", bodegas_x)
-hoja("VENDEDORES", vendedores)
+hoja("VENDEDORES_MES", vend_mes)
+hoja("VENDEDORES_ACUM", vendedores)
 hoja("ESTADO_USO", estado_x)
 hoja("TIERS", tiers_x)
 hoja("COBRANZA", cobranza)
 hoja("RECOMPRA", recompra)
-hoja("VS_HISTORICO", vs_hist)
+vs_x = vs_hist
+if not vs_hist.empty and not bodegas_kpi.empty:
+    mapa = bodegas_kpi[["bodega","bodega_id"]].drop_duplicates("bodega")
+    vs_x = vs_hist.merge(mapa, on="bodega", how="left")
+    vs_x = join_cod(join_com(vs_x))
+    if not bv_dias.empty:
+        vs_x = vs_x.merge(bv_dias, on="bodega_id", how="left")
+    first = [c for c in ("codigo_afiliado","documento","bodega","vendedor","supervisor","dia_visita","dia_entrega") if c in vs_x.columns]
+    vs_x = vs_x[first + [c for c in vs_x.columns if c not in first]]
+hoja("VS_HISTORICO", vs_x)
 hoja("MODELO_DIST", modelo_dist)
 hoja("ELEGIBLES_LINEA", elegibles)
 hoja("SEMANAS", pd.DataFrame(semanas))
@@ -482,7 +523,7 @@ osd = {"fecha": f"{HOY} {AHORA.strftime('%H:%M')}", "alertas": alertas,
         ["bodega","health","fq","pagos_puntuales","s_util","dias_sin_pedir","segmento"], 40) if not health.empty else []}
 html_path = f"{out}/circa_os_{HOY}.html"
 open(html_path,"w").write(build_html(osd))
-hoja("HEALTH_SCORE", health[["codigo_afiliado","bodega","health","s_frec","s_pago","s_util","s_rec","s_ant","segmento","vendedor"]] if not health.empty else pd.DataFrame())
+hoja("HEALTH_SCORE", health[[c for c in ["codigo_afiliado","documento","bodega","health","s_frec","s_pago","s_util","s_rec","s_ant","segmento","vendedor"] if c in health.columns]] if not health.empty else pd.DataFrame())
 hoja("RK_VENDEDOR_CALIDAD", rk_vend)
 wb.save(xlsx)
 
