@@ -73,8 +73,9 @@ def build(d):
         ["Bodega","Tel","Vendedor","Ult. compra","Dias","Linea disp."], d["llamar_hoy"], "Nadie en ventana critica hoy")
     g += "<h2>B. Zombies — enroladas sin pedido</h2>" + tbl(
         ["Bodega","Tel","Vendedor","Dias enrolada"], d["zombies"])
-    g += "<h2>C. Riesgo de abandono (15/20/30d sin comprar)</h2>" + tbl(
-        ["Bodega","Tel","Vendedor","Ult. compra","Dias sin comprar","Banda"], d["abandono"])
+    g += "<h2>C. Riesgo de abandono (dias desde ultima compra O pago, lo mas reciente)</h2>" + tbl(
+        ["Bodega","Tel","Vendedor","Ult. actividad","Dias","Pagos punt.","Banda"], d["abandono"])
+    g += '<p class="note">Bodegas con credito abierto no vencido = EN CICLO: excluidas de A y C (regla 17-jul).</p>' 
     g += "<h2>D. VIP — candidatas a subir linea</h2>" + tbl(
         ["Bodega","Linea actual","Sugerida","Pagos puntuales","Health"], d["vip"])
     g += "<h2>E. Pipeline / limbo</h2>" + tbl(

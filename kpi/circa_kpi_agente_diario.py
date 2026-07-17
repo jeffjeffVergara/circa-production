@@ -436,12 +436,26 @@ def _rows(d, cols, n=25):
 usem = agg(lun-dt.timedelta(days=7), lun-dt.timedelta(days=1))
 lh = ab = zb = []
 if not bx.empty:
-    bx["dsp"] = pd.to_numeric(bx.dias_sin_pedir).fillna(0)
-    lhd = bx[(bx.dsp>=5)&(bx.dsp<=7)].sort_values("dsp")
-    lh = _rows(lhd, ["bodega","telefono_whatsapp","vendedor","ultimo_pedido","dsp","linea_disponible"])
-    abd = bx[bx.dsp>=15].copy()
+    # REGLA DE CICLO (Paola, 17-jul): el reloj de recompra corre desde el PAGO,
+    # no desde la compra. Credito abierto no vencido = EN CICLO (ni llamar ni abandono).
+    kp = kpi_ped[kpi_ped.es_test==False].copy()
+    kp["fin"] = pd.to_numeric(kp.monto_financiado).fillna(0) > 0
+    vivos = ["confirmado","en_camino","pago_reportado","entregado","recibido","preventa_aceptada"]
+    abierto = kp[(kp.fin) & (kp.pagado!=True) & (kp.vencido_activo!=True)
+                 & (kp.estado.astype(str).isin(vivos))].bodega_id.unique()
+    ult_pago = kp[kp.pagado==True].groupby("bodega_id").fecha_pago.max().rename("ult_pago")
+    bx = bx.merge(ult_pago, on="bodega_id", how="left")
+    bx["ult_ref"] = bx[["ultimo_pedido","ult_pago"]].apply(
+        lambda r: max([d for d in [r.ultimo_pedido, r.ult_pago] if pd.notna(d)], default=None), axis=1)
+    bx["dsp"] = (pd.Timestamp(HOY) - pd.to_datetime(bx.ult_ref)).dt.days.fillna(999)
+    bx["en_ciclo"] = bx.bodega_id.isin(abierto)
+    bx["punt"] = bx.apply(lambda r: f"{int(pd.to_numeric(r.pagos_puntuales) or 0)}/{int(pd.to_numeric(r.pedidos_pagados) or 0)}", axis=1)
+    libre = bx[~bx.en_ciclo]
+    lhd = libre[(libre.dsp>=5)&(libre.dsp<=7)].sort_values("dsp")
+    lh = _rows(lhd, ["bodega","telefono_whatsapp","vendedor","ult_ref","dsp","linea_disponible"])
+    abd = libre[libre.dsp>=15].copy()
     abd["banda"] = np.where(abd.dsp>=30,"30d+",np.where(abd.dsp>=20,"20d","15d"))
-    ab = _rows(abd.sort_values("dsp",ascending=False), ["bodega","telefono_whatsapp","vendedor","ultimo_pedido","dsp","banda"])
+    ab = _rows(abd.sort_values("dsp",ascending=False), ["bodega","telefono_whatsapp","vendedor","ult_ref","dsp","punt","banda"])
 zbd = add_tel(estado_x[estado_x.estado_uso=="enrolada_sin_pedido"]) if not estado_x.empty else pd.DataFrame()
 zb = _rows(zbd, ["bodega","telefono_whatsapp","vendedor","dias_enrolada"]) if not zbd.empty else []
 elx = elegibles.merge(health[["bodega_id","health"]], on="bodega_id", how="left") if not elegibles.empty and not health.empty else elegibles
