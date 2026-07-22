@@ -352,11 +352,23 @@ r = 1
 ws.cell(r,1,"CIRCA — DASHBOARD EJECUTIVO").font = F(True,16,TITULO); r+=1
 ws.cell(r,1,f"Actualizado {AHORA.strftime('%d/%m/%Y %H:%M')} Lima · piloto ZOOM-DIMAX · GMV=neto, fechas Lima, pedidos con codigo Circa").font = F(False,9,"666666"); r+=2
 
+ORANGE, BEIGE, GREEN = "E8641B", "EFECE4", "2E7D32"
 def seccion(titulo):
     global r
-    c = ws.cell(r,1,titulo); c.font = F(True,11,"FFFFFF"); c.fill = fill(NAVY)
-    for i in range(2,10): ws.cell(r,i).fill = fill(NAVY)
+    c = ws.cell(r,1,"▌ "+titulo); c.font = F(True,12,ORANGE)
     r += 1
+
+def cards(items):
+    """items: [(label, valor, color_hex)] -> banda beige con etiqueta chica y valor grande."""
+    global r
+    for i in range(1,10):
+        ws.cell(r,i).fill = fill(BEIGE); ws.cell(r+1,i).fill = fill(BEIGE)
+    col = 1
+    for lab, val, colr in items:
+        c = ws.cell(r,col,lab); c.font = F(True,9,"6B6B6B"); c.fill = fill(BEIGE)
+        v = ws.cell(r+1,col,val); v.font = F(True,16,colr); v.fill = fill(BEIGE)
+        col += 2
+    r += 3
 
 def tabla(headers, rows, fmts):
     global r
@@ -377,10 +389,12 @@ def fila_p(nombre, k):
             int(k["pedidos"]),int(k["pedidos_financiados"]),int(k["bodegas_compraron"]),t]
 
 seccion("RESULTADOS POR PERIODO")
+_fila_acum = None
 tabla(["PERIODO","GMV","FINANCIADO","CONTADO","REVENUE","PEDIDOS","FINANC.","BODEGAS","TICKET"],
     [fila_p("ULTIMOS 7D",u7), fila_p(f"MTD {HOY.strftime('%b').upper()}",mtd),
      fila_p(f"MES CERRADO ({mc_p})",mes_cerrado), fila_p("ULTIMOS 30D",u30), fila_p("ACUMULADO",acumulado)],
     [None,MON,MON,MON,MON,NUM,NUM,NUM,MON])
+for j in range(1,10): ws.cell(r-2,j).font = F(True,10)
 
 seccion("COMPARACIONES (Δ% · NA = sin historia comparable)")
 tabla(["COMPARACION","GMV","PED.FIN","AFILIACIONES","BODEGAS"],
@@ -391,23 +405,40 @@ tabla(["COMPARACION","GMV","PED.FIN","AFILIACIONES","BODEGAS"],
     [None,PCT_F,PCT_F,PCT_F,PCT_F])
 
 seccion("ADOPCION Y TIERS")
-tabla(["ENROLADAS","ACTIVAS 30D","TIER 1 (<=7d)","TIER 2 (8-15d)","PROBO NO VOLVIO","ZOMBIE"],
-    [[enroladas, f"{activas30} ({activas30/enroladas*100:.0f}%)" if enroladas else 0,
-      int(tcount.get("tier1",0)), int(tcount.get("tier2",0)),
-      int(tcount.get("tier3",tcount.get("probo_no_volvio",0))), int(tcount.get("zombie",0))]],
-    [NUM,None,NUM,NUM,NUM,NUM])
+zom = int(tcount.get("zombie",0))
+cards([("ENROLADAS", enroladas, "000000"),
+       ("ACTIVAS 30D", f"{activas30} ({activas30/enroladas*100:.0f}%)" if enroladas else "0", "000000"),
+       ("TIER 1 (<=7d)", int(tcount.get("tier1",0)), GREEN),
+       ("TIER 2 (8-15d)", int(tcount.get("tier2",0)), GREEN),
+       ("ZOMBIE", zom, RED if zom else GREEN)])
 
 seccion("METAS Y RIESGO")
-tabla(["ENROL. AYER","PED.FIN AYER","RECOMPRA 7D","RECOMPRA 14D","INACTIVAS (+nuevas)","LIMBO","VENCIDOS","% NORTE S/50M"],
-    [[f"{int(ayer['afiliaciones'])} / {METAS['afiliaciones_dia']}",
-      f"{int(ayer['pedidos_financiados'])} / {METAS['pedidos_financiados_dia']}",
-      f"{rec.get('pct_recompra_7d','NA')}% / {METAS['recompra_7d']}",
-      f"{rec.get('pct_recompra_14d','NA')}% / {METAS['recompra_14d']}",
-      f"{len(inactivos_hoy)} (+{len(nuevos_inactivos)})",
-      f"{len(pipeline)} (S/{pipeline.monto.astype(float).sum():.0f})" if not pipeline.empty else "0",
-      len(cobranza) if not cobranza.empty else 0,
-      f"{(acumulado['gmv'] if acumulado else 0)/NORTE_GMV*100:.3f}%"]],
-    [None]*8)
+r7, r14 = rec.get("pct_recompra_7d"), rec.get("pct_recompra_14d")
+ea, ef = int(ayer["afiliaciones"]), int(ayer["pedidos_financiados"])
+cards([("ENROL. AYER", f"{ea} / {METAS['afiliaciones_dia']}", GREEN if ea>=METAS["afiliaciones_dia"] else RED),
+       ("PED.FIN AYER", f"{ef} / {METAS['pedidos_financiados_dia']}", GREEN if ef>=METAS["pedidos_financiados_dia"] else RED),
+       ("RECOMPRA 7D", f"{r7}% / {METAS['recompra_7d']}", GREEN if (r7 or 0)>=METAS["recompra_7d"] else RED),
+       ("RECOMPRA 14D", f"{r14}% / {METAS['recompra_14d']}", GREEN if (r14 or 0)>=METAS["recompra_14d"] else RED),
+       ("INACTIVAS (+hoy)", f"{len(inactivos_hoy)} (+{len(nuevos_inactivos)})", RED if nuevos_inactivos else "000000")])
+cards([("LIMBO", f"{len(pipeline)} (S/{pipeline.monto.astype(float).sum():.0f})" if not pipeline.empty else "0",
+        ORANGE if not pipeline.empty else GREEN),
+       ("VENCIDOS", len(cobranza) if not cobranza.empty else 0, RED if not cobranza.empty else GREEN),
+       ("% NORTE S/50M", f"{(acumulado['gmv'] if acumulado else 0)/NORTE_GMV*100:.3f}%", ORANGE),
+       ("MAFM (mes)", mafm, "000000"),
+       ("PAR7", f"{par7}%", GREEN if par7<5 else (ORANGE if par7<8 else RED))])
+
+seccion("EVOLUCION (diario, ultimos 14 dias)")
+evol = df.tail(14).reset_index()
+snaps = pd.DataFrame(sb.table("kpi_snapshots_diario").select("fecha,payload").order("fecha").execute().data)
+rec14_map = {}
+if not snaps.empty:
+    for _, sr in snaps.iterrows():
+        rc = (sr.payload or {}).get("recompra") or {}
+        if rc.get("pct_recompra_14d") is not None: rec14_map[str(sr.fecha)] = rc["pct_recompra_14d"]
+tabla(["FECHA","ENROL.","PED.FIN","GMV","REVENUE","RECOMPRA 14D"],
+    [[str(x.fecha), int(x.afiliaciones), int(x.pedidos_financiados), float(x.gmv), float(x.revenue_fee),
+      f"{rec14_map.get(str(x.fecha),'—')}%" if str(x.fecha) in rec14_map else "—"] for x in evol.itertuples()],
+    [None,NUM,NUM,MON,MON,None])
 
 seccion("ALERTAS DEL DIA")
 if alertas:
