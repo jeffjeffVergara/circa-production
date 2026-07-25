@@ -683,6 +683,29 @@ async def admin_send_cobranza(pedido_id: str, admin: bool = Depends(verify_admin
 
 # ===================== COBRANZAS =====================
 
+
+def _norm_txt(s):
+    import unicodedata
+    s = unicodedata.normalize("NFD", (s or "").lower())
+    return "".join(c for c in s if unicodedata.category(c) != "Mn")
+
+
+def _busqueda_tolerante(query, target):
+    """True si cada palabra del query aparece en target (substring)
+    o se parece a alguna palabra del target (tolerancia ~1 letra)."""
+    import difflib
+    palabras_q = _norm_txt(query).split()
+    target_n = _norm_txt(target)
+    palabras_t = target_n.split()
+    for w in palabras_q:
+        if w in target_n:
+            continue
+        if any(difflib.SequenceMatcher(None, w, t).ratio() >= 0.8 for t in palabras_t):
+            continue
+        return False
+    return True
+
+
 @router.get("/admin/cobranzas")
 async def admin_cobranzas(
     distribuidor: Optional[str] = None,
@@ -712,7 +735,7 @@ async def admin_cobranzas(
     bodega_ids = list(set(p.get("bodega_id", "") for p in pedidos if p.get("bodega_id")))
     bodegas_map = _sb_map_by_ids(
         "bodegas",
-        "id,nombre_comercial,telefono_whatsapp,ruc,direccion_fiscal",
+        "id,nombre_comercial,razon_social,telefono_whatsapp,ruc,direccion_fiscal",
         bodega_ids,
     )
 
@@ -807,8 +830,15 @@ async def admin_cobranzas(
             if dl not in (item["distribuidor"].get("nombre_comercial","") or "").lower():
                 continue
         if bodega:
-            bl = bodega.lower()
-            if bl not in (item["bodega"].get("nombre_comercial","") or "").lower():
+            _b = item["bodega"]
+            _target = " ".join([
+                _b.get("nombre_comercial") or "",
+                _b.get("razon_social") or "",
+                _b.get("ruc") or "",
+                _b.get("telefono_whatsapp") or "",
+                item.get("numero") or "",
+            ])
+            if not _busqueda_tolerante(bodega, _target):
                 continue
         if estado and estado != "todos":
             if estado != status_cobranza:
