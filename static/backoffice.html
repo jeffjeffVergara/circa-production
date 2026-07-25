@@ -577,7 +577,7 @@ tr:hover td{background:var(--card-hover)}
 <p class="cobranzas-scroll-hint" aria-hidden="true">En móvil cada cobranza se muestra como tarjeta; <strong>Acciones</strong> va al final de cada una.</p>
 <div class="table-wrap table-wrap-cobranzas">
 <table class="table-cobranzas">
-<thead><tr><th>Pedido</th><th>Bodega</th><th>Distribuidor</th><th>Entregado</th><th>Vence</th><th>Días</th><th>Monto</th><th>Estado</th><th>Acciones</th></tr></thead>
+<thead><tr><th>Pedido</th><th>Bodega</th><th>Distribuidor</th><th>Vendedor</th><th>Entregado</th><th>Vence</th><th>Días</th><th>Monto</th><th>Estado</th><th>Acciones</th></tr></thead>
 <tbody id="cobranzasBody"></tbody>
 </table>
 </div>
@@ -1468,15 +1468,18 @@ function loadCobranzas(){
         : '';
       return '<tr class="cob-row">'+
         '<td data-label="Pedido" class="pedido-num mono">'+(c.numero||'-')+'</td>'+
-        '<td data-label="Bodega">'+(b.nombre_comercial||'?')+'</td>'+
+        '<td data-label="Bodega">'+(b.nombre_comercial||'?')+
+        ((b.dni_representante||b.ruc)?('<div style="font-size:10px;color:var(--muted);margin-top:3px">'+(b.dni_representante?('DNI '+b.dni_representante):'')+(b.ruc?((b.dni_representante?' \u00b7 ':'')+'RUC '+b.ruc):'')+'</div>'):'')+
+        (b.telefono_whatsapp?('<div style="font-size:10px;margin-top:2px"><a href="https://wa.me/'+String(b.telefono_whatsapp).replace(/\D/g,'')+'" target="_blank" rel="noopener" style="color:var(--green);text-decoration:none">\ud83d\udcf1 '+b.telefono_whatsapp+'</a></div>'):'')+'</td>'+
         '<td data-label="Distribuidor" style="color:var(--muted)">'+(dt.nombre_comercial||'?')+'</td>'+
+        '<td data-label="Vendedor" style="font-size:11px">'+((c.vendedor&&c.vendedor.codigo)?(c.vendedor.codigo+(c.vendedor.supervisor?('<div style="color:var(--muted);font-size:10px">'+String(c.vendedor.supervisor).split(' ')[0]+'</div>'):'')):'\u2014')+'</td>'+
         '<td data-label="Entregado">'+entr+'</td>'+
         '<td data-label="Vence">'+venc+'</td>'+
         '<td data-label="Días">'+diasText+'</td>'+
         '<td data-label="Monto" class="mono">S/'+c.total_pagar.toFixed(2)+'</td>'+
         '<td data-label="Estado"><span class="badge badge-'+c.status_cobranza+'">'+c.status_cobranza.replace('_',' ')+'</span></td>'+
         '<td data-label="Acciones" class="cob-col-actions">'+actions+ultRec+'</td></tr>';
-    }).join('') : '<tr><td colspan="9" class="empty">Sin cobranzas</td></tr>';
+    }).join('') : '<tr><td colspan="10" class="empty">Sin cobranzas</td></tr>';
   });
 }
 

@@ -735,12 +735,33 @@ async def admin_cobranzas(
     bodega_ids = list(set(p.get("bodega_id", "") for p in pedidos if p.get("bodega_id")))
     bodegas_map = _sb_map_by_ids(
         "bodegas",
-        "id,nombre_comercial,razon_social,telefono_whatsapp,ruc,direccion_fiscal",
+        "id,nombre_comercial,razon_social,dni_representante,telefono_whatsapp,ruc,direccion_fiscal",
         bodega_ids,
     )
 
     dist_ids = list(set(p.get("distribuidor_id", "") for p in pedidos if p.get("distribuidor_id")))
     dist_map = _sb_map_by_ids("distribuidores", "id,nombre_comercial,ruc", dist_ids)
+
+    # Vendedor/supervisor por bodega (rol ABN activo en bodega_vendedores)
+    vend_map = {}
+    try:
+        _bvs = _sb_get("bodega_vendedores", {
+            "select": "bodega_id,vendedor_id,supervisor,rol,activo",
+            "activo": "eq.true",
+            "rol": "eq.ABN",
+            "limit": "2000",
+        })
+        _vids = list(set(x.get("vendedor_id") for x in _bvs if x.get("vendedor_id")))
+        _vmap = _sb_map_by_ids("vendedores", "id,codigo", _vids)
+        for x in _bvs:
+            _bid = x.get("bodega_id")
+            if _bid and _bid not in vend_map:
+                vend_map[_bid] = {
+                    "codigo": (_vmap.get(x.get("vendedor_id"), {}) or {}).get("codigo") or "",
+                    "supervisor": x.get("supervisor") or "",
+                }
+    except Exception:
+        vend_map = {}
     
     from app.services.fees import total_pagar_desde_pedido, resolver_fecha_vencimiento_pedido
 
@@ -803,6 +824,7 @@ async def admin_cobranzas(
             "numero": p.get("numero", ""),
             "bodega": bodegas_map.get(p.get("bodega_id"), {}),
             "distribuidor": dist_map.get(p.get("distribuidor_id"), {}),
+            "vendedor": vend_map.get(p.get("bodega_id"), {}),
             "monto_financiado": float(p.get("monto_financiado") or 0),
             "fee": float(tp.get("fee_vigente") or p.get("fee_monto") or 0),
             "fee_congelado": float(tp.get("fee_congelado") or p.get("fee_monto") or 0),
