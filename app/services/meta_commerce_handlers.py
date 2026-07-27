@@ -96,42 +96,20 @@ async def _go_pin_financiado(
 
 
 async def _gen_order_number(bodega_id: str, tipo_operacion: str = "venta") -> str:
-    prefix = "PRV" if tipo_operacion == "preventa" else "CRC"
-    afil = "TEST"
+    # Correlativo GLOBAL unificado: misma fuente que PIN/admin/catálogo → CRC-NNN (TEST-NNN en prueba).
+    # Antes esta función usaba un esquema propio por afiliado (PRV-{afiliado}-{seq}), que
+    # generaba números tipo "PRV-00089-001" fuera del correlativo. Se delega en el RPC único.
+    # tipo_operacion se ignora a propósito: preventa y venta comparten la misma serie CRC.
     try:
-        b = (
-            db.sb.table("bodegas")
-            .select("codigo_afiliado")
-            .eq("id", bodega_id)
-            .limit(1)
-            .execute()
-        )
-        codigo = b.data[0].get("codigo_afiliado") if b.data else None
-        if codigo and codigo.startswith("CIRCA-"):
-            afil = codigo.split("-")[1]
+        num = db.sb.rpc("gen_numero_pedido", {"p_bodega_id": bodega_id}).execute().data
+        if num:
+            return num
     except Exception as e:
-        logger.error("_gen_order_number afiliado %s: %s", bodega_id, e)
+        logger.error("_gen_order_number gen_numero_pedido %s: %s", bodega_id, e)
 
-    n = 1
-    try:
-        r = (
-            db.sb.table("pedidos")
-            .select("numero")
-            .eq("bodega_id", bodega_id)
-            .eq("tipo_operacion", tipo_operacion)
-            .not_.is_("numero", "null")
-            .order("created_at", desc=True)
-            .limit(1)
-            .execute()
-        )
-        if r.data and r.data[0].get("numero"):
-            partes = r.data[0]["numero"].split("-")
-            if len(partes) == 3 and partes[2].isdigit():
-                n = int(partes[2]) + 1
-    except Exception as e:
-        logger.error("_gen_order_number correlativo %s: %s", bodega_id, e)
-
-    return f"{prefix}-{afil}-{n:03d}"
+    # Fallback sólo si el RPC falla (no colisiona con el correlativo: la 'X' rompe el patrón CRC-\d+)
+    import random
+    return f"CRC-X{random.randint(100000, 999999)}"
 
 
 async def _mark_read(msg: dict, meta_client) -> None:
