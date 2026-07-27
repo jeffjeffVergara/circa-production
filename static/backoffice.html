@@ -1413,7 +1413,7 @@ function loadPagos(){
       g.pedidos.forEach(function(p){
         var b = p.bodega || {};
         var sustDist = p.pago_distribuidor_sustento_url
-            ? '<a href="'+p.pago_distribuidor_sustento_url+'" target="_blank" rel="noopener" class="btn btn-outline btn-small" style="text-decoration:none">📎 Ver sustento</a>'
+            ? '<span class="pagos-paid" style="margin-right:6px">✓ Sustento'+(p.pago_distribuidor_sustento_subido_at?(' '+fmtFechaCorta(p.pago_distribuidor_sustento_subido_at)):'')+'</span><a href="'+p.pago_distribuidor_sustento_url+'" target="_blank" rel="noopener" class="btn btn-outline btn-small" style="text-decoration:none">Ver</a>'
             : '<label class="btn btn-outline btn-small bo-write" style="cursor:pointer;margin:0">📎 Subir sustento<input type="file" accept="image/*,application/pdf" style="display:none" onchange="subirSustentoPagoDistribuidor(\''+p.id+'\', this)"></label>';
         var pagoDistBtn = (p.circa_pagado_dist_at
             ? '<span class="pagos-paid">✓ Pagado '+fmtFechaCorta(p.circa_pagado_dist_at)+'</span>'
@@ -1487,7 +1487,7 @@ function loadCobranzas(){
       var venc = fmtFechaCorta(c.fecha_vencimiento);
       var entr = fmtFechaCorta(c.fecha_entregado);
       var sustCli = c.pago_cliente_sustento_url
-        ? '<a href="'+c.pago_cliente_sustento_url+'" target="_blank" rel="noopener" class="btn btn-outline btn-small" style="text-decoration:none">📎 Ver sustento</a>'
+        ? '<span style="color:var(--green);font-size:11px;font-weight:700;margin-right:6px">✓ Sustento'+(c.pago_cliente_sustento_subido_at?(' '+fmtFechaCorta(c.pago_cliente_sustento_subido_at)):'')+'</span><a href="'+c.pago_cliente_sustento_url+'" target="_blank" rel="noopener" class="btn btn-outline btn-small" style="text-decoration:none">Ver</a>'
         : (isReadOnly() ? '' : '<label class="btn btn-outline btn-small bo-write" style="cursor:pointer;margin:0">📎 Subir sustento<input type="file" accept="image/*,application/pdf" style="display:none" onchange="subirSustentoPagoCliente(\''+c.pedido_id+'\', this)"></label>');
       var actions = (c.status_cobranza==='pagado'
         ? '<span style="color:var(--purple);font-size:11px">✓ Pagado</span>'

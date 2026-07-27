@@ -951,6 +951,7 @@ async def admin_cobranzas(
             "fecha_pagado": p.get("fecha_pagado"),
             "fee_regimen": p.get("fee_regimen"),
             "pago_cliente_sustento_url": p.get("pago_cliente_sustento_url"),
+            "pago_cliente_sustento_subido_at": p.get("pago_cliente_sustento_subido_at"),
             "ultimo_recordatorio": recordatorios_map.get(p["id"]),
         }
         
