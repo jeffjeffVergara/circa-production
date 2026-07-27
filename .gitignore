@@ -23,3 +23,13 @@ Corte_Comisiones_*
 Mensajes_Corte_*
 Circa_Reporte_*
 .patches_aplicados/
+
+# Datos personales de clientes y outputs locales (remediacion 2026-07-27)
+contratos_generados/
+*.pdf
+Cobranzas_Vencidas_*
+Mensajes_Supervisores_*
+Privados_con_lineas_*
+_backup_*.json
+~$*
+_to_delete/

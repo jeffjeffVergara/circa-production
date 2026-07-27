@@ -1573,17 +1573,74 @@ function loadPedidos(){
   });
 }
 
+// Tabla de fee = fuente de verdad en app/services/fees.py (7d=1.4%, 15d=3%, 30d=6%, min S/1)
+var AP_FEE_TABLE = {7:0.014, 15:0.03, 30:0.06};
+
 function aceptarPreventa(pid){
   if(isReadOnly()) return readOnlyBlocked();
-  if(!confirm('¿Aceptar esta pre-venta?')) return;
+  var p = (allPedidos||[]).find(function(x){return x.id===pid}) || {};
+  var b = p.bodega || {};
+  var ld = Number(b.linea_disponible||0);
+  var total = Number(p.total_pedido||p.monto_productos||0);
+  var maxFin = Math.min(ld, total);
+  if(maxFin < 0) maxFin = 0;
+  var pref = maxFin.toFixed(2);
+  document.getElementById('modalContainer').innerHTML =
+    '<div class="modal-overlay open" onclick="if(event.target===this)closeModal()"><div class="modal">'+
+    '<h3>✅ Aceptar pre-venta</h3>'+
+    '<div class="modal-info">'+
+      '<div class="modal-info-row"><span>Bodega:</span><strong>'+nombreBodega(b)+'</strong></div>'+
+      '<div class="modal-info-row"><span>Total pedido:</span><strong>S/'+total.toFixed(2)+'</strong></div>'+
+      '<div class="modal-info-row"><span>Línea disponible:</span><strong>S/'+ld.toFixed(2)+'</strong></div>'+
+    '</div>'+
+    '<div style="margin-top:12px"><label style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Monto a financiar (S/)</label>'+
+    '<input id="apMonto" type="number" step="0.01" min="0" max="'+maxFin.toFixed(2)+'" value="'+pref+'" oninput="apResumen()" '+
+    'style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border,#334);background:transparent;color:inherit"></div>'+
+    '<div style="margin-top:10px"><label style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Plazo</label>'+
+    '<select id="apPlazo" onchange="apResumen()" style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border,#334);background:transparent;color:inherit">'+
+      '<option value="7" selected>7 días — 1.4%</option>'+
+      '<option value="15">15 días — 3%</option>'+
+      '<option value="30">30 días — 6%</option>'+
+    '</select></div>'+
+    '<div id="apResumenBox" class="modal-info" style="margin-top:12px"></div>'+
+    '<div class="modal-actions" style="margin-top:14px;display:flex;gap:8px;justify-content:flex-end">'+
+      '<button class="btn btn-small" onclick="closeModal()">Cancelar</button>'+
+      '<button class="btn btn-small btn-green" onclick="apConfirmar(\''+pid+'\','+maxFin.toFixed(2)+')">Aceptar y financiar</button>'+
+    '</div></div></div>';
+  apResumen();
+}
+
+function apResumen(){
+  var m = parseFloat((document.getElementById('apMonto')||{}).value||'0')||0;
+  var d = parseInt((document.getElementById('apPlazo')||{}).value||'7',10);
+  var rate = AP_FEE_TABLE[d]||0.014;
+  var fee = m>0 ? Math.max(Math.round(m*rate*100)/100, 1.0) : 0;
+  var box = document.getElementById('apResumenBox');
+  if(!box) return;
+  if(m<=0){
+    box.innerHTML = '<div class="modal-info-row"><span>Financiamiento:</span><strong>Sin financiar (todo contado)</strong></div>';
+    return;
+  }
+  box.innerHTML =
+    '<div class="modal-info-row"><span>Fee Circa ('+(rate*100).toFixed(1)+'%):</span><strong>S/'+fee.toFixed(2)+'</strong></div>'+
+    '<div class="modal-info-row"><span>Total a pagar (crédito):</span><strong>S/'+(m+fee).toFixed(2)+'</strong></div>';
+}
+
+function apConfirmar(pid, maxFin){
+  var m = parseFloat((document.getElementById('apMonto')||{}).value||'0')||0;
+  var d = parseInt((document.getElementById('apPlazo')||{}).value||'7',10);
+  if(m > maxFin + 0.001){ showToast('El monto supera la línea disponible','error'); return; }
   fetch('/api/backoffice/preventa/'+pid+'/aceptar', {
-    method:'POST', headers: authHeaders()
-  }).then(function(r){return r.json()}).then(function(d){
-    if(d && d.ok){
+    method:'POST',
+    headers: Object.assign({'Content-Type':'application/json'}, authHeaders()),
+    body: JSON.stringify({monto_financiado: m, plazo_dias: d})
+  }).then(function(r){return r.json()}).then(function(res){
+    if(res && res.ok){
       showToast('Pre-venta aceptada','success');
+      closeModal();
       loadPedidos();
     } else {
-      showToast('No se pudo aceptar','error');
+      showToast((res && res.detail) || 'No se pudo aceptar','error');
     }
   }).catch(function(e){showToast('Error: '+e.message,'error')});
 }

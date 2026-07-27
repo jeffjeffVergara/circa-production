@@ -29,6 +29,11 @@ def _sb_patch(path, data, params=None):
     r.raise_for_status()
     return r.json()
 
+def _sb_rpc(fn, payload=None):
+    r = httpx.post(f"{SUPABASE_URL}/rest/v1/rpc/{fn}", headers=_sb_headers(), json=payload or {}, timeout=15)
+    r.raise_for_status()
+    return r.json()
+
 
 def _sb_map_by_ids(table: str, select: str, ids: list[str], id_col: str = "id") -> dict:
     """Batch fetch rows by id (evita N+1)."""
@@ -549,8 +554,17 @@ async def admin_list_pedidos(
 
 
 @router.post("/admin/preventa/{pedido_id}/aceptar")
-async def admin_aceptar_preventa(pedido_id: str, admin: bool = Depends(verify_admin)):
-    rows = _sb_get("pedidos", {"select":"id,numero,estado,tipo_operacion","id":f"eq.{pedido_id}"})
+async def admin_aceptar_preventa(
+    pedido_id: str,
+    monto_financiado: float | None = None,
+    plazo_dias: int = 7,
+    admin: bool = Depends(verify_admin),
+):
+    rows = _sb_get(
+        "pedidos",
+        {"select": "id,numero,estado,tipo_operacion,bodega_id,total_pedido,monto_productos,monto_financiado",
+         "id": f"eq.{pedido_id}"},
+    )
     if not rows:
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
     p = rows[0]
@@ -558,16 +572,70 @@ async def admin_aceptar_preventa(pedido_id: str, admin: bool = Depends(verify_ad
         raise HTTPException(status_code=400, detail="El pedido no es pre-venta")
     if p.get("estado") != "preventa_confirmada":
         raise HTTPException(status_code=400, detail="La pre-venta no está en estado confirmada")
-    _sb_patch(
-        "pedidos",
-        {
-            "estado": "preventa_aceptada",
-            "preventa_aceptada_at": datetime.now(timezone.utc).isoformat(),
-            "preventa_aceptada_por": "admin",
-        },
-        {"id": f"eq.{pedido_id}"},
-    )
-    return {"ok": True, "pedido_id": pedido_id, "estado": "preventa_aceptada", "numero": p.get("numero")}
+
+    patch = {
+        "estado": "preventa_aceptada",
+        "preventa_aceptada_at": datetime.now(timezone.utc).isoformat(),
+        "preventa_aceptada_por": "admin",
+    }
+    bodega_id = p.get("bodega_id")
+    nueva_linea = None
+    monto = float(monto_financiado or 0)
+
+    if monto > 0:
+        # Fuente de verdad del fee: app/services/fees.py (7d=1.4%, 15d=3%, 30d=6%, min S/1)
+        from app.services.fees import calculate_fee, fee_regimen_para_pedido_nuevo, VALID_PLAZOS
+        plazo = int(plazo_dias or 7)
+        if plazo not in VALID_PLAZOS:
+            raise HTTPException(status_code=400, detail=f"Plazo inválido: {plazo}. Use 7, 15 o 30.")
+        bod_rows = _sb_get("bodegas", {"select": "linea_disponible,linea_aprobada", "id": f"eq.{bodega_id}"})
+        if not bod_rows:
+            raise HTTPException(status_code=404, detail="Bodega no encontrada")
+        ld = float(bod_rows[0].get("linea_disponible") or 0)
+        lap = float(bod_rows[0].get("linea_aprobada") or ld)
+        if monto > ld + 1e-6:
+            raise HTTPException(
+                status_code=400,
+                detail=f"El monto S/{monto:.2f} excede la línea disponible S/{ld:.2f}",
+            )
+        q = calculate_fee(monto, plazo)
+        fee = q["fee"]
+        rate = q["rate"]
+        total_ped = float(p.get("total_pedido") or p.get("monto_productos") or 0)
+        contado = round(max(total_ped - monto, 0.0), 2)
+        patch.update({
+            "monto_financiado": round(monto, 2),
+            "monto_contado": contado,
+            "fee_tasa": rate,
+            "fee_monto": fee,
+            "fee_regimen": fee_regimen_para_pedido_nuevo(),
+            "monto_total_credito": round(monto + fee, 2),
+            "total": round(monto + fee, 2),
+            "plazo_dias": plazo,
+        })
+        # Asignar número sólo si aún no tiene (mismo RPC que usa el flujo del cliente)
+        if not p.get("numero"):
+            try:
+                num = _sb_rpc("gen_numero_pedido", {"p_bodega_id": bodega_id})
+                if num:
+                    patch["numero"] = num
+            except Exception:
+                pass
+        # Descuento de línea con el mismo guard que pin_flow (nunca negativo, nunca sobre lo aprobado)
+        nueva_linea = min(max(ld - monto, 0.0), lap)
+
+    _sb_patch("pedidos", patch, {"id": f"eq.{pedido_id}"})
+    if nueva_linea is not None:
+        _sb_patch("bodegas", {"linea_disponible": nueva_linea}, {"id": f"eq.{bodega_id}"})
+
+    return {
+        "ok": True,
+        "pedido_id": pedido_id,
+        "estado": "preventa_aceptada",
+        "numero": patch.get("numero", p.get("numero")),
+        "monto_financiado": patch.get("monto_financiado", 0),
+        "plazo_dias": patch.get("plazo_dias"),
+    }
 
 @router.get("/admin/resumen")
 async def admin_resumen(

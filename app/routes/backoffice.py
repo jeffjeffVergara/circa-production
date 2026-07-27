@@ -710,9 +710,32 @@ async def cancelar_pedido(pedido_id: str, body: ReauthMixin, user: dict = Depend
     return {"ok": True, "estado": nuevo}
 
 
+class AceptarPreventaBody(BaseModel):
+    monto_financiado: Optional[float] = None
+    plazo_dias: int = 7
+
+
 @router.post("/preventa/{pedido_id}/aceptar")
-async def aceptar_preventa(pedido_id: str, user: dict = Depends(get_backoffice_writer)):
-    return await dist.admin_aceptar_preventa(pedido_id, admin=True)
+async def aceptar_preventa(
+    pedido_id: str,
+    body: AceptarPreventaBody = AceptarPreventaBody(),
+    user: dict = Depends(get_backoffice_writer),
+):
+    res = await dist.admin_aceptar_preventa(
+        pedido_id,
+        monto_financiado=body.monto_financiado,
+        plazo_dias=body.plazo_dias,
+        admin=True,
+    )
+    log_action(
+        user=user,
+        action="preventa_aceptar",
+        entity_type="pedido",
+        entity_id=pedido_id,
+        pedido_id=pedido_id,
+        after={"monto_financiado": body.monto_financiado, "plazo_dias": body.plazo_dias},
+    )
+    return res
 
 
 @router.post("/cobranza/{pedido_id}/verificar-pago")
