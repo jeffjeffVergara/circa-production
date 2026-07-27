@@ -1371,6 +1371,29 @@ function marcarPagoDistribuidor(pid){
   }).catch(function(e){ showToast('Error: '+e.message, 'error'); });
 }
 
+function _subirSustentoPago(url, inputEl, okMsg, reload){
+  if(isReadOnly()) return readOnlyBlocked();
+  var f = inputEl.files && inputEl.files[0];
+  if(!f){ return; }
+  if(f.size > 15*1024*1024){ showToast('Archivo muy grande (máx 15MB)','error'); inputEl.value=''; return; }
+  var fd = new FormData(); fd.append('file', f);
+  showToast('Subiendo sustento…','info');
+  fetch(url, {method:'POST', headers: authHeaders(), body: fd})
+    .then(function(r){ return r.json().then(function(d){ return {ok:r.ok, d:d}; }); })
+    .then(function(res){
+      if(res.ok && res.d && res.d.ok){ showToast(okMsg,'success'); reload(); }
+      else { showToast('No se pudo subir: '+((res.d && res.d.detail) || 'error'), 'error'); }
+    })
+    .catch(function(e){ showToast('Error: '+e.message, 'error'); })
+    .then(function(){ inputEl.value=''; });
+}
+function subirSustentoPagoCliente(pid, inputEl){
+  _subirSustentoPago('/api/backoffice/cobranza/'+pid+'/sustento-pago', inputEl, 'Sustento de pago guardado', loadCobranzas);
+}
+function subirSustentoPagoDistribuidor(pid, inputEl){
+  _subirSustentoPago('/api/backoffice/pedido/'+pid+'/pago-distribuidor/sustento', inputEl, 'Sustento guardado', loadPagos);
+}
+
 function loadPagos(){
   var fd = document.getElementById('pagosFechaDesde').value;
   var fh = document.getElementById('pagosFechaHasta').value;
@@ -1389,9 +1412,13 @@ function loadPagos(){
       html += '</tr></thead><tbody>';
       g.pedidos.forEach(function(p){
         var b = p.bodega || {};
-        var pagoDistBtn = p.circa_pagado_dist_at
+        var sustDist = p.pago_distribuidor_sustento_url
+            ? '<a href="'+p.pago_distribuidor_sustento_url+'" target="_blank" rel="noopener" class="btn btn-outline btn-small" style="text-decoration:none">📎 Ver sustento</a>'
+            : '<label class="btn btn-outline btn-small bo-write" style="cursor:pointer;margin:0">📎 Subir sustento<input type="file" accept="image/*,application/pdf" style="display:none" onchange="subirSustentoPagoDistribuidor(\''+p.id+'\', this)"></label>';
+        var pagoDistBtn = (p.circa_pagado_dist_at
             ? '<span class="pagos-paid">✓ Pagado '+fmtFechaCorta(p.circa_pagado_dist_at)+'</span>'
-            : '<button type="button" class="btn btn-green btn-small bo-write" onclick="marcarPagoDistribuidor(\''+p.id+'\')">Marcar pagado</button>';
+            : '<button type="button" class="btn btn-green btn-small bo-write" onclick="marcarPagoDistribuidor(\''+p.id+'\')">Marcar pagado</button>')
+            + ' ' + sustDist;
         html += '<tr>'+
           '<td class="pedido-num">'+(p.numero||'-')+'</td>'+
           '<td>'+escAttr(b.nombre_comercial||'?')+'</td>'+
@@ -1459,10 +1486,14 @@ function loadCobranzas(){
       var diasText = dias===null ? '-' : (dias<0 ? '<span style="color:var(--red)">'+Math.abs(dias)+' días vencido</span>' : dias+' días');
       var venc = fmtFechaCorta(c.fecha_vencimiento);
       var entr = fmtFechaCorta(c.fecha_entregado);
-      var actions = c.status_cobranza==='pagado' 
+      var sustCli = c.pago_cliente_sustento_url
+        ? '<a href="'+c.pago_cliente_sustento_url+'" target="_blank" rel="noopener" class="btn btn-outline btn-small" style="text-decoration:none">📎 Ver sustento</a>'
+        : (isReadOnly() ? '' : '<label class="btn btn-outline btn-small bo-write" style="cursor:pointer;margin:0">📎 Subir sustento<input type="file" accept="image/*,application/pdf" style="display:none" onchange="subirSustentoPagoCliente(\''+c.pedido_id+'\', this)"></label>');
+      var actions = (c.status_cobranza==='pagado'
         ? '<span style="color:var(--purple);font-size:11px">✓ Pagado</span>'
         : (isReadOnly() ? '<span style="color:var(--muted);font-size:11px">—</span>'
-          : '<button type="button" class="btn btn-green btn-small" onclick="openVerificarPago(\''+c.pedido_id+'\')">💵 Verificar pago</button> <button type="button" class="btn btn-outline btn-small" onclick="enviarRecordatorio(\''+c.pedido_id+'\')">📨 Recordatorio</button>');
+          : '<button type="button" class="btn btn-green btn-small" onclick="openVerificarPago(\''+c.pedido_id+'\')">💵 Verificar pago</button> <button type="button" class="btn btn-outline btn-small" onclick="enviarRecordatorio(\''+c.pedido_id+'\')">📨 Recordatorio</button>'))
+        + ' ' + sustCli;
       var ultRec = c.ultimo_recordatorio
         ? '<div style="font-size:10px;color:var(--muted);margin-top:6px">📨 Último: '+fmtFechaCorta(c.ultimo_recordatorio.fecha)+' · '+String(c.ultimo_recordatorio.dia||'').replace('dia','día ')+'</div>'
         : '';

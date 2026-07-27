@@ -750,6 +750,57 @@ async def enviar_recordatorio(pedido_id: str, user: dict = Depends(get_backoffic
     return await dist.admin_send_cobranza(pedido_id, admin=True)
 
 
+# ── Sustentos de pago (bucket `sustentos`, mismo patrón que prueba_entrega_url) ──
+async def _subir_sustento_pago(pedido_id: str, file: UploadFile, subcarpeta: str,
+                               url_col: str, ts_col: str, user: dict) -> dict:
+    """Sube la foto del sustento de pago a Storage y guarda la URL en el pedido."""
+    rows = _sb_get("pedidos", {"select": "id", "id": f"eq.{pedido_id}"})
+    if not rows:
+        raise HTTPException(status_code=404, detail="Pedido no encontrado")
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Archivo vacío")
+    ext = file.filename.split(".")[-1].lower() if file.filename and "." in file.filename else "jpg"
+    storage_path = f"{subcarpeta}/{pedido_id}.{ext}"
+    ahora = datetime.now(timezone.utc).isoformat()
+    try:
+        upload_url = f"{dist.SUPABASE_URL}/storage/v1/object/sustentos/{storage_path}"
+        r = httpx.post(upload_url, headers={
+            "apikey": dist.SUPABASE_KEY, "Authorization": f"Bearer {dist.SUPABASE_KEY}",
+            "Content-Type": file.content_type or "application/octet-stream",
+            "x-upsert": "true",
+        }, content=content, timeout=30)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"No se pudo subir a Storage: {e}")
+    if r.status_code >= 300:
+        raise HTTPException(status_code=502, detail=f"Storage respondió {r.status_code}")
+    public_url = f"{dist.SUPABASE_URL}/storage/v1/object/public/sustentos/{storage_path}"
+    _sb_patch("pedidos", {url_col: public_url, ts_col: ahora}, {"id": f"eq.{pedido_id}"})
+    log_action(user=user, action="subir_sustento_pago", entity_type="pedido",
+               entity_id=pedido_id, pedido_id=pedido_id, comment=subcarpeta)
+    return {"ok": True, "url": public_url}
+
+
+@router.post("/cobranza/{pedido_id}/sustento-pago")
+async def subir_sustento_pago_cliente(pedido_id: str, file: UploadFile = File(...),
+                                       user: dict = Depends(get_backoffice_writer)):
+    """Sustento del pago del cliente a Circa (pestaña Cobranzas)."""
+    return await _subir_sustento_pago(
+        pedido_id, file, "pagos_cliente",
+        "pago_cliente_sustento_url", "pago_cliente_sustento_subido_at", user,
+    )
+
+
+@router.post("/pedido/{pedido_id}/pago-distribuidor/sustento")
+async def subir_sustento_pago_distribuidor(pedido_id: str, file: UploadFile = File(...),
+                                            user: dict = Depends(get_backoffice_writer)):
+    """Sustento del pago de Circa al distribuidor (pestaña Pagos a distribuidores)."""
+    return await _subir_sustento_pago(
+        pedido_id, file, "pagos_distribuidor",
+        "pago_distribuidor_sustento_url", "pago_distribuidor_sustento_subido_at", user,
+    )
+
+
 class VendedorCreate(ReauthMixin):
     codigo: str
     nombre: str
