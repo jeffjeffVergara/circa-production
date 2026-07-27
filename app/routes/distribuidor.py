@@ -580,6 +580,7 @@ async def admin_aceptar_preventa(
     }
     bodega_id = p.get("bodega_id")
     nueva_linea = None
+    telefono_wa = ""
     monto = float(monto_financiado or 0)
 
     if monto > 0:
@@ -588,11 +589,12 @@ async def admin_aceptar_preventa(
         plazo = int(plazo_dias or 7)
         if plazo not in VALID_PLAZOS:
             raise HTTPException(status_code=400, detail=f"Plazo inválido: {plazo}. Use 7, 15 o 30.")
-        bod_rows = _sb_get("bodegas", {"select": "linea_disponible,linea_aprobada", "id": f"eq.{bodega_id}"})
+        bod_rows = _sb_get("bodegas", {"select": "linea_disponible,linea_aprobada,telefono_whatsapp", "id": f"eq.{bodega_id}"})
         if not bod_rows:
             raise HTTPException(status_code=404, detail="Bodega no encontrada")
         ld = float(bod_rows[0].get("linea_disponible") or 0)
         lap = float(bod_rows[0].get("linea_aprobada") or ld)
+        telefono_wa = (bod_rows[0].get("telefono_whatsapp") or "").strip()
         if monto > ld + 1e-6:
             raise HTTPException(
                 status_code=400,
@@ -627,6 +629,43 @@ async def admin_aceptar_preventa(
     _sb_patch("pedidos", patch, {"id": f"eq.{pedido_id}"})
     if nueva_linea is not None:
         _sb_patch("bodegas", {"linea_disponible": nueva_linea}, {"id": f"eq.{bodega_id}"})
+
+    # Confirmación por WhatsApp al bodeguero (mismo mensaje que el flujo del cliente por PIN)
+    if monto > 0 and telefono_wa:
+        try:
+            from datetime import timedelta
+            token = os.getenv("META_ACCESS_TOKEN", "")
+            phone_id = os.getenv("PHONE_NUMBER_ID", "1076586305533033")
+            phone = telefono_wa.replace("+", "")
+            num_msg = patch.get("numero") or p.get("numero") or ""
+            monto_msg = float(patch.get("monto_financiado", 0) or 0)
+            fee_msg = float(patch.get("fee_monto", 0) or 0)
+            contado_msg = float(patch.get("monto_contado", 0) or 0)
+            plazo_msg = int(patch.get("plazo_dias", 7) or 7)
+            fecha_pago = (datetime.now(timezone.utc) + timedelta(days=plazo_msg)).strftime("%d/%m/%Y")
+            conf_msg = (
+                f"✅ *Pedido #{num_msg} confirmado*\n"
+                f"Financiado con Circa\n\n"
+                f"Financiado: *S/{monto_msg:.2f}*\n"
+                f"Cuota Circa: *S/{monto_msg + fee_msg:.2f}*\n"
+                f"Plazo maximo: {plazo_msg} dias\n"
+            )
+            if contado_msg > 0:
+                conf_msg += f"\n\U0001f4b5 Al distribuidor (contado): *S/{contado_msg:.2f}*\n"
+            conf_msg += (
+                f"\n\U0001f7e3Yape / \U0001f7e2Plin  *986311567*\n"
+                f"Paga antes del {fecha_pago} y escribe *YA PAGUE*"
+            )
+            if token:
+                httpx.post(
+                    f"https://graph.facebook.com/v23.0/{phone_id}/messages",
+                    headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                    json={"messaging_product": "whatsapp", "to": phone, "type": "text", "text": {"body": conf_msg}},
+                    timeout=10,
+                )
+        except Exception as _wa_err:
+            import logging
+            logging.getLogger("circa").error(f"WA confirm admin_aceptar_preventa: {_wa_err}")
 
     return {
         "ok": True,
