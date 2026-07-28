@@ -48,6 +48,7 @@ PREVENTA_CANCEL_STATES = frozenset({
 VENTA_CANCEL_STATES = frozenset({
     "borrador", "confirmado", "recibido", "en_preparacion", "despachado", "en_camino",
 })
+CANCELABLE_STATES = PREVENTA_CANCEL_STATES | VENTA_CANCEL_STATES
 DEFAULT_LINEA_APROBADA = 500.0
 
 
@@ -687,27 +688,72 @@ async def cancelar_pedido(pedido_id: str, body: ReauthMixin, user: dict = Depend
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
     pedido = rows[0]
     estado = pedido.get("estado") or ""
-    if pedido.get("tipo_operacion") == "preventa":
-        if estado not in PREVENTA_CANCEL_STATES:
-            raise HTTPException(status_code=400, detail=f"No se puede cancelar preventa en estado '{estado}'")
+    if estado not in CANCELABLE_STATES:
+        raise HTTPException(status_code=400, detail=f"No se puede cancelar un pedido en estado '{estado}'")
+    # Preventa aun en etapa de preventa -> preventa_cancelada.
+    # Si ya avanzo a la via de venta (en_camino, despachado, etc.) o es venta -> rechazado.
+    if pedido.get("tipo_operacion") == "preventa" and estado in PREVENTA_CANCEL_STATES:
         nuevo = "preventa_cancelada"
     else:
-        if estado not in VENTA_CANCEL_STATES:
-            raise HTTPException(status_code=400, detail=f"No se puede cancelar pedido en estado '{estado}'")
         nuevo = "rechazado"
-    _sb_patch("pedidos", {"estado": nuevo}, {"id": f"eq.{pedido_id}"})
+
+    bodega_id = pedido.get("bodega_id")
+    monto_fin = float(pedido.get("monto_financiado") or 0)
+    patch = {"estado": nuevo}
+    linea_devuelta = 0.0
+    linea_disponible_nueva = None
+    aviso = None
+
+    if monto_fin > 0:
+        patch.update({
+            "monto_financiado": 0,
+            "fee_tasa": 0,
+            "fee_monto": 0,
+            "monto_total_credito": 0,
+            "monto_contado": 0,
+        })
+
+    _sb_patch("pedidos", patch, {"id": f"eq.{pedido_id}"})
+
+    if monto_fin > 0 and bodega_id:
+        try:
+            bod = _sb_get("bodegas", {"select": "linea_disponible,linea_aprobada", "id": f"eq.{bodega_id}"})
+            if bod:
+                ld = float(bod[0].get("linea_disponible") or 0)
+                lap = float(bod[0].get("linea_aprobada") or 0)
+                linea_disponible_nueva = min(ld + monto_fin, lap) if lap > 0 else ld + monto_fin
+                _sb_patch("bodegas", {"linea_disponible": linea_disponible_nueva}, {"id": f"eq.{bodega_id}"})
+                linea_devuelta = monto_fin
+        except Exception as e:
+            import logging
+            logging.getLogger("circa").error(f"cancelar_pedido devolver linea {pedido_id}: {e}")
+        if pedido.get("circa_pagado_dist_at"):
+            aviso = "Circa ya habia pagado al distribuidor por este pedido: revisar recuperacion con el distribuidor."
+
     log_action(
         user=user,
         action="pedido_cancel",
         entity_type="pedido",
         entity_id=pedido_id,
         comment=body.comentario,
-        before={"estado": estado},
-        after={"estado": nuevo},
-        bodega_id=pedido.get("bodega_id"),
+        before={"estado": estado, "monto_financiado": monto_fin},
+        after={
+            "estado": nuevo,
+            "financiamiento_revertido": monto_fin > 0,
+            "linea_devuelta": linea_devuelta,
+            "linea_disponible": linea_disponible_nueva,
+        },
+        bodega_id=bodega_id,
         pedido_id=pedido_id,
     )
-    return {"ok": True, "estado": nuevo}
+    return {
+        "ok": True,
+        "estado": nuevo,
+        "financiamiento_revertido": monto_fin > 0,
+        "linea_devuelta": linea_devuelta,
+        "linea_disponible": linea_disponible_nueva,
+        "aviso": aviso,
+    }
 
 
 class AceptarPreventaBody(BaseModel):
