@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Promociones ZOOM — Agosto 2026</title>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Poppins', sans-serif;
+    background: #f0f0f0;
+    display: flex;
+    justify-content: center;
+  }
+
+  .poster {
+    width: 100%;
+    max-width: 1200px;
+    background: #ffffff;
+    overflow: hidden;
+  }
+
+  .header {
+    background: linear-gradient(135deg, #0D1B2A 0%, #1B2D45 60%, #234E70 100%);
+    padding: 60px 80px 50px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .header::after {
+    content: '';
+    position: absolute;
+    top: -80px;
+    right: -80px;
+    width: 350px;
+    height: 350px;
+    background: rgba(91, 138, 245, 0.08);
+    border-radius: 50%;
+  }
+
+  .header-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 30px;
+  }
+
+  .header-brand {
+    font-size: 15px;
+    font-weight: 600;
+    color: rgba(255,255,255,0.5);
+    letter-spacing: 3px;
+    text-transform: uppercase;
+  }
+
+  .header-date {
+    font-size: 14px;
+    font-weight: 600;
+    color: #5B8AF5;
+    letter-spacing: 1px;
+  }
+
+  .header h1 {
+    font-size: 52px;
+    font-weight: 900;
+    color: #ffffff;
+    line-height: 1.1;
+    margin-bottom: 12px;
+  }
+
+  .header h1 span {
+    color: #5B8AF5;
+  }
+
+  .header p {
+    font-size: 18px;
+    color: rgba(255,255,255,0.65);
+    font-weight: 400;
+    max-width: 650px;
+  }
+
+  .section {
+    padding: 50px 80px 40px;
+  }
+
+  .section:nth-child(odd) {
+    background: #fafbfc;
+  }
+
+  .section-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 32px;
+  }
+
+  .section-icon {
+    width: 52px;
+    height: 52px;
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 26px;
+    flex-shrink: 0;
+  }
+
+  .section-title {
+    font-size: 24px;
+    font-weight: 800;
+    color: #0D1B2A;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .cat-papel .section-icon { background: #E8F0FE; }
+  .cat-cafe .section-icon { background: #F3E8D8; }
+  .cat-limpieza .section-icon { background: #E8F5E9; }
+  .cat-conservas .section-icon { background: #FDE8E8; }
+  .cat-infusiones .section-icon { background: #F3E5F5; }
+  .cat-mascotas .section-icon { background: #FFF3E0; }
+  .cat-snacks .section-icon { background: #FCE4EC; }
+  .cat-otros .section-icon { background: #E0F7FA; }
+
+  .promos-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+  }
+
+  .promo-card {
+    background: #ffffff;
+    border: 1.5px solid #e8ecf0;
+    border-radius: 16px;
+    padding: 28px 30px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .section:nth-child(odd) .promo-card {
+    border-color: #dfe3e8;
+  }
+
+  .promo-product {
+    font-size: 17px;
+    font-weight: 700;
+    color: #0D1B2A;
+    line-height: 1.3;
+  }
+
+  .promo-rule {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .promo-buy {
+    background: #0D1B2A;
+    color: #ffffff;
+    font-size: 14px;
+    font-weight: 700;
+    padding: 8px 16px;
+    border-radius: 8px;
+    white-space: nowrap;
+  }
+
+  .promo-arrow {
+    font-size: 20px;
+    color: #5B8AF5;
+    font-weight: 700;
+  }
+
+  .promo-get {
+    background: #5B8AF5;
+    color: #ffffff;
+    font-size: 14px;
+    font-weight: 700;
+    padding: 8px 16px;
+    border-radius: 8px;
+    white-space: nowrap;
+  }
+
+  .promo-gift {
+    font-size: 13px;
+    color: #6b7a8d;
+    font-weight: 500;
+  }
+
+  .promo-badge {
+    display: inline-block;
+    background: #E8F0FE;
+    color: #3B6DE0;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 4px 10px;
+    border-radius: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    align-self: flex-start;
+  }
+
+  .promo-badge.unico {
+    background: #FFF8E1;
+    color: #F57F17;
+  }
+
+  .promo-badge.dscto {
+    background: #E8F5E9;
+    color: #2E7D32;
+  }
+
+  .promo-card.wide {
+    grid-column: span 2;
+  }
+
+  @media (max-width: 768px) {
+    .header { padding: 36px 24px 30px; }
+    .header h1 { font-size: 32px; }
+    .header p { font-size: 15px; }
+    .section { padding: 32px 20px 28px; }
+    .section-title { font-size: 18px; }
+    .section-icon { width: 42px; height: 42px; font-size: 22px; }
+    .promos-grid { grid-template-columns: 1fr; }
+    .promo-card.wide { grid-column: span 1; }
+    .promo-card { padding: 20px; }
+    .promo-product { font-size: 15px; }
+    .promo-buy, .promo-get { font-size: 13px; padding: 7px 12px; }
+    .promo-rule { gap: 8px; }
+    .footer { padding: 28px 24px; flex-direction: column; gap: 20px; text-align: center; }
+    .footer-right { text-align: center; }
+  }
+
+  .footer {
+    background: #0D1B2A;
+    padding: 40px 80px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .footer-left {
+    color: rgba(255,255,255,0.5);
+    font-size: 14px;
+    font-weight: 500;
+  }
+
+  .footer-left strong {
+    color: #ffffff;
+    font-weight: 700;
+  }
+
+  .footer-right {
+    text-align: right;
+  }
+
+  .footer-cta {
+    font-size: 16px;
+    font-weight: 700;
+    color: #5B8AF5;
+    margin-bottom: 4px;
+  }
+
+  .footer-phone {
+    font-size: 14px;
+    color: rgba(255,255,255,0.5);
+    font-weight: 500;
+  }
+</style>
+</head>
+<body>
+<div class="poster">
+
+  <div class="header">
+    <div class="header-top">
+      <div class="header-brand">Circa × Zoom</div>
+      <div class="header-date">Agosto 2026</div>
+    </div>
+    <h1>Promociones <span>del mes</span></h1>
+    <p>Pide por WhatsApp y aprovecha las bonificaciones en tus productos favoritos.</p>
+  </div>
+
+  <!-- CAFÉS -->
+  <div class="section cat-cafe">
+    <div class="section-header">
+      <div class="section-icon">☕</div>
+      <div class="section-title">Cafetal</div>
+    </div>
+    <div class="promos-grid">
+
+      <div class="promo-card wide">
+        <div class="promo-product">Cafetal Gourmet / Instantáneo (toda la línea)</div>
+        <div class="promo-rule">
+          <div class="promo-buy">Por cada S/ 29</div>
+          <div class="promo-arrow">→</div>
+          <div class="promo-get">9.38% de descuento</div>
+        </div>
+        <div class="promo-gift">Aplica en toda la línea Gourmet e Instantáneo</div>
+        <div class="promo-badge dscto">Descuento acumulativo</div>
+      </div>
+
+      <div class="promo-card">
+        <div class="promo-product">Cafetal Clásico Tira 4 gr</div>
+        <div class="promo-rule">
+          <div class="promo-buy">Compra 1 tira</div>
+          <div class="promo-arrow">→</div>
+          <div class="promo-get">+3 sobres gratis</div>
+        </div>
+        <div class="promo-badge">Acumulativo</div>
+      </div>
+
+      <div class="promo-card">
+        <div class="promo-product">Cafetal Clásico Frasco 180 gr</div>
+        <div class="promo-rule">
+          <div class="promo-buy">Compra 1 und</div>
+          <div class="promo-arrow">→</div>
+          <div class="promo-get">+4 sobres Clásico 9gr</div>
+        </div>
+        <div class="promo-badge">Acumulativo</div>
+      </div>
+
+      <div class="promo-card">
+        <div class="promo-product">Cafetal Selecto 200 gr</div>
+        <div class="promo-rule">
+          <div class="promo-buy">Compra 12 und</div>
+          <div class="promo-arrow">→</div>
+          <div class="promo-get">+1 Selecto 200gr gratis</div>
+        </div>
+        <div class="promo-badge">Acumulativo</div>
+      </div>
+
+      <div class="promo-card">
+        <div class="promo-product">Cafetal Selecto 900 gr</div>
+        <div class="promo-rule">
+          <div class="promo-buy">Compra 1 und</div>
+          <div class="promo-arrow">→</div>
+          <div class="promo-get">+2 Selecto 80gr gratis</div>
+        </div>
+        <div class="promo-badge">Acumulativo</div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- PAPEL HIGIÉNICO & TOALLA -->
+  <div class="section cat-papel">
+    <div class="section-header">
+      <div class="section-icon">🧻</div>
+      <div class="section-title">Papel Higiénico y Toalla</div>
+    </div>
+    <div class="promos-grid">
+
+      <div class="promo-card">
+        <div class="promo-product">PH Paracas Celeste 4×6 (25m)</div>
+        <div class="promo-rule">
+          <div class="promo-buy">Compra 1 plancha</div>
+          <div class="promo-arrow">→</div>
+          <div class="promo-get">+1 pack Morado 1×20</div>
+        </div>
+        <div class="promo-badge">Acumulativo</div>
+      </div>
+
+      <div class="promo-card">
+        <div class="promo-product">PH Paracas Morado 1×20</div>
+        <div class="promo-rule">
+          <div class="promo-buy">Compra 1 plancha</div>
+          <div class="promo-arrow">→</div>
+          <div class="promo-get">+1 pack Morado 1×20</div>
+        </div>
+        <div class="promo-badge">Acumulativo</div>
+      </div>
+
+      <div class="promo-card">
+        <div class="promo-product">PH Paracas Black 4×6</div>
+        <div class="promo-rule">
+          <div class="promo-buy">Compra 5+ planchas</div>
+          <div class="promo-arrow">→</div>
+          <div class="promo-get">Hasta 6.8% dscto</div>
+        </div>
+        <div class="promo-gift">5 planchas: 3% · 10 planchas: 4.3% · 20 planchas: 6.8%</div>
+        <div class="promo-badge dscto">Escalonado</div>
+      </div>
+
+      <div class="promo-card">
+        <div class="promo-product">PT Paracas Rollazo 1×12</div>
+        <div class="promo-rule">
+          <div class="promo-buy">Compra 1 plancha</div>
+          <div class="promo-arrow">→</div>
+          <div class="promo-get">+1 pack Rollazo gratis</div>
+        </div>
+        <div class="promo-badge">Acumulativo</div>
+      </div>
+
+      <div class="promo-card">
+        <div class="promo-product">PT Paracas Multiusos 1×6</div>
+        <div class="promo-rule">
+          <div class="promo-buy">Compra 1 plancha</div>
+          <div class="promo-arrow">→</div>
+          <div class="promo-get">+1 pack Rollazo gratis</div>
+        </div>
+        <div class="promo-badge">Acumulativo</div>
+      </div>
+
+      <div class="promo-card">
+        <div class="promo-product">PT Pétalo Multiusos 1×6</div>
+        <div class="promo-rule">
+          <div class="promo-buy">Compra 1 plancha</div>
+          <div class="promo-arrow">→</div>
+          <div class="promo-get">+1 pack Rollazo Pétalo</div>
+        </div>
+        <div class="promo-badge">Acumulativo</div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- CONSERVAS -->
+  <div class="section cat-conservas">
+    <div class="section-header">
+      <div class="section-icon">🥫</div>
+      <div class="section-title">Conservas</div>
+    </div>
+    <div class="promos-grid">
+
+      <div class="promo-card">
+        <div class="promo-product">A1 Filete / Trozos / Grated (140gr)</div>
+        <div class="promo-rule">
+          <div class="promo-buy">Compra 8 und</div>
+          <div class="promo-arrow">→</div>
+          <div class="promo-get">+1 und gratis</div>
+        </div>
+        <div class="promo-gift">Aplica a cada variedad. Tiers: 8→+1 · 48→+7 · 240→+45</div>
+        <div class="promo-badge">Escalonado</div>
+      </div>
+
+      <div class="promo-card">
+        <div class="promo-product">Marinero Filete / Trozos / Grated / Bonito</div>
+        <div class="promo-rule">
+          <div class="promo-buy">Compra 6+ und</div>
+          <div class="promo-arrow">→</div>
+          <div class="promo-get">Hasta 12% dscto</div>
+        </div>
+        <div class="promo-gift">6 und: 4% · 48 und: 8.7% · 960 und: 10.7% · 2400 und: 12%</div>
+        <div class="promo-badge dscto">Escalonado</div>
+      </div>
+
+      <div class="promo-card">
+        <div class="promo-product">DUW Endiablado 54gr y 115gr</div>
+        <div class="promo-rule">
+          <div class="promo-buy">Compra 1 und</div>
+          <div class="promo-arrow">→</div>
+          <div class="promo-get">5% de descuento</div>
+        </div>
+        <div class="promo-badge dscto">Descuento acumulativo</div>
+      </div>
+
+      <div class="promo-card">
+        <div class="promo-product">Aconcagua Durazno 822gr</div>
+        <div class="promo-rule">
+          <div class="promo-buy">Compra 1 und</div>
+          <div class="promo-arrow">→</div>
+          <div class="promo-get">20% de descuento</div>
+        </div>
+        <div class="promo-badge dscto">Descuento acumulativo</div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- LIMPIEZA -->
+  <div class="section cat-limpieza">
+    <div class="section-header">
+      <div class="section-icon">🫧</div>
+      <div class="section-title">Limpieza</div>
+    </div>
+    <div class="promos-grid">
+
+      <div class="promo-card">
+        <div class="promo-product">Caricia Bebé 100 gr</div>
+        <div class="promo-rule">
+          <div class="promo-buy">Compra 6 und</div>
+          <div class="promo-arrow">→</div>
+          <div class="promo-get">+1 und gratis</div>
+        </div>
+        <div class="promo-badge">Acumulativo</div>
+      </div>
+
+      <div class="promo-card">
+        <div class="promo-product">Caricia Bebé 2100 gr</div>
+        <div class="promo-rule">
+          <div class="promo-buy">Compra 3 und</div>
+          <div class="promo-arrow">→</div>
+          <div class="promo-get">+1 Caricia 700gr gratis</div>
+        </div>
+        <div class="promo-badge">Acumulativo</div>
+      </div>
+
+      <div class="promo-card">
+        <div class="promo-product">Jabón Moncler 145 gr (varios)</div>
+        <div class="promo-rule">
+          <div class="promo-buy">Compra 4 und</div>
+          <div class="promo-arrow">→</div>
+          <div class="promo-get">+1 pack PH Morado 2×10</div>
+        </div>
+        <div class="promo-gift">Tiers: 4→+1 PH · 12→+1 Moncler · 96→+10 Moncler</div>
+        <div class="promo-badge">Escalonado</div>
+      </div>
+
+      <div class="promo-card">
+        <div class="promo-product">Suavizante Caricia y Ña Pancha</div>
+        <div class="promo-rule">
+          <div class="promo-buy">Compra 6 und</div>
+          <div class="promo-arrow">→</div>
+          <div class="promo-get">+1 und gratis</div>
+        </div>
+        <div class="promo-badge">Acumulativo</div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- INFUSIONES & OTROS -->
+  <div class="section cat-infusiones">
+    <div class="section-header">
+      <div class="section-icon">🍵</div>
+      <div class="section-title">Infusiones, Granos y más</div>
+    </div>
+    <div class="promos-grid">
+
+      <div class="promo-card">
+        <div class="promo-product">Hornimans Té Canela y Clavo ×25</div>
+        <div class="promo-rule">
+          <div class="promo-buy">Compra 6 und</div>
+          <div class="promo-arrow">→</div>
+          <div class="promo-get">+1 und gratis</div>
+        </div>
+        <div class="promo-badge">Acumulativo</div>
+      </div>
+
+      <div class="promo-card">
+        <div class="promo-product">Evaporada Bella Holandesa 405gr</div>
+        <div class="promo-rule">
+          <div class="promo-buy">Compra 3 und</div>
+          <div class="promo-arrow">→</div>
+          <div class="promo-get">8.3% de descuento</div>
+        </div>
+        <div class="promo-badge dscto">Descuento</div>
+      </div>
+
+      <div class="promo-card">
+        <div class="promo-product">Quinua Incasur (Superior y Selecto)</div>
+        <div class="promo-rule">
+          <div class="promo-buy">Compra 1 und</div>
+          <div class="promo-arrow">→</div>
+          <div class="promo-get">6% de descuento</div>
+        </div>
+        <div class="promo-badge dscto">Descuento</div>
+      </div>
+
+      <div class="promo-card">
+        <div class="promo-product">Galleta Quinua Incasur (todas)</div>
+        <div class="promo-rule">
+          <div class="promo-buy">Compra 1 und</div>
+          <div class="promo-arrow">→</div>
+          <div class="promo-get">6% de descuento</div>
+        </div>
+        <div class="promo-badge dscto">Descuento</div>
+      </div>
+
+      <div class="promo-card">
+        <div class="promo-product">Aceite Del Campo 900ml</div>
+        <div class="promo-rule">
+          <div class="promo-buy">Compra 12 und</div>
+          <div class="promo-arrow">→</div>
+          <div class="promo-get">+1 Azúcar Rubia 1kg</div>
+        </div>
+        <div class="promo-badge">Acumulativo</div>
+      </div>
+
+      <div class="promo-card">
+        <div class="promo-product">Crema de Habas Incasur 150gr</div>
+        <div class="promo-rule">
+          <div class="promo-buy">Compra 1 und</div>
+          <div class="promo-arrow">→</div>
+          <div class="promo-get">10% de descuento</div>
+        </div>
+        <div class="promo-badge dscto">Descuento</div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- SNACKS -->
+  <div class="section cat-snacks">
+    <div class="section-header">
+      <div class="section-icon">🍫</div>
+      <div class="section-title">Chocolates y Snacks</div>
+    </div>
+    <div class="promos-grid">
+
+      <div class="promo-card">
+        <div class="promo-product">Brownie Clásico / Fudge ×110gr</div>
+        <div class="promo-rule">
+          <div class="promo-buy">Compra 12 und</div>
+          <div class="promo-arrow">→</div>
+          <div class="promo-get">+1 Brownie Fudge gratis</div>
+        </div>
+        <div class="promo-badge">Acumulativo</div>
+      </div>
+
+      <div class="promo-card">
+        <div class="promo-product">Protein Bar (Caramel / Chocolate)</div>
+        <div class="promo-rule">
+          <div class="promo-buy">Compra 9 und</div>
+          <div class="promo-arrow">→</div>
+          <div class="promo-get">+1 Barra Frutos gratis</div>
+        </div>
+        <div class="promo-badge">Acumulativo</div>
+      </div>
+
+      <div class="promo-card">
+        <div class="promo-product">Barra de Frutos Secos (todas)</div>
+        <div class="promo-rule">
+          <div class="promo-buy">Compra 9 und</div>
+          <div class="promo-arrow">→</div>
+          <div class="promo-get">+1 Barra Frutos Rojos</div>
+        </div>
+        <div class="promo-badge">Acumulativo</div>
+      </div>
+
+      <div class="promo-card">
+        <div class="promo-product">Kiwigen Super Kids 15gr</div>
+        <div class="promo-rule">
+          <div class="promo-buy">Compra 1 tira</div>
+          <div class="promo-arrow">→</div>
+          <div class="promo-get">2% de descuento</div>
+        </div>
+        <div class="promo-badge dscto">Descuento</div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- MASCOTAS -->
+  <div class="section cat-mascotas">
+    <div class="section-header">
+      <div class="section-icon">🐕</div>
+      <div class="section-title">Mascotas</div>
+    </div>
+    <div class="promos-grid">
+
+      <div class="promo-card">
+        <div class="promo-product">Ricocan ×15 kg (varios)</div>
+        <div class="promo-rule">
+          <div class="promo-buy">Compra 1 und</div>
+          <div class="promo-arrow">→</div>
+          <div class="promo-get">+1 Paté Carne gratis</div>
+        </div>
+        <div class="promo-badge">Acumulativo</div>
+      </div>
+
+      <div class="promo-card">
+        <div class="promo-product">Ricocan ×22 kg (varios)</div>
+        <div class="promo-rule">
+          <div class="promo-buy">Compra 1 und</div>
+          <div class="promo-arrow">→</div>
+          <div class="promo-get">+1 Ricocan Cordero gratis</div>
+        </div>
+        <div class="promo-badge">Acumulativo</div>
+      </div>
+
+      <div class="promo-card">
+        <div class="promo-product">Thor ×25+1 kg (varios)</div>
+        <div class="promo-rule">
+          <div class="promo-buy">Compra 1 und</div>
+          <div class="promo-arrow">→</div>
+          <div class="promo-get">+1 Thor Carne Hígado</div>
+        </div>
+        <div class="promo-badge">Acumulativo</div>
+      </div>
+
+      <div class="promo-card">
+        <div class="promo-product">Ricocan / Ricocat Paté ×330gr</div>
+        <div class="promo-rule">
+          <div class="promo-buy">Compra 9 und</div>
+          <div class="promo-arrow">→</div>
+          <div class="promo-get">+1 Paté gratis</div>
+        </div>
+        <div class="promo-gift">9 und: +1 · 24 und: +3</div>
+        <div class="promo-badge">Escalonado</div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="footer">
+    <div class="footer-left">
+      Promociones válidas para <strong>agosto 2026</strong><br>
+      Sujeto a stock disponible
+    </div>
+    <div class="footer-right">
+      <div class="footer-cta">Pide por WhatsApp 📲</div>
+      <div class="footer-phone">986 311 567</div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>
