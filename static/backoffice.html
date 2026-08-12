@@ -892,6 +892,7 @@ Busca una bodega y ejecuta acciones de soporte <strong>sin tocar código</strong
 </tr></thead>
 <tbody id="bodegasBody"><tr><td colspan="13" class="empty">Cargando...</td></tr></tbody>
 </table>
+<div id="bodegasPager" style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 4px 4px;font-size:13px;color:var(--muted)"></div>
 </div>
 </div>
 <div id="bodegaPerfilWrap" class="section bodega-perfil-wrap">
@@ -1421,7 +1422,7 @@ function loadPagos(){
             + ' ' + sustDist;
         html += '<tr>'+
           '<td class="pedido-num">'+(p.numero||'-')+'</td>'+
-          '<td>'+escAttr(b.nombre_comercial||'?')+'</td>'+
+          '<td>'+escAttr(b.nombre_comercial||b.razon_social||'?')+'</td>'+
           '<td class="pagos-col-monto">S/'+Number(p.monto_productos||0).toFixed(2)+'</td>'+
           '<td class="pagos-col-monto pagos-col-circa">S/'+Number(p.monto_financiado||0).toFixed(2)+'</td>'+
           '<td><span class="badge badge-'+escAttr(p.estado||'')+'">'+escAttr(p.estado||'')+'</span></td>'+
@@ -1499,7 +1500,7 @@ function loadCobranzas(){
         : '';
       return '<tr class="cob-row">'+
         '<td data-label="Pedido" class="pedido-num mono">'+(c.numero||'-')+'</td>'+
-        '<td data-label="Bodega">'+(b.nombre_comercial||'?')+
+        '<td data-label="Bodega">'+(b.nombre_comercial||b.razon_social||'?')+
         ((b.dni_representante||b.ruc)?('<div style="font-size:10px;color:var(--muted);margin-top:3px">'+(b.dni_representante?('DNI '+b.dni_representante):'')+(b.ruc?((b.dni_representante?' \u00b7 ':'')+'RUC '+b.ruc):'')+'</div>'):'')+
         (b.telefono_whatsapp?('<div style="font-size:10px;margin-top:2px"><a href="https://wa.me/'+String(b.telefono_whatsapp).replace(/\D/g,'')+'" target="_blank" rel="noopener" style="color:var(--green);text-decoration:none">\ud83d\udcf1 '+b.telefono_whatsapp+'</a></div>'):'')+'</td>'+
         '<td data-label="Distribuidor" style="color:var(--muted)">'+(dt.nombre_comercial||'?')+'</td>'+
@@ -3784,6 +3785,8 @@ function clearBodegaFilters(){
 }
 
 var _bodegasOpsCache = null;
+var _bodegasPage = 1;
+var _bodegasLastSig = null;
 function exportBodegasCSV(){
   if(!_bodegasOpsCache || !_bodegasOpsCache.length) return;
   var headers = ['Nombre','Razón Social','Representante','DNI','Teléfono','WA Link','Vendedor','Supervisor','Grupo','Estado','Enrolada','Onboarding','Fase Bot','Línea Aprob','Línea Disp','Uso %','Pedidos','Saldo','Mora días','Distrito','Última actividad'];
@@ -3835,6 +3838,9 @@ function loadBodegas(){
   var lineaFilt = (document.getElementById('bodegasFiltroLinea')||{}).value || '';
   var faseBotFilt = (document.getElementById('bodegasFiltroFaseBot')||{}).value || '';
 
+  var _sig = [search,estado,vendedor,supervisor,grupo,enrolada,con_pedido,moraFilt,lineaFilt,faseBotFilt,(window.MODE_FILTER||'real')].join('|');
+  if(_sig !== _bodegasLastSig){ _bodegasPage = 1; _bodegasLastSig = _sig; }
+
   var url = '/api/backoffice/bodegas-ops?';
   if(search) url += 'search='+encodeURIComponent(search)+'&';
   if(estado) url += 'estado='+estado+'&';
@@ -3847,12 +3853,15 @@ function loadBodegas(){
   if(lineaFilt === 'usando') url += 'linea_usando=si&';
   else if(lineaFilt === 'sin_usar') url += 'linea_usando=no&';
   if(faseBotFilt) url += 'fase_bot='+encodeURIComponent(faseBotFilt)+'&';
+  url += 'page='+_bodegasPage+'&page_size=50';
 
   return api(url).then(function(d){
     var bodegas = d.bodegas || [];
     _bodegasOpsCache = bodegas;
+    var _tot = (typeof d.total==='number') ? d.total : bodegas.length;
     document.getElementById('bodegasInfoLine').textContent =
-      '· '+bodegas.length+' bodegas · filtro: '+(window.MODE_FILTER||'real');
+      '· '+_tot.toLocaleString('es-PE')+' bodegas · filtro: '+(window.MODE_FILTER||'real');
+    _renderBodegasPager(d);
 
     // KPIs
     if(d.kpis) _renderBodegaKpis(d.kpis);
@@ -3925,6 +3934,27 @@ function loadBodegas(){
   });
 }
 
+function _renderBodegasPager(d){
+  var el = document.getElementById('bodegasPager');
+  if(!el) return;
+  var total = d.total||0, ps = d.page_size||50, pg = d.page||1;
+  var pages = d.total_pages || Math.max(1, Math.ceil(total/ps));
+  if(total <= ps){ el.innerHTML=''; return; }
+  var desde = total ? ((pg-1)*ps+1) : 0;
+  var hasta = Math.min(pg*ps, total);
+  el.innerHTML =
+    '<span>Mostrando '+desde.toLocaleString('es-PE')+'\u2013'+hasta.toLocaleString('es-PE')+' de '+total.toLocaleString('es-PE')+'</span>'+
+    '<span style="display:flex;align-items:center;gap:8px">'+
+      '<button class="btn btn-outline btn-small" '+(pg<=1?'disabled':'')+' onclick="bodegasGoPage(-1)">\u2039 Anterior</button>'+
+      '<span>P\u00e1gina '+pg+' de '+pages+'</span>'+
+      '<button class="btn btn-outline btn-small" '+(pg>=pages?'disabled':'')+' onclick="bodegasGoPage(1)">Siguiente \u203a</button>'+
+    '</span>';
+}
+function bodegasGoPage(delta){
+  _bodegasPage = Math.max(1, (_bodegasPage||1) + delta);
+  loadBodegas();
+  var w = document.getElementById('bodegasListWrap'); if(w) w.scrollIntoView({behavior:'smooth',block:'start'});
+}
 function hacecuanto(iso){
   if(!iso) return '—';
   var d = new Date(iso);
