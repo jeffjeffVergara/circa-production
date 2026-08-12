@@ -3638,11 +3638,11 @@ function loadModeCounts(){
   var prev = window.MODE_FILTER;
   window.MODE_FILTER = 'real';
   return Promise.all([
-    fetch('/api/backoffice/bodegas?test=real&estado=', {headers: authHeaders()})
+    fetch('/api/backoffice/bodegas-ops?test=real', {headers: authHeaders()})
       .then(function(r){ return r.json(); })
       .then(function(d){ document.getElementById('cntReales').textContent = d.total || 0; })
       .catch(function(){}),
-    fetch('/api/backoffice/bodegas?test=test&estado=', {headers: authHeaders()})
+    fetch('/api/backoffice/bodegas-ops?test=test', {headers: authHeaders()})
       .then(function(r){ return r.json(); })
       .then(function(d){ document.getElementById('cntTests').textContent = d.total || 0; })
       .catch(function(){})

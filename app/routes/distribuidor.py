@@ -472,14 +472,27 @@ def _bodega_ids_por_test(test_param):
     is_test = str(test_param).lower() in ("test", "true", "prueba", "pruebas", "1")
     es_test_val = "true" if is_test else "false"
     try:
-        rows = _sb_get("bodegas", {
-            "select": "id",
-            "es_test": f"eq.{es_test_val}",
-            "limit": "2000"
-        })
-        return set(r.get("id") for r in rows if r.get("id"))
+        # PostgREST topa en 1000 filas/req: paginar para traer TODAS las ids
+        # (con 4600+ bodegas reales, un solo request perdia pedidos en las vistas admin).
+        ids = set()
+        start, step = 0, 1000
+        while True:
+            rows = _sb_get("bodegas", {
+                "select": "id",
+                "es_test": f"eq.{es_test_val}",
+                "order": "id",
+                "limit": str(step),
+                "offset": str(start),
+            })
+            if not rows:
+                break
+            ids.update(r.get("id") for r in rows if r.get("id"))
+            if len(rows) < step:
+                break
+            start += step
+        return ids
     except Exception:
-        return None  # si la columna no existe todavía, no filtrar
+        return None  # si la columna no existe todavia, no filtrar
 
 
 def _days_ago_iso(days: int) -> str:
@@ -1170,7 +1183,7 @@ async def admin_export_pagos(
         except: g["distribuidor"] = {}
         for p in g["pedidos"]:
             try:
-                b = _sb_get("bodegas", {"select":"nombre_comercial,ruc,telefono_whatsapp","id":f"eq.{p.get('bodega_id','')}"})
+                b = _sb_get("bodegas", {"select":"nombre_comercial,razon_social,ruc,telefono_whatsapp","id":f"eq.{p.get('bodega_id','')}"})
                 p["bodega"] = b[0] if b else {}
             except: p["bodega"] = {}
     
