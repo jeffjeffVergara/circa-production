@@ -110,36 +110,37 @@ async def bodegas_ops_handler(
     # Set filtrado completo (columnas livianas) para KPIs y opciones de filtro
     agg_cols = ("estado,enrolada,linea_aprobada,linea_usada,n_pedidos,dias_mora,"
                 "monto_vencido,saldo,vendedor_codigo,supervisor,grupo")
-    # PostgREST topea en 1000 filas/req -> traer el set filtrado completo por bloques
-    allrows = []
-    _start, _step = 0, 1000
-    while True:
-        _chunk = _apply(db.sb.table("v_bodegas_ops").select(agg_cols)).range(_start, _start + _step - 1).execute().data or []
-        allrows.extend(_chunk)
-        if len(_chunk) < _step or _start > 300000:
-            break
-        _start += _step
-    total = len(allrows)
+    # Total y KPIs con count='exact' (ignora el tope de 1000 filas/req de PostgREST)
+    def _count(cond=None):
+        qb = _apply(db.sb.table("v_bodegas_ops").select("id", count="exact"))
+        if cond:
+            qb = cond(qb)
+        return qb.limit(1).execute().count or 0
+
+    total = _count()
     if total == 0:
         return {"bodegas": [], "total": 0, "page": page, "page_size": page_size,
                 "total_pages": 0, "kpis": _kpis_vacios(), "filtros_disponibles": _filtros_vacios()}
 
-    enroladas_cnt = sum(1 for r in allrows if r.get("enrolada"))
+    enroladas_cnt = _count(lambda q: q.eq("enrolada", True))
+    mora_rows = _apply(db.sb.table("v_bodegas_ops").select("monto_vencido").gt("dias_mora", 0)).range(0, 9999).execute().data or []
     kpis = {
         "total": total,
-        "activas": sum(1 for r in allrows if r.get("estado") == "activo"),
+        "activas": _count(lambda q: q.eq("estado", "activo")),
         "enroladas": enroladas_cnt,
         "pendientes_enrolamiento": total - enroladas_cnt,
-        "usando_linea": sum(1 for r in allrows if _f(r.get("linea_usada")) > 0 and r.get("enrolada")),
-        "linea_sin_uso": sum(1 for r in allrows if _f(r.get("linea_aprobada")) > 0 and _f(r.get("linea_usada")) == 0 and r.get("enrolada")),
-        "sin_pedido": sum(1 for r in allrows if (r.get("n_pedidos") or 0) == 0),
-        "en_mora": sum(1 for r in allrows if (r.get("dias_mora") or 0) > 0),
-        "monto_mora": round(sum(_f(r.get("monto_vencido")) for r in allrows if (r.get("dias_mora") or 0) > 0), 2),
+        "usando_linea": _count(lambda q: q.gt("linea_usada", 0).eq("enrolada", True)),
+        "linea_sin_uso": _count(lambda q: q.gt("linea_aprobada", 0).eq("linea_usada", 0).eq("enrolada", True)),
+        "sin_pedido": _count(lambda q: q.eq("n_pedidos", 0)),
+        "en_mora": _count(lambda q: q.gt("dias_mora", 0)),
+        "monto_mora": round(sum(_f(r.get("monto_vencido")) for r in mora_rows), 2),
     }
+    # Opciones de filtro: una muestra basta (cada vendedor/supervisor tiene muchas bodegas)
+    sample = _apply(db.sb.table("v_bodegas_ops").select("vendedor_codigo,supervisor,grupo")).range(0, 999).execute().data or []
     filtros = {
-        "vendedores": sorted({r["vendedor_codigo"] for r in allrows if r.get("vendedor_codigo")}),
-        "supervisores": sorted({r["supervisor"] for r in allrows if r.get("supervisor")}),
-        "grupos": sorted({r["grupo"] for r in allrows if r.get("grupo")}),
+        "vendedores": sorted({r["vendedor_codigo"] for r in sample if r.get("vendedor_codigo")}),
+        "supervisores": sorted({r["supervisor"] for r in sample if r.get("supervisor")}),
+        "grupos": sorted({r["grupo"] for r in sample if r.get("grupo")}),
     }
 
     # Página
