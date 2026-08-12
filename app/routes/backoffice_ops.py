@@ -110,7 +110,15 @@ async def bodegas_ops_handler(
     # Set filtrado completo (columnas livianas) para KPIs y opciones de filtro
     agg_cols = ("estado,enrolada,linea_aprobada,linea_usada,n_pedidos,dias_mora,"
                 "monto_vencido,saldo,vendedor_codigo,supervisor,grupo")
-    allrows = _apply(db.sb.table("v_bodegas_ops").select(agg_cols)).range(0, 199999).execute().data or []
+    # PostgREST topea en 1000 filas/req -> traer el set filtrado completo por bloques
+    allrows = []
+    _start, _step = 0, 1000
+    while True:
+        _chunk = _apply(db.sb.table("v_bodegas_ops").select(agg_cols)).range(_start, _start + _step - 1).execute().data or []
+        allrows.extend(_chunk)
+        if len(_chunk) < _step or _start > 300000:
+            break
+        _start += _step
     total = len(allrows)
     if total == 0:
         return {"bodegas": [], "total": 0, "page": page, "page_size": page_size,
