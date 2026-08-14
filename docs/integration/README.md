@@ -1,8 +1,8 @@
-# Circa Integration API v1
+# Circa · API Socios v1
 
-API pública para que **ERPs externos** (caja negra del distribuidor) se integren a Circa sin duplicar altas de clientes, preventas y pedidos.
+API pública para que **sistemas de socios distribuidores** se integren a Circa sin duplicar altas de clientes, preventas y pedidos.
 
-Circa **expone** la API. El proveedor del ERP **consume** la API.
+Circa **expone** la API. El socio **consume** la API.
 
 ## Documentación interactiva (Swagger / OpenAPI)
 
@@ -45,7 +45,7 @@ El token lo genera / entrega Circa Ops por distribuidor. No compartir tokens del
 ### Reglas de negocio importantes
 
 1. `POST /bodegas` **no libera línea** (`linea_disponible = 0`).
-2. Use `external_id` del ERP para no duplicar.
+2. Use `external_id` del sistema del socio para no duplicar.
 3. Activación del dueño (selfie / PIN) sigue en WhatsApp Circa.
 4. Preventa requiere bodega existente (crear primero con upsert).
 
@@ -61,7 +61,7 @@ curl -s -X POST "$BASE/bodegas" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "external_id": "ERP-001",
+    "external_id": "SOCIO-001",
     "telefono_whatsapp": "987654321",
     "dni_representante": "42868000",
     "razon_social": "BODEGA DEMO",
@@ -81,5 +81,5 @@ Ejecutar en Supabase:
 
 - Webhooks (`bodega.activa`, `pedido.estado_cambiado`, `pago.confirmado`)
 - Invite WhatsApp desde API
-- Catálogo / mapeo SKU ERP↔Circa
+- Catálogo / mapeo SKU socio↔Circa
 - Rate limiting por token

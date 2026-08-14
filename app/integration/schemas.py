@@ -12,11 +12,11 @@ class ErrorResponse(BaseModel):
 
 
 class BodegaUpsertRequest(BaseModel):
-    """Alta o actualización de bodega/cliente desde el ERP."""
+    """Alta o actualización de bodega/cliente desde el sistema del socio."""
 
     external_id: Optional[str] = Field(
         default=None,
-        description="ID del cliente en el ERP (recomendado para no duplicar).",
+        description="ID del cliente en el sistema del socio (recomendado para no duplicar).",
         max_length=64,
     )
     telefono_whatsapp: str = Field(
@@ -78,12 +78,12 @@ class PreventaItem(BaseModel):
 class PreventaCreateRequest(BaseModel):
     external_id: Optional[str] = Field(
         default=None,
-        description="ID de la preventa/pedido en el ERP",
+        description="ID de la preventa/pedido en el sistema del socio",
     )
     bodega_id: Optional[str] = Field(default=None, description="UUID Circa de la bodega")
     bodega_external_id: Optional[str] = Field(
         default=None,
-        description="external_id de la bodega en el ERP (alternativa a bodega_id)",
+        description="external_id de la bodega en el sistema del socio (alternativa a bodega_id)",
     )
     telefono_whatsapp: Optional[str] = Field(
         default=None,

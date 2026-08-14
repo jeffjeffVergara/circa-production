@@ -1,4 +1,4 @@
-"""Auth para Circa Integration API v1 (ERP externos → Circa)."""
+"""Auth para Circa Integration API v1 (socios → Circa)."""
 from __future__ import annotations
 
 import logging

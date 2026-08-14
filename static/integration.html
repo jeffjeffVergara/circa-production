@@ -3,46 +3,47 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Circa Integration API</title>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <title>Circa · API Socios</title>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg: #0b1220;
-      --card: #121a2b;
-      --text: #e8eefc;
-      --muted: #93a0b8;
-      --accent: #5b8af5;
-      --line: #243049;
+      --bg: #0a1628;
+      --card: #111d32;
+      --text: #e4eaf0;
+      --muted: #7a8fa0;
+      --accent: #00c2ff;
+      --cta: #00d4aa;
+      --line: #1a2e45;
     }
     * { box-sizing: border-box; }
     body {
       margin: 0;
       min-height: 100vh;
-      font-family: "DM Sans", system-ui, sans-serif;
+      font-family: "Plus Jakarta Sans", system-ui, sans-serif;
       background:
-        radial-gradient(900px 400px at 10% -10%, rgba(91,138,245,.25), transparent 55%),
-        radial-gradient(700px 360px at 100% 0%, rgba(34,211,238,.12), transparent 50%),
+        radial-gradient(900px 400px at 10% -10%, rgba(0,194,255,.18), transparent 55%),
+        radial-gradient(700px 360px at 100% 0%, rgba(0,212,170,.10), transparent 50%),
         var(--bg);
       color: var(--text);
     }
     .wrap { max-width: 820px; margin: 0 auto; padding: 64px 24px 80px; }
-    .logo { font-weight: 700; letter-spacing: .08em; font-size: 14px; color: var(--accent); text-transform: uppercase; }
-    h1 { font-size: clamp(2rem, 4vw, 2.8rem); line-height: 1.15; margin: 18px 0 12px; }
+    .logo { font-weight: 800; letter-spacing: .08em; font-size: 14px; color: var(--accent); text-transform: uppercase; }
+    h1 { font-size: clamp(2rem, 4vw, 2.8rem); line-height: 1.15; margin: 18px 0 12px; font-weight: 800; }
     p.lead { color: var(--muted); font-size: 1.05rem; line-height: 1.6; max-width: 40rem; }
     .grid { display: grid; gap: 14px; margin-top: 36px; }
     @media (min-width: 700px) { .grid { grid-template-columns: 1fr 1fr; } }
     a.card {
       display: block; text-decoration: none; color: inherit;
       background: var(--card); border: 1px solid var(--line);
-      border-radius: 16px; padding: 22px 20px;
+      border-radius: 12px; padding: 22px 20px;
       transition: border-color .15s, transform .15s;
     }
     a.card:hover { border-color: var(--accent); transform: translateY(-2px); }
-    a.card strong { display: block; font-size: 1.05rem; margin-bottom: 6px; }
+    a.card strong { display: block; font-size: 1.05rem; margin-bottom: 6px; font-weight: 700; }
     a.card span { color: var(--muted); font-size: .92rem; line-height: 1.45; }
     .code {
       margin-top: 36px; padding: 16px 18px; border-radius: 12px;
-      background: #0a101c; border: 1px solid var(--line);
+      background: #071018; border: 1px solid var(--line);
       font-family: "JetBrains Mono", monospace; font-size: 13px; color: #c7d4f0;
       overflow-x: auto;
     }
@@ -52,9 +53,9 @@
 <body>
   <div class="wrap">
     <div class="logo">Circa · PALI S.A.C.</div>
-    <h1>Integration API para ERPs</h1>
+    <h1>API para socios</h1>
     <p class="lead">
-      Documentación abierta para que el sistema del distribuidor (ERP externo)
+      Documentación abierta para que el sistema del socio distribuidor
       se conecte a Circa: enrolamiento de bodegas, preventas y pedidos —
       sin duplicar registros.
     </p>
@@ -66,7 +67,7 @@
       </a>
       <a class="card" href="/api/v1/redoc">
         <strong>ReDoc</strong>
-        <span>Documentación legible para compartir con el proveedor del ERP.</span>
+        <span>Documentación legible para compartir con el equipo del socio.</span>
       </a>
       <a class="card" href="/api/v1/openapi.json">
         <strong>OpenAPI JSON</strong>

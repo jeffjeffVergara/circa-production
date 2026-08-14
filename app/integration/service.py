@@ -121,7 +121,7 @@ def upsert_bodega(dist: dict, body: dict) -> dict:
     if external_id:
         patch["external_id"] = external_id
 
-    # No tocar línea disponible en upsert ERP (regla: solo liberar al firmar contrato)
+    # No tocar línea disponible en upsert de socio (regla: solo liberar al firmar contrato)
     patch = {k: v for k, v in patch.items() if v is not None}
 
     if existing:
@@ -255,7 +255,7 @@ def create_preventa(dist: dict, body: dict) -> dict:
         "distribuidor_id": dist["id"],
         "estado": "preventa_confirmada",
         "tipo_operacion": "preventa",
-        "origen": "preventa_erp_api",
+        "origen": "preventa_socio_api",
         "items_json": items,
         "total_pedido": round(total, 2),
         "monto_financiado": 0,

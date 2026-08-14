@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Circa Integration API v1",
-    "description": "API para ERPs de distribuidores → Circa.\n\nBase URL producción: https://circa-production-c517.up.railway.app/api/v1\n\nSwagger: {{baseUrl}}/docs\n\nAuth: Authorization Bearer {{api_token}}",
+    "description": "API para socios distribuidores → Circa.\n\nBase URL producción: https://circa-production-c517.up.railway.app/api/v1\n\nSwagger: {{baseUrl}}/docs\n\nAuth: Authorization Bearer {{api_token}}",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -70,7 +70,7 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"external_id\": \"ERP-CLI-001\",\n  \"telefono_whatsapp\": \"987654321\",\n  \"dni_representante\": \"42868000\",\n  \"razon_social\": \"BODEGA DEMO ERP\",\n  \"nombre_comercial\": \"Bodega Demo\",\n  \"solo_dni_sin_ruc\": true\n}"
+              "raw": "{\n  \"external_id\": \"SOCIO-CLI-001\",\n  \"telefono_whatsapp\": \"987654321\",\n  \"dni_representante\": \"42868000\",\n  \"razon_social\": \"BODEGA DEMO SOCIO\",\n  \"nombre_comercial\": \"Bodega Demo\",\n  \"solo_dni_sin_ruc\": true\n}"
             },
             "url": "{{baseUrl}}/bodegas"
           }
@@ -131,7 +131,7 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"external_id\": \"ERP-PV-001\",\n  \"bodega_id\": \"{{bodega_id}}\",\n  \"vendedor_codigo\": \"VW01\",\n  \"items\": [\n    {\n      \"sku\": \"P0001\",\n      \"nombre\": \"Producto demo\",\n      \"cantidad\": 2,\n      \"precio_unitario\": 15.5\n    }\n  ]\n}"
+              "raw": "{\n  \"external_id\": \"SOCIO-PV-001\",\n  \"bodega_id\": \"{{bodega_id}}\",\n  \"vendedor_codigo\": \"VW01\",\n  \"items\": [\n    {\n      \"sku\": \"P0001\",\n      \"nombre\": \"Producto demo\",\n      \"cantidad\": 2,\n      \"precio_unitario\": 15.5\n    }\n  ]\n}"
             },
             "url": "{{baseUrl}}/preventas"
           }
@@ -176,7 +176,7 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"estado\": \"preventa_aceptada\",\n  \"comentario\": \"Aceptada desde ERP\"\n}"
+              "raw": "{\n  \"estado\": \"preventa_aceptada\",\n  \"comentario\": \"Aceptada desde sistema del socio\"\n}"
             },
             "url": "{{baseUrl}}/pedidos/{{pedido_id}}/estado"
           }

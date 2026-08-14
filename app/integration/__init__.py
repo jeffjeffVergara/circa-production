@@ -1,4 +1,4 @@
-"""Circa Integration API — paquete público para ERPs externos."""
+"""Circa Integration API — paquete público para socios distribuidores."""
 
 from app.integration.app import integration_app
 
