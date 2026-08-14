@@ -74,6 +74,10 @@ app.include_router(support_inbox_router)
 app.include_router(vendedor_router)
 app.include_router(backoffice_router)
 
+# Integration API v1 (ERPs externos) — Swagger propio en /api/v1/docs
+from app.integration import integration_app  # noqa: E402
+app.mount("/api/v1", integration_app)
+
 
 def _bot_wa_number() -> str:
     return TWILIO_FROM.replace("whatsapp:", "").replace("+", "").strip()

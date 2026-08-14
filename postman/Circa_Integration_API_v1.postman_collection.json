@@ -1,0 +1,187 @@
+{
+  "info": {
+    "name": "Circa Integration API v1",
+    "description": "API para ERPs de distribuidores → Circa.\n\nBase URL producción: https://circa-production-c517.up.railway.app/api/v1\n\nSwagger: {{baseUrl}}/docs\n\nAuth: Authorization Bearer {{api_token}}",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "https://circa-production-c517.up.railway.app/api/v1"
+    },
+    {
+      "key": "api_token",
+      "value": "PEGAR_TOKEN_DISTRIBUIDOR"
+    },
+    {
+      "key": "bodega_id",
+      "value": ""
+    },
+    {
+      "key": "pedido_id",
+      "value": ""
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{api_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "Meta",
+      "item": [
+        {
+          "name": "Health",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/health"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Bodegas",
+      "item": [
+        {
+          "name": "Upsert bodega (enrolar)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  var d = pm.response.json();",
+                  "  if (d.id) pm.collectionVariables.set('bodega_id', d.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"external_id\": \"ERP-CLI-001\",\n  \"telefono_whatsapp\": \"987654321\",\n  \"dni_representante\": \"42868000\",\n  \"razon_social\": \"BODEGA DEMO ERP\",\n  \"nombre_comercial\": \"Bodega Demo\",\n  \"solo_dni_sin_ruc\": true\n}"
+            },
+            "url": "{{baseUrl}}/bodegas"
+          }
+        },
+        {
+          "name": "Listar bodegas",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/bodegas?limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["bodegas"],
+              "query": [{ "key": "limit", "value": "20" }, { "key": "q", "value": "", "disabled": true }]
+            }
+          }
+        },
+        {
+          "name": "Obtener bodega",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/bodegas/{{bodega_id}}"
+          }
+        },
+        {
+          "name": "Patch bodega",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre_comercial\": \"Bodega Demo Actualizada\",\n  \"distrito\": \"Surquillo\"\n}"
+            },
+            "url": "{{baseUrl}}/bodegas/{{bodega_id}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Preventas",
+      "item": [
+        {
+          "name": "Crear preventa",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  var d = pm.response.json();",
+                  "  if (d.id) pm.collectionVariables.set('pedido_id', d.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"external_id\": \"ERP-PV-001\",\n  \"bodega_id\": \"{{bodega_id}}\",\n  \"vendedor_codigo\": \"VW01\",\n  \"items\": [\n    {\n      \"sku\": \"P0001\",\n      \"nombre\": \"Producto demo\",\n      \"cantidad\": 2,\n      \"precio_unitario\": 15.5\n    }\n  ]\n}"
+            },
+            "url": "{{baseUrl}}/preventas"
+          }
+        },
+        {
+          "name": "Listar preventas",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/preventas?limit=20"
+          }
+        },
+        {
+          "name": "Obtener preventa",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/preventas/{{pedido_id}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Pedidos",
+      "item": [
+        {
+          "name": "Listar pedidos",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/pedidos?limit=20"
+          }
+        },
+        {
+          "name": "Obtener pedido",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/pedidos/{{pedido_id}}"
+          }
+        },
+        {
+          "name": "Cambiar estado",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"estado\": \"preventa_aceptada\",\n  \"comentario\": \"Aceptada desde ERP\"\n}"
+            },
+            "url": "{{baseUrl}}/pedidos/{{pedido_id}}/estado"
+          }
+        }
+      ]
+    }
+  ]
+}
