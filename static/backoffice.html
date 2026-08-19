@@ -3309,8 +3309,27 @@ function cpReadReauth(){
 }
 
 function cpValidateReauth(p){
-  if(p.comentario.length < 8){ showToast('Comentario mínimo 8 caracteres','error'); return false; }
-  if(!p.password){ showToast('Ingresa tu contraseña','error'); return false; }
+  return boValidateReauth(p.comentario, p.password);
+}
+
+function formatApiDetail(d){
+  if(!d) return 'Error';
+  var det = d.detail;
+  if(typeof det === 'string') return det;
+  if(Array.isArray(det)){
+    return det.map(function(e){
+      var loc = (e.loc || []).slice(1).join('.');
+      return (loc ? loc + ': ' : '') + (e.msg || 'inválido');
+    }).join('; ');
+  }
+  return typeof det === 'object' ? JSON.stringify(det) : String(det);
+}
+
+function boValidateReauth(comentario, password){
+  comentario = (comentario || '').trim();
+  password = password || '';
+  if(comentario.length < 8){ showToast('Comentario mínimo 8 caracteres','error'); return false; }
+  if(!password){ showToast('Ingresa tu contraseña backoffice','error'); return false; }
   return true;
 }
 
@@ -3503,7 +3522,7 @@ function cpSubmitActivate(){
     password: p.password
   }).then(function(x){
     hidePanelLoader();
-    if(!x.ok){ showToast((x.d && x.d.detail) || 'Error','error'); return; }
+    if(!x.ok){ showToast(formatApiDetail(x.d),'error'); return; }
     showToast('Bodega activada','success');
     cpReloadSelected();
   }).catch(function(e){
@@ -4749,25 +4768,28 @@ function openCreateBodega(){
     '<div class="modal-field"><label>Nombre comercial</label><input id="nbComercial" class="input"></div>'+
     '<div class="modal-field"><label>Teléfono WhatsApp</label><input id="nbTel" class="input" placeholder="999888777"></div>'+
     '<div class="modal-field"><label>Línea aprobada (S/)</label><input class="input" value="500" readonly disabled style="opacity:.7;cursor:not-allowed"></div>'+
-    '<div class="modal-field"><label>Comentario</label><input id="nbComentario" class="input"></div>'+
-    '<div class="modal-field"><label>Contraseña</label><input type="password" id="nbPass" class="input"></div>'+
+    '<div class="modal-field"><label>Comentario (mín. 8 caracteres)</label><input id="nbComentario" class="input"></div>'+
+    '<div class="modal-field"><label>Contraseña backoffice</label><input type="password" id="nbPass" class="input"></div>'+
     '<label style="display:block;margin:8px 0;color:var(--muted);font-size:12px"><input type="checkbox" id="nbTest" '+(esTest?'checked':'')+'> Bodega de prueba</label>'+
     '<div class="modal-actions"><button class="btn btn-outline" onclick="closeModal()">Cancelar</button>'+
     '<button class="btn btn-green" onclick="submitCreateBodega()">Crear</button></div></div></div>';
 }
 
 function submitCreateBodega(){
+  var comentario = document.getElementById('nbComentario').value.trim();
+  var password = document.getElementById('nbPass').value || USER_PASSWORD;
+  if(!boValidateReauth(comentario, password)) return;
   apiPost('/api/backoffice/bodegas', {
     ruc: document.getElementById('nbRuc').value.trim(),
     razon_social: document.getElementById('nbRazon').value.trim(),
     nombre_comercial: document.getElementById('nbComercial').value.trim(),
     telefono_whatsapp: document.getElementById('nbTel').value.trim(),
-    comentario: document.getElementById('nbComentario').value.trim(),
-    password: document.getElementById('nbPass').value || USER_PASSWORD,
+    comentario: comentario,
+    password: password,
     es_test: document.getElementById('nbTest').checked,
     estado: 'preaprobada'
   }).then(function(x){
-    if(!x.ok) throw new Error(x.d.detail || 'Error');
+    if(!x.ok) throw new Error(formatApiDetail(x.d));
     closeModal();
     showToast('Bodega creada','success');
     loadBodegas();
@@ -4784,8 +4806,8 @@ function openEditBodega(){
       '<div class="modal-field"><label>Teléfono</label><input id="ebTel" class="input" value="'+(b.telefono_whatsapp||'')+'"></div>'+
       '<div class="modal-field"><label>Línea aprobada</label><input id="ebLineaA" type="number" class="input" value="'+(b.linea_aprobada||0)+'"></div>'+
       '<div class="modal-field"><label>Línea disponible</label><input id="ebLineaD" type="number" class="input" value="'+(b.linea_disponible||0)+'"></div>'+
-      '<div class="modal-field"><label>Comentario</label><input id="ebComentario" class="input"></div>'+
-      '<div class="modal-field"><label>Contraseña</label><input type="password" id="ebPass" class="input"></div>'+
+      '<div class="modal-field"><label>Comentario (mín. 8 caracteres)</label><input id="ebComentario" class="input"></div>'+
+      '<div class="modal-field"><label>Contraseña backoffice</label><input type="password" id="ebPass" class="input"></div>'+
       '<div class="modal-actions"><button class="btn btn-outline" onclick="closeModal()">Cancelar</button>'+
       '<button class="btn btn-green" onclick="submitEditBodega()">Guardar</button></div></div></div>';
     document.getElementById('ebEstado').value = b.estado || 'preaprobada';
@@ -4793,15 +4815,24 @@ function openEditBodega(){
 }
 
 function submitEditBodega(){
+  var comentario = document.getElementById('ebComentario').value.trim();
+  var password = document.getElementById('ebPass').value || USER_PASSWORD;
+  if(!boValidateReauth(comentario, password)) return;
+  var lineaA = parseFloat(document.getElementById('ebLineaA').value);
+  var lineaD = parseFloat(document.getElementById('ebLineaD').value);
+  if(isNaN(lineaA) || lineaA < 0 || isNaN(lineaD) || lineaD < 0){
+    showToast('Línea aprobada y disponible deben ser números ≥ 0','error');
+    return;
+  }
   apiPatch('/api/backoffice/bodega/'+bodegaModalId, {
     estado: document.getElementById('ebEstado').value,
     telefono_whatsapp: document.getElementById('ebTel').value.trim(),
-    linea_aprobada: parseFloat(document.getElementById('ebLineaA').value),
-    linea_disponible: parseFloat(document.getElementById('ebLineaD').value),
-    comentario: document.getElementById('ebComentario').value.trim(),
-    password: document.getElementById('ebPass').value || USER_PASSWORD
+    linea_aprobada: lineaA,
+    linea_disponible: lineaD,
+    comentario: comentario,
+    password: password
   }).then(function(x){
-    if(!x.ok) throw new Error(x.d.detail || 'Error');
+    if(!x.ok) throw new Error(formatApiDetail(x.d));
     closeModal();
     showToast('Bodega actualizada','success');
     openBodegaDetail(bodegaModalId);
