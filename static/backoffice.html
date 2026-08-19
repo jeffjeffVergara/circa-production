@@ -498,6 +498,7 @@ tr:hover td{background:var(--card-hover)}
 <button class="tab" onclick="showTab('scoring')" id="tab-scoring">🎯 Score bodegas</button>
 <button class="tab" onclick="showTab('pedidos')" id="tab-pedidos">📋 Pedidos</button>
 <button class="tab" onclick="showTab('vendedores')" id="tab-vendedores">🧑‍💼 Vendedores</button>
+<button class="tab" onclick="showTab('carteras')" id="tab-carteras">🗂️ Carteras</button>
 </div>
 
 <!-- DASHBOARD TAB -->
@@ -926,6 +927,47 @@ Busca una bodega y ejecuta acciones de soporte <strong>sin tocar código</strong
 </div>
 </div>
 
+<!-- CARTERAS TAB -->
+<div id="view-carteras" style="display:none">
+<div class="section">
+<h2>🗂️ Carteras vendedor ↔ bodega
+<button class="btn btn-green btn-small bo-write" style="float:right;margin-top:-4px" onclick="openAssignCartera()">+ Asignar</button>
+</h2>
+<p style="font-size:13px;color:var(--muted);margin:-8px 0 14px;max-width:920px">
+Relación operativa entre vendedores de campo y bodegas. Usa los filtros para segmentar por supervisor, grupo o vendedor; agrupa para ver totales.
+</p>
+<div class="filters" id="carterasFilters">
+<select id="carterasFiltroVendedor" onchange="loadCarteras()"><option value="">Todos los vendedores</option></select>
+<select id="carterasFiltroSupervisor" onchange="loadCarteras()"><option value="">Todos los supervisores</option></select>
+<select id="carterasFiltroGrupo" onchange="loadCarteras()"><option value="">Todos los grupos</option></select>
+<select id="carterasFiltroRol" onchange="loadCarteras()"><option value="">Todos los roles</option></select>
+<select id="carterasFiltroActivo" onchange="loadCarteras()">
+  <option value="">Activas e inactivas</option>
+  <option value="true" selected>Solo activas</option>
+  <option value="false">Solo inactivas</option>
+</select>
+<select id="carterasGroupBy" onchange="renderCarterasTable()">
+  <option value="">Sin agrupar</option>
+  <option value="vendedor">Agrupar por vendedor</option>
+  <option value="supervisor">Agrupar por supervisor</option>
+  <option value="grupo">Agrupar por grupo</option>
+</select>
+<input id="carterasSearch" type="search" placeholder="Buscar bodega, DNI, RUC, vendedor…" onkeydown="if(event.key==='Enter')loadCarteras()">
+<button class="btn btn-outline btn-small" onclick="loadCarteras()">Buscar</button>
+<button class="btn btn-outline btn-small" onclick="clearCarterasFilters()" title="Limpiar filtros">✕</button>
+</div>
+<div id="carterasResumen" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px"></div>
+<div class="table-wrap">
+<table><thead><tr>
+<th>Vendedor</th><th>Bodega</th><th>Doc</th><th>Distrito</th><th>Rol</th><th>Grupo</th><th>Supervisor</th><th>Visita</th><th>Entrega</th><th>Estado</th><th>Asignación</th><th></th>
+</tr></thead>
+<tbody id="carterasBody"><tr><td colspan="12" class="empty">Cargando...</td></tr></tbody>
+</table>
+</div>
+<p id="carterasFoot" style="font-size:12px;color:var(--muted);margin-top:10px"></p>
+</div>
+</div>
+
 <!-- PROCESOS BATCH -->
 <div id="view-procesos" style="display:none">
 <div class="section">
@@ -1109,7 +1151,7 @@ function apiPatch(path, body){
   }).then(function(r){ return r.json().then(function(d){ return {ok:r.ok,d:d}; }); });
 }
 
-var MAIN_TABS = ['dashboard','bodegas','pagos','cobranzas','scoring','pedidos','vendedores'];
+var MAIN_TABS = ['dashboard','bodegas','pagos','cobranzas','scoring','pedidos','vendedores','carteras'];
 var SIDEBAR_NAV = ['procesos','soporte','creditmodel','observability','controlpanel'];
 var ALL_VIEWS = MAIN_TABS.concat(SIDEBAR_NAV);
 
@@ -1220,6 +1262,7 @@ function showTab(name){
     controlpanel: 'Busca por DNI o teléfono…',
     pedidos: 'Cargando pedidos…',
     vendedores: 'Cargando vendedores…',
+    carteras: 'Cargando carteras…',
     soporte: 'Cargando inbox WhatsApp…',
     procesos: 'Cargando procesos batch…'
   };
@@ -1234,6 +1277,7 @@ function showTab(name){
     controlpanel: function(){ return Promise.resolve(); },
     pedidos: loadPedidos,
     vendedores: loadVendedores,
+    carteras: loadCarteras,
     soporte: loadSoporteInbox,
     procesos: loadBatchCenter
   };
@@ -3630,6 +3674,7 @@ function reloadActiveTab(){
   if(id === 'pedidos') return loadPedidos();
   if(id === 'bodegas') return loadBodegas();
   if(id === 'vendedores') return loadVendedores();
+  if(id === 'carteras') return loadCarteras();
   if(id === 'soporte') return loadSoporteInbox();
   return Promise.resolve();
 }
@@ -4398,7 +4443,8 @@ function loadVendedores(){
       var link = v.url_app ? '<a href="'+v.url_app+'" target="_blank" rel="noopener">Abrir app</a>' : '—';
       var wa = v.telefono_whatsapp || '—';
       return '<tr><td class="mono">'+v.codigo+'</td><td>'+v.nombre+'</td><td class="mono">'+wa+'</td><td>'+st+'</td><td>'+acc+'</td><td>'+link+'</td>'+
-        '<td><button class="btn btn-outline btn-small" onclick="viewVendedorPreventas(\''+v.id+'\')">Preventas</button></td></tr>';
+        '<td><button class="btn btn-outline btn-small" onclick="viewVendedorCartera(\''+v.id+'\',\''+escAttr(v.codigo||'')+'\')">Cartera</button> '+
+        '<button class="btn btn-outline btn-small" onclick="viewVendedorPreventas(\''+v.id+'\')">Preventas</button></td></tr>';
     }).join('') : '<tr><td colspan="7" class="empty">Sin vendedores</td></tr>';
   }).catch(function(e){
     document.getElementById('vendedoresBody').innerHTML = '<tr><td colspan="7" class="empty">'+e.message+'</td></tr>';
@@ -4444,6 +4490,254 @@ function viewVendedorPreventas(vid){
       '<table style="width:100%;font-size:12px"><thead><tr><th>Pedido</th><th>Bodega</th><th>Estado</th><th>Link</th></tr></thead><tbody>'+rows+'</tbody></table>'+
       '<div class="modal-actions"><button class="btn btn-outline" onclick="closeModal()">Cerrar</button></div></div></div>';
   });
+}
+
+// ── Carteras vendedor ↔ bodega ──
+
+var _carterasCache = [];
+
+function _carterasQueryParams(){
+  var p = [];
+  var vid = document.getElementById('carterasFiltroVendedor');
+  var sup = document.getElementById('carterasFiltroSupervisor');
+  var grp = document.getElementById('carterasFiltroGrupo');
+  var rol = document.getElementById('carterasFiltroRol');
+  var act = document.getElementById('carterasFiltroActivo');
+  var q = document.getElementById('carterasSearch');
+  if(vid && vid.value) p.push('vendedor_id='+encodeURIComponent(vid.value));
+  if(sup && sup.value) p.push('supervisor='+encodeURIComponent(sup.value));
+  if(grp && grp.value) p.push('grupo='+encodeURIComponent(grp.value));
+  if(rol && rol.value) p.push('rol='+encodeURIComponent(rol.value));
+  if(act && act.value) p.push('activo='+encodeURIComponent(act.value));
+  if(q && q.value.trim()) p.push('q='+encodeURIComponent(q.value.trim()));
+  p.push('test='+(window.MODE_FILTER||'real'));
+  p.push('limit=400');
+  return p.join('&');
+}
+
+function _populateCarterasSelect(selectId, options, placeholder){
+  var sel = document.getElementById(selectId);
+  if(!sel) return;
+  var current = sel.value;
+  sel.innerHTML = '<option value="">'+placeholder+'</option>' + (options||[]).map(function(o){
+    var val = (typeof o === 'object') ? o.value : o;
+    var label = (typeof o === 'object') ? o.label : o;
+    return '<option value="'+String(val).replace(/"/g,'&quot;')+'"'+(String(val)===current?' selected':'')+'>'+String(label)+'</option>';
+  }).join('');
+}
+
+function _populateCarterasFilters(f){
+  if(!f) return;
+  _populateCarterasSelect('carterasFiltroVendedor', (f.vendedores||[]).map(function(v){
+    return {value:v.id, label:(v.codigo||'')+' · '+(v.nombre||'')};
+  }), 'Todos los vendedores');
+  _populateCarterasSelect('carterasFiltroSupervisor', (f.supervisores||[]), 'Todos los supervisores');
+  _populateCarterasSelect('carterasFiltroGrupo', (f.grupos||[]), 'Todos los grupos');
+  _populateCarterasSelect('carterasFiltroRol', (f.roles||[]), 'Todos los roles');
+}
+
+function loadCarterasFilters(){
+  return api('/api/backoffice/carteras/filtros').then(function(f){
+    _populateCarterasFilters(f);
+    return f;
+  }).catch(function(){ return null; });
+}
+
+function renderCarterasResumen(resumen){
+  var el = document.getElementById('carterasResumen');
+  if(!el || !resumen) { if(el) el.innerHTML=''; return; }
+  var groupBy = (document.getElementById('carterasGroupBy')||{}).value;
+  var map = groupBy === 'supervisor' ? resumen.por_supervisor
+    : groupBy === 'grupo' ? resumen.por_grupo
+    : resumen.por_vendedor;
+  var chips = Object.keys(map||{}).sort().slice(0, 12).map(function(k){
+    return '<span class="badge badge-al_dia" style="margin:0">'+escAttr(k)+': '+map[k]+'</span>';
+  }).join('');
+  el.innerHTML = chips || '';
+}
+
+function _carteraDoc(b){
+  if(!b) return '—';
+  if(b.ruc) return 'RUC '+b.ruc;
+  if(b.dni) return 'DNI '+b.dni;
+  return '—';
+}
+
+function _carteraRowHtml(row){
+  var v = row.vendedor||{};
+  var b = row.bodega||{};
+  var vendLbl = (v.codigo||'')+' · '+(v.nombre||'?');
+  var bodegaLbl = b.nombre||'?';
+  var stB = b.estado||'—';
+  var stA = row.activo
+    ? '<span class="badge badge-al_dia">activa</span>'
+    : '<span class="badge badge-vencido">inactiva</span>';
+  var test = b.es_test ? ' <span class="badge-test">TEST</span>' : '';
+  return '<tr>'+
+    '<td class="mono" style="white-space:nowrap">'+escAttr(vendLbl)+'</td>'+
+    '<td><a href="#" onclick="openBodegaDetail(\''+b.id+'\');return false;">'+escAttr(bodegaLbl)+'</a>'+test+'</td>'+
+    '<td class="mono">'+escAttr(_carteraDoc(b))+'</td>'+
+    '<td>'+escAttr(b.distrito||'—')+'</td>'+
+    '<td class="mono">'+escAttr(row.rol||'—')+'</td>'+
+    '<td class="mono">'+escAttr(row.grupo||'—')+'</td>'+
+    '<td>'+escAttr(row.supervisor||'—')+'</td>'+
+    '<td class="mono">'+escAttr(row.dia_visita||'—')+'</td>'+
+    '<td class="mono">'+escAttr(row.dia_entrega||'—')+'</td>'+
+    '<td>'+escAttr(stB)+'</td>'+
+    '<td>'+stA+'</td>'+
+    '<td><button class="btn btn-outline btn-small bo-write" onclick="openEditCartera(\''+row.id+'\')">Editar</button></td>'+
+    '</tr>';
+}
+
+function renderCarterasTable(){
+  var tbody = document.getElementById('carterasBody');
+  var foot = document.getElementById('carterasFoot');
+  var items = _carterasCache || [];
+  if(!tbody) return;
+  if(!items.length){
+    tbody.innerHTML = '<tr><td colspan="12" class="empty">Sin asignaciones con estos filtros.</td></tr>';
+    if(foot) foot.textContent = '';
+    renderCarterasResumen({});
+    return;
+  }
+  var groupBy = (document.getElementById('carterasGroupBy')||{}).value;
+  if(!groupBy){
+    tbody.innerHTML = items.map(_carteraRowHtml).join('');
+  } else {
+    var groups = {};
+    items.forEach(function(row){
+      var key = groupBy === 'supervisor' ? (row.supervisor||'Sin supervisor')
+        : groupBy === 'grupo' ? (row.grupo||'Sin grupo')
+        : ((row.vendedor&&row.vendedor.codigo)||'')+' · '+((row.vendedor&&row.vendedor.nombre)||'?');
+      if(!groups[key]) groups[key] = [];
+      groups[key].push(row);
+    });
+    var html = '';
+    Object.keys(groups).sort().forEach(function(key){
+      html += '<tr class="group-header"><td colspan="12" style="background:var(--card-hover);font-weight:700;padding:10px 12px">'
+        +escAttr(key)+' <span style="color:var(--muted);font-weight:500">('+groups[key].length+')</span></td></tr>';
+      html += groups[key].map(_carteraRowHtml).join('');
+    });
+    tbody.innerHTML = html;
+  }
+  if(foot) foot.textContent = items.length+' asignación(es) · modo '+(window.MODE_FILTER||'real');
+}
+
+function loadCarteras(){
+  var tbody = document.getElementById('carterasBody');
+  if(tbody) tbody.innerHTML = '<tr><td colspan="12" class="empty">Cargando…</td></tr>';
+  return loadCarterasFilters().then(function(){
+    if(window._carteraPendingVendedorId){
+      var sel = document.getElementById('carterasFiltroVendedor');
+      if(sel) sel.value = window._carteraPendingVendedorId;
+      window._carteraPendingVendedorId = null;
+    }
+    return api('/api/backoffice/carteras?'+_carterasQueryParams());
+  }).then(function(d){
+    _carterasCache = d.items || [];
+    renderCarterasResumen(d.resumen || {});
+    renderCarterasTable();
+  }).catch(function(e){
+    if(tbody) tbody.innerHTML = '<tr><td colspan="12" class="empty">'+escAttr(e.message||'Error')+'</td></tr>';
+  });
+}
+
+function clearCarterasFilters(){
+  ['carterasFiltroVendedor','carterasFiltroSupervisor','carterasFiltroGrupo','carterasFiltroRol'].forEach(function(id){
+    var el = document.getElementById(id);
+    if(el) el.value = '';
+  });
+  var act = document.getElementById('carterasFiltroActivo');
+  if(act) act.value = 'true';
+  var q = document.getElementById('carterasSearch');
+  if(q) q.value = '';
+  var g = document.getElementById('carterasGroupBy');
+  if(g) g.value = '';
+  loadCarteras();
+}
+
+function viewVendedorCartera(vid, codigo){
+  window._carteraPendingVendedorId = vid;
+  showTab('carteras');
+}
+
+function openAssignCartera(){
+  loadCarterasFilters().then(function(f){
+    var opts = (f&&f.vendedores||[]).map(function(v){
+      return '<option value="'+v.id+'">'+escAttr((v.codigo||'')+' · '+(v.nombre||''))+'</option>';
+    }).join('');
+    document.getElementById('modalContainer').innerHTML =
+      '<div class="modal-overlay open" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:520px"><h3>Asignar bodega a vendedor</h3>'+
+      '<div class="modal-field"><label>Vendedor</label><select id="caVendedor" class="input"><option value="">Elegir…</option>'+opts+'</select></div>'+
+      '<div class="modal-field"><label>Bodega (UUID)</label><input id="caBodegaId" class="input" placeholder="id de bodega"></div>'+
+      '<div class="modal-field"><label>Supervisor</label><input id="caSupervisor" class="input"></div>'+
+      '<div class="modal-field"><label>Grupo</label><input id="caGrupo" class="input" value="BODEGAS"></div>'+
+      '<div class="modal-field"><label>Rol</label><input id="caRol" class="input" value="ABN"></div>'+
+      '<div class="modal-field"><label>Comentario</label><input id="caComentario" class="input"></div>'+
+      '<div class="modal-field"><label>Contraseña</label><input type="password" id="caPass" class="input"></div>'+
+      '<div class="modal-actions"><button class="btn btn-outline" onclick="closeModal()">Cancelar</button>'+
+      '<button class="btn btn-green" onclick="submitAssignCartera()">Asignar</button></div></div></div>';
+    var pre = window._carteraAssignVendedorId;
+    if(pre) document.getElementById('caVendedor').value = pre;
+  });
+}
+
+function submitAssignCartera(){
+  var vid = document.getElementById('caVendedor').value;
+  var bid = document.getElementById('caBodegaId').value.trim();
+  if(!vid || !bid){ showToast('Vendedor y bodega son obligatorios','error'); return; }
+  apiPost('/api/backoffice/vendedor/'+vid+'/cartera', {
+    bodega_id: bid,
+    activo: true,
+    supervisor: document.getElementById('caSupervisor').value.trim() || null,
+    grupo: document.getElementById('caGrupo').value.trim() || 'BODEGAS',
+    rol: document.getElementById('caRol').value.trim() || 'ABN',
+    comentario: document.getElementById('caComentario').value.trim(),
+    password: document.getElementById('caPass').value || USER_PASSWORD
+  }).then(function(x){
+    if(!x.ok) throw new Error(x.d.detail || 'Error');
+    closeModal();
+    showToast('Asignación creada','success');
+    loadCarteras();
+  }).catch(function(e){ showToast(e.message,'error'); });
+}
+
+function openEditCartera(carteraId){
+  var row = (_carterasCache||[]).find(function(r){ return r.id === carteraId; });
+  if(!row){ showToast('Recarga la tabla','error'); return; }
+  document.getElementById('modalContainer').innerHTML =
+    '<div class="modal-overlay open" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:520px"><h3>Editar asignación</h3>'+
+    '<p style="font-size:12px;color:var(--muted);margin-bottom:12px">'+
+    escAttr((row.vendedor&&row.vendedor.nombre)||'?')+' → '+escAttr((row.bodega&&row.bodega.nombre)||'?')+'</p>'+
+    '<div class="modal-field"><label>Activa</label><select id="ceActivo" class="input"><option value="true">Sí</option><option value="false">No</option></select></div>'+
+    '<div class="modal-field"><label>Supervisor</label><input id="ceSupervisor" class="input" value="'+escAttr(row.supervisor||'')+'"></div>'+
+    '<div class="modal-field"><label>Grupo</label><input id="ceGrupo" class="input" value="'+escAttr(row.grupo||'')+'"></div>'+
+    '<div class="modal-field"><label>Rol</label><input id="ceRol" class="input" value="'+escAttr(row.rol||'')+'"></div>'+
+    '<div class="modal-field"><label>Día visita</label><input id="ceVisita" class="input" value="'+escAttr(row.dia_visita||'')+'"></div>'+
+    '<div class="modal-field"><label>Día entrega</label><input id="ceEntrega" class="input" value="'+escAttr(row.dia_entrega||'')+'"></div>'+
+    '<div class="modal-field"><label>Comentario</label><input id="ceComentario" class="input"></div>'+
+    '<div class="modal-field"><label>Contraseña</label><input type="password" id="cePass" class="input"></div>'+
+    '<div class="modal-actions"><button class="btn btn-outline" onclick="closeModal()">Cancelar</button>'+
+    '<button class="btn btn-green" onclick="submitEditCartera(\''+carteraId+'\')">Guardar</button></div></div></div>';
+  document.getElementById('ceActivo').value = row.activo ? 'true' : 'false';
+}
+
+function submitEditCartera(carteraId){
+  apiPatch('/api/backoffice/carteras/'+carteraId, {
+    activo: document.getElementById('ceActivo').value === 'true',
+    supervisor: document.getElementById('ceSupervisor').value.trim() || null,
+    grupo: document.getElementById('ceGrupo').value.trim() || null,
+    rol: document.getElementById('ceRol').value.trim() || null,
+    dia_visita: document.getElementById('ceVisita').value.trim() || null,
+    dia_entrega: document.getElementById('ceEntrega').value.trim() || null,
+    comentario: document.getElementById('ceComentario').value.trim(),
+    password: document.getElementById('cePass').value || USER_PASSWORD
+  }).then(function(x){
+    if(!x.ok) throw new Error(x.d.detail || 'Error');
+    closeModal();
+    showToast('Asignación actualizada','success');
+    loadCarteras();
+  }).catch(function(e){ showToast(e.message,'error'); });
 }
 
 function openCreateBodega(){

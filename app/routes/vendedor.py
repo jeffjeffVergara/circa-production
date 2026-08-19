@@ -1270,6 +1270,107 @@ DIST_DIMAX_ID = "d1a2b3c4-0001-4000-8000-000000000002"
 BUCKET_DNI = "dni_fotos"
 BUCKET_LOCAL = "sustentos"  # foto de fachada va aquí bajo prefijo prospecto/
 
+_AFILIAR_BODEGA_SELECT = (
+    "id,nombre_comercial,razon_social,distrito,ruc,dni_representante,"
+    "telefono_whatsapp,solo_dni_sin_ruc,estado,onboarding_fase,linea_aprobada"
+)
+
+
+def _tel_para_formulario(telefono: str | None) -> str:
+    digits = re.sub(r"\D", "", telefono or "")
+    if len(digits) >= 9:
+        nueve = digits[-9:]
+        if nueve.startswith("9"):
+            return nueve
+    return ""
+
+
+def _fetch_cartera_bodegas(vendedor: dict, limit: int = 150) -> list[dict]:
+    if vendedor.get("es_admin"):
+        rows = _sb_get("bodegas", {
+            "select": _AFILIAR_BODEGA_SELECT,
+            "distribuidor_id": f"eq.{vendedor['distribuidor_id']}",
+            "order": "nombre_comercial.asc",
+            "limit": str(limit),
+        })
+        return rows or []
+
+    rows = _sb_get("bodega_vendedores", {
+        "select": f"bodegas({_AFILIAR_BODEGA_SELECT})",
+        "vendedor_id": f"eq.{vendedor['id']}",
+        "activo": "eq.true",
+        "limit": str(limit),
+    })
+    out: list[dict] = []
+    for row in rows or []:
+        b = row.get("bodegas")
+        if b:
+            out.append(b)
+    return out
+
+
+def _bodega_afiliar_item(b: dict) -> dict:
+    estado = (b.get("estado") or "").lower()
+    linea = b.get("linea_aprobada")
+    return {
+        "id": b["id"],
+        "nombre": b.get("nombre_comercial") or b.get("razon_social") or "Sin nombre",
+        "razon_social": b.get("razon_social"),
+        "identificacion": _bodega_identificacion(b),
+        "distrito": b.get("distrito"),
+        "dni": b.get("dni_representante") or "",
+        "ruc": b.get("ruc") or "",
+        "telefono": _tel_para_formulario(b.get("telefono_whatsapp")),
+        "estado": estado,
+        "pendiente_afiliar": estado != "activo",
+        "linea_aprobada": float(linea) if linea is not None else None,
+    }
+
+
+def _buscar_cartera_afiliar(vendedor: dict, q: str = "") -> list[dict]:
+    bodegas = _fetch_cartera_bodegas(vendedor)
+    q_raw = (q or "").strip()
+    if not q_raw:
+        pending = [b for b in bodegas if (b.get("estado") or "").lower() != "activo"]
+        pending.sort(
+            key=lambda x: (x.get("nombre_comercial") or x.get("razon_social") or "").lower(),
+        )
+        return [_bodega_afiliar_item(b) for b in pending[:25]]
+
+    q_digits = re.sub(r"\D", "", q_raw)
+    q_lower = q_raw.lower()
+    matches: list[dict] = []
+    for b in bodegas:
+        if len(q_digits) == 8 and (b.get("dni_representante") or "") == q_digits:
+            matches.append(b)
+            continue
+        if len(q_digits) == 11 and (b.get("ruc") or "") == q_digits:
+            matches.append(b)
+            continue
+        if len(q_lower) >= 2:
+            nombre = (b.get("nombre_comercial") or "").lower()
+            razon = (b.get("razon_social") or "").lower()
+            if q_lower in nombre or q_lower in razon:
+                matches.append(b)
+
+    matches.sort(
+        key=lambda x: 0 if (x.get("estado") or "").lower() != "activo" else 1,
+    )
+    return [_bodega_afiliar_item(b) for b in matches[:25]]
+
+
+@router.get("/{token}/api/cartera-afiliar")
+def api_cartera_afiliar(
+    token: str = Path(..., min_length=16, max_length=64),
+    q: str = Query("", max_length=64),
+):
+    """Lista bodegas de la cartera del vendedor para autocompletar Afiliar."""
+    vendedor = _get_vendedor_by_token(token)
+    if not vendedor:
+        raise HTTPException(status_code=404, detail="Acceso no encontrado")
+    items = _buscar_cartera_afiliar(vendedor, q)
+    return {"items": items, "total": len(items)}
+
 
 @router.get("/{token}/afiliar", response_class=HTMLResponse)
 def afiliar_form(token: str = Path(..., min_length=16, max_length=64)):
@@ -1295,13 +1396,34 @@ def afiliar_form(token: str = Path(..., min_length=16, max_length=64)):
     .row{{display:flex;gap:10px}}
     .row .field{{flex:1}}
     #msg{{margin-top:18px}}
+    .cartera-block{{margin-top:28px;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,0.08)}}
+    .cartera-item{{display:block;width:100%;text-align:left;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:14px 16px;margin-top:10px;color:inherit;font-family:inherit;cursor:pointer}}
+    .cartera-item:active{{background:rgba(37,99,235,0.12);border-color:#2563EB}}
+    .cartera-item .ci-nombre{{font-size:15px;font-weight:600;line-height:1.3}}
+    .cartera-item .ci-meta{{font-size:11px;color:rgba(255,255,255,0.5);margin-top:4px;line-height:1.45}}
+    .cartera-item .ci-tag{{display:inline-block;margin-top:8px;font-size:10px;padding:3px 8px;border-radius:999px;background:rgba(34,211,238,0.12);color:#22D3EE;letter-spacing:0.3px}}
+    .cartera-item .ci-tag.done{{background:rgba(34,197,94,0.12);color:#86efac}}
+    #selected_bodega{{margin-top:16px}}
+    .form-section{{margin-top:24px}}
+    .form-section .section-label{{font-size:11px;color:rgba(255,255,255,0.45);letter-spacing:0.6px;margin-bottom:14px}}
   </style>
 </head>
 <body>
   <div class="logo">circa<span>.</span></div>
   <a href="/v/{token}" class="back" style="margin-top:16px;">&larr; Menú</a>
   <div class="titulo">Afiliar bodega</div>
-  <div class="subtitulo">Precarga los datos. El dueño confirma por WhatsApp.</div>
+  <div class="subtitulo">Busca en tu cartera o precarga una bodega nueva. El dueño confirma por WhatsApp.</div>
+
+  <div class="field cartera-block">
+    <label class="label">BUSCAR EN MI CARTERA</label>
+    <input class="input" id="cartera_q" type="search" placeholder="Nombre, DNI o RUC" autocomplete="off">
+    <button type="button" class="btn secondary" id="cartera_btn" onclick="buscarCartera()">Buscar</button>
+    <div id="cartera_results" class="result"></div>
+    <div id="selected_bodega" style="display:none"></div>
+  </div>
+
+  <div class="form-section">
+    <div class="section-label">DATOS PARA PRECARGAR</div>
 
   <div class="field">
     <label class="label">WHATSAPP DEL DUEÑO</label>
@@ -1332,16 +1454,92 @@ def afiliar_form(token: str = Path(..., min_length=16, max_length=64)):
   </div>
 
   <button class="btn" id="submit" onclick="enviar()">Precargar bodega</button>
+  </div>
   <div id="msg"></div>
 
   <script>
     const TOKEN = "{token}";
+    let selectedBodega = null;
+
     document.getElementById('foto_dni').addEventListener('change', e => {{
       if (e.target.files.length) {{ const l=document.getElementById('lbl_dni'); l.textContent='🪪 ✓ DNI listo'; l.classList.add('done'); }}
     }});
     document.getElementById('foto_local').addEventListener('change', e => {{
       if (e.target.files.length) {{ const l=document.getElementById('lbl_local'); l.textContent='🏪 ✓ Foto lista'; l.classList.add('done'); }}
     }});
+
+    document.getElementById('cartera_q').addEventListener('keypress', e => {{
+      if (e.key === 'Enter') {{ e.preventDefault(); buscarCartera(); }}
+    }});
+
+    function escHtml(s) {{
+      return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }}
+
+    function renderCarteraItems(items) {{
+      const out = document.getElementById('cartera_results');
+      if (!items.length) {{
+        out.innerHTML = '<div class="error" style="margin-top:12px">No hay bodegas en tu cartera con ese criterio.</div>';
+        return;
+      }}
+      out.innerHTML = items.map((b, i) => {{
+        const meta = [b.identificacion, b.distrito].filter(Boolean).join(' · ');
+        const tag = b.pendiente_afiliar
+          ? '<span class="ci-tag">Pendiente afiliar</span>'
+          : '<span class="ci-tag done">Ya activa</span>';
+        const linea = b.linea_aprobada != null ? ' · Línea S/ '+b.linea_aprobada.toFixed(0) : '';
+        return `<button type="button" class="cartera-item" data-idx="${{i}}">
+          <div class="ci-nombre">${{escHtml(b.nombre)}}</div>
+          <div class="ci-meta">${{escHtml(meta)}}${{linea}}</div>
+          ${{tag}}
+        </button>`;
+      }}).join('');
+      out.querySelectorAll('.cartera-item').forEach(btn => {{
+        btn.addEventListener('click', () => seleccionarBodega(items[Number(btn.dataset.idx)]));
+      }});
+    }}
+
+    async function buscarCartera() {{
+      const q = document.getElementById('cartera_q').value.trim();
+      const btn = document.getElementById('cartera_btn');
+      const out = document.getElementById('cartera_results');
+      btn.disabled = true;
+      btn.textContent = 'Buscando...';
+      out.innerHTML = '';
+      try {{
+        const url = '/v/'+TOKEN+'/api/cartera-afiliar' + (q ? ('?q='+encodeURIComponent(q)) : '');
+        const r = await fetch(url);
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.detail || 'Error al buscar');
+        renderCarteraItems(data.items || []);
+      }} catch (err) {{
+        out.innerHTML = '<div class="error" style="margin-top:12px">'+escHtml(err.message)+'</div>';
+      }} finally {{
+        btn.disabled = false;
+        btn.textContent = 'Buscar';
+      }}
+    }}
+
+    function seleccionarBodega(b) {{
+      selectedBodega = b;
+      document.getElementById('dni').value = (b.dni || '').replace(/\\D/g,'').slice(0,8);
+      document.getElementById('ruc').value = (b.ruc || '').replace(/\\D/g,'').slice(0,11);
+      if (b.telefono) document.getElementById('tel').value = b.telefono;
+      const sel = document.getElementById('selected_bodega');
+      const aviso = b.pendiente_afiliar
+        ? 'Completa WhatsApp y fotos para precargar.'
+        : 'Esta bodega ya está activa; al precargar solo actualizará datos si aplica.';
+      sel.style.display = 'block';
+      sel.innerHTML = `<div class="card">
+        <div class="nombre">✓ ${{escHtml(b.nombre)}}</div>
+        <div class="meta">${{escHtml(b.identificacion)}}</div>
+        <div class="meta" style="margin-top:8px;">${{escHtml(aviso)}}</div>
+      </div>`;
+      document.getElementById('tel').focus();
+      document.getElementById('tel').scrollIntoView({{behavior:'smooth', block:'center'}});
+    }}
+
+    buscarCartera();
 
     async function enviar() {{
       const tel = document.getElementById('tel').value.replace(/\\D/g,'');

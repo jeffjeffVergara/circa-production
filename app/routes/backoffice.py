@@ -865,6 +865,235 @@ class VendedorUpdate(ReauthMixin):
 class CarteraAssign(ReauthMixin):
     bodega_id: str
     activo: bool = True
+    rol: Optional[str] = "ABN"
+    grupo: Optional[str] = "BODEGAS"
+    supervisor: Optional[str] = None
+    dia_visita: Optional[str] = None
+    dia_entrega: Optional[str] = None
+
+
+class CarteraUpdate(ReauthMixin):
+    activo: Optional[bool] = None
+    rol: Optional[str] = None
+    grupo: Optional[str] = None
+    supervisor: Optional[str] = None
+    dia_visita: Optional[str] = None
+    dia_entrega: Optional[str] = None
+
+
+_CARTERA_BO_SELECT = (
+    "id,bodega_id,vendedor_id,rol,grupo,supervisor,dia_visita,dia_entrega,activo,created_at,"
+    "bodegas(id,nombre_comercial,razon_social,ruc,dni_representante,telefono_whatsapp,"
+    "estado,distrito,linea_aprobada,es_test),"
+    "vendedores(id,codigo,nombre,activo)"
+)
+
+
+def _cartera_row_out(row: dict) -> dict:
+    b = row.get("bodegas") or {}
+    v = row.get("vendedores") or {}
+    return {
+        "id": row["id"],
+        "bodega_id": row.get("bodega_id"),
+        "vendedor_id": row.get("vendedor_id"),
+        "activo": bool(row.get("activo")),
+        "rol": row.get("rol"),
+        "grupo": row.get("grupo"),
+        "supervisor": row.get("supervisor"),
+        "dia_visita": row.get("dia_visita"),
+        "dia_entrega": row.get("dia_entrega"),
+        "created_at": row.get("created_at"),
+        "bodega": {
+            "id": b.get("id"),
+            "nombre": b.get("nombre_comercial") or b.get("razon_social"),
+            "razon_social": b.get("razon_social"),
+            "ruc": b.get("ruc"),
+            "dni": b.get("dni_representante"),
+            "telefono": b.get("telefono_whatsapp"),
+            "estado": b.get("estado"),
+            "distrito": b.get("distrito"),
+            "linea_aprobada": float(b["linea_aprobada"]) if b.get("linea_aprobada") is not None else None,
+            "es_test": bool(b.get("es_test")),
+        },
+        "vendedor": {
+            "id": v.get("id"),
+            "codigo": v.get("codigo"),
+            "nombre": v.get("nombre"),
+            "activo": v.get("activo"),
+        },
+    }
+
+
+def _cartera_resumen(rows: list[dict]) -> dict[str, dict[str, int]]:
+    por_vendedor: dict[str, int] = {}
+    por_supervisor: dict[str, int] = {}
+    por_grupo: dict[str, int] = {}
+    for row in rows:
+        v = row.get("vendedor") or {}
+        vk = v.get("codigo") or v.get("nombre") or "Sin vendedor"
+        por_vendedor[vk] = por_vendedor.get(vk, 0) + 1
+        sup = (row.get("supervisor") or "").strip() or "Sin supervisor"
+        por_supervisor[sup] = por_supervisor.get(sup, 0) + 1
+        grp = (row.get("grupo") or "").strip() or "Sin grupo"
+        por_grupo[grp] = por_grupo.get(grp, 0) + 1
+    return {
+        "por_vendedor": por_vendedor,
+        "por_supervisor": por_supervisor,
+        "por_grupo": por_grupo,
+    }
+
+
+@router.get("/carteras/filtros")
+async def carteras_filtros(user: dict = Depends(get_backoffice_user)):
+    """Valores distintos para filtros de la pestaña Carteras."""
+    rows = _sb_get("bodega_vendedores", {
+        "select": "supervisor,grupo,rol,vendedor_id,vendedores(codigo,nombre)",
+        "limit": "5000",
+    })
+    supervisores: set[str] = set()
+    grupos: set[str] = set()
+    roles: set[str] = set()
+    vendedores_map: dict[str, str] = {}
+    for r in rows or []:
+        if r.get("supervisor"):
+            supervisores.add(r["supervisor"])
+        if r.get("grupo"):
+            grupos.add(r["grupo"])
+        if r.get("rol"):
+            roles.add(r["rol"])
+        v = r.get("vendedores") or {}
+        vid = r.get("vendedor_id")
+        if vid and vid not in vendedores_map:
+            vendedores_map[vid] = f"{v.get('codigo') or ''} · {v.get('nombre') or vid}".strip(" ·")
+    vend_list = _sb_get("vendedores", {
+        "select": "id,codigo,nombre,activo",
+        "order": "nombre.asc",
+        "limit": "500",
+    })
+    return {
+        "supervisores": sorted(supervisores),
+        "grupos": sorted(grupos),
+        "roles": sorted(roles),
+        "vendedores": [
+            {"id": v["id"], "codigo": v.get("codigo"), "nombre": v.get("nombre"), "activo": v.get("activo")}
+            for v in (vend_list or [])
+        ],
+    }
+
+
+@router.get("/carteras")
+async def list_carteras(
+    user: dict = Depends(get_backoffice_user),
+    vendedor_id: Optional[str] = None,
+    supervisor: Optional[str] = None,
+    grupo: Optional[str] = None,
+    rol: Optional[str] = None,
+    activo: Optional[str] = None,
+    test: Optional[str] = "real",
+    q: Optional[str] = None,
+    limit: int = 400,
+    offset: int = 0,
+):
+    """Relación vendedor ↔ bodega (bodega_vendedores) con filtros y resumen para agrupaciones."""
+    import re
+
+    limit = max(1, min(limit, 500))
+    offset = max(0, offset)
+
+    query = (
+        db.sb.table("bodega_vendedores")
+        .select(_CARTERA_BO_SELECT)
+        .order("created_at", desc=True)
+    )
+    if vendedor_id:
+        query = query.eq("vendedor_id", vendedor_id)
+    if supervisor:
+        query = query.eq("supervisor", supervisor)
+    if grupo:
+        query = query.eq("grupo", grupo)
+    if rol:
+        query = query.eq("rol", rol)
+    if activo == "true":
+        query = query.eq("activo", True)
+    elif activo == "false":
+        query = query.eq("activo", False)
+
+    raw = query.range(offset, offset + limit - 1).execute().data or []
+    items = [_cartera_row_out(r) for r in raw]
+
+    q_raw = (q or "").strip()
+    if q_raw:
+        q_lower = q_raw.lower()
+        q_digits = re.sub(r"\D", "", q_raw)
+        filtered: list[dict] = []
+        for row in items:
+            b = row.get("bodega") or {}
+            v = row.get("vendedor") or {}
+            if len(q_digits) in (8, 11):
+                if q_digits in (b.get("dni") or "", b.get("ruc") or ""):
+                    filtered.append(row)
+                    continue
+            haystack = " ".join([
+                str(b.get("nombre") or ""),
+                str(b.get("razon_social") or ""),
+                str(v.get("nombre") or ""),
+                str(v.get("codigo") or ""),
+                str(row.get("supervisor") or ""),
+                str(row.get("grupo") or ""),
+            ]).lower()
+            if q_lower in haystack:
+                filtered.append(row)
+        items = filtered
+
+    if test == "real":
+        items = [r for r in items if not (r.get("bodega") or {}).get("es_test")]
+    elif test == "test":
+        items = [r for r in items if (r.get("bodega") or {}).get("es_test")]
+
+    return {
+        "items": items,
+        "total": len(items),
+        "resumen": _cartera_resumen(items),
+    }
+
+
+@router.patch("/carteras/{cartera_id}")
+async def update_cartera(
+    cartera_id: str,
+    body: CarteraUpdate,
+    user: dict = Depends(get_backoffice_writer),
+):
+    verify_reauth_password(body.password)
+    updates = {
+        k: v for k, v in body.model_dump(exclude={"comentario", "password"}).items()
+        if v is not None
+    }
+    if not updates:
+        raise HTTPException(status_code=400, detail="Sin campos para actualizar")
+    if "activo" in updates and updates["activo"] is False:
+        updates["desactivado_at"] = datetime.now(timezone.utc).isoformat()
+    elif updates.get("activo") is True:
+        updates["desactivado_at"] = None
+
+    existing = _sb_get("bodega_vendedores", {"select": "id", "id": f"eq.{cartera_id}", "limit": "1"})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Asignación no encontrada")
+
+    _sb_patch("bodega_vendedores", updates, {"id": f"eq.{cartera_id}"})
+    log_action(
+        user=user,
+        action="cartera_update",
+        entity_type="bodega_vendedores",
+        entity_id=cartera_id,
+        comment=body.comentario,
+        after=updates,
+    )
+    rows = _sb_get("bodega_vendedores", {
+        "select": _CARTERA_BO_SELECT,
+        "id": f"eq.{cartera_id}",
+        "limit": "1",
+    })
+    return {"ok": True, "item": _cartera_row_out(rows[0]) if rows else None}
 
 
 @router.get("/vendedores")
@@ -966,11 +1195,20 @@ async def assign_cartera(
     if existing:
         _sb_patch("bodega_vendedores", {"activo": body.activo}, {"id": f"eq.{existing[0]['id']}"})
     else:
-        db.sb.table("bodega_vendedores").insert({
+        payload = {
             "vendedor_id": vendedor_id,
             "bodega_id": body.bodega_id,
             "activo": body.activo,
-        }).execute()
+            "rol": body.rol or "ABN",
+            "grupo": body.grupo or "BODEGAS",
+        }
+        if body.supervisor:
+            payload["supervisor"] = body.supervisor
+        if body.dia_visita:
+            payload["dia_visita"] = body.dia_visita
+        if body.dia_entrega:
+            payload["dia_entrega"] = body.dia_entrega
+        db.sb.table("bodega_vendedores").insert(payload).execute()
     log_action(
         user=user,
         action="cartera_assign",
