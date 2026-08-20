@@ -1391,8 +1391,29 @@ def _bodega_afiliar_item(b: dict) -> dict:
 
 
 def _buscar_cartera_afiliar(vendedor: dict, q: str = "") -> list[dict]:
-    bodegas = _fetch_cartera_bodegas(vendedor)
     q_raw = (q or "").strip()
+    # Admin con búsqueda: busca en TODAS las bodegas del distribuidor (no solo su
+    # cartera ni el tope de 150). Filtra server-side por DNI / RUC / nombre.
+    if vendedor.get("es_admin") and q_raw:
+        q_digits = re.sub(r"\D", "", q_raw)
+        params = {"select": _AFILIAR_BODEGA_SELECT, "limit": "25"}
+        if vendedor.get("distribuidor_id"):
+            params["distribuidor_id"] = f"eq.{vendedor['distribuidor_id']}"
+        if len(q_digits) == 8:
+            params["dni_representante"] = f"eq.{q_digits}"
+        elif len(q_digits) == 11:
+            params["ruc"] = f"eq.{q_digits}"
+        else:
+            palabras = ["".join(ch for ch in w if ch.isalnum()) for w in q_raw.lower().split()]
+            palabras = [w for w in palabras if len(w) >= 2][:5]
+            if palabras:
+                patron = "*" + "*".join(palabras) + "*"
+                params["or"] = f"(razon_social.ilike.{patron},nombre_comercial.ilike.{patron})"
+        rows = _sb_get("bodegas", params) or []
+        rows.sort(key=lambda x: 0 if (x.get("estado") or "").lower() != "activo" else 1)
+        return [_bodega_afiliar_item(b) for b in rows[:25]]
+
+    bodegas = _fetch_cartera_bodegas(vendedor)
     if not q_raw:
         pending = [b for b in bodegas if (b.get("estado") or "").lower() != "activo"]
         pending.sort(
