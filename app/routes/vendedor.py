@@ -324,43 +324,94 @@ def preventa_buscar(token: str = Path(..., min_length=16, max_length=64)):
 @router.get("/{token}/api/buscar-bodega")
 def api_buscar_bodega(
     token: str = Path(..., min_length=16, max_length=64),
-    q: str = Query(..., min_length=8, max_length=11),
+    q: str = Query(..., min_length=3, max_length=80),
 ):
-    """Busca bodega por DNI del representante o RUC del comercio.
+    """Busca bodega por DNI, RUC o NOMBRE (razon social / nombre comercial).
     Aplica filtro de cartera (bodega_vendedores) excepto si es_admin."""
     vendedor = _get_vendedor_by_token(token)
     if not vendedor:
         raise HTTPException(status_code=404, detail="Acceso no encontrado")
 
-    # Solo digitos
+    q = (q or "").strip()
     q_clean = ''.join(c for c in q if c.isdigit())
-    if len(q_clean) not in (8, 11):
-        return {"found": False, "error": "Ingresá un DNI (8 dígitos) o RUC (11 dígitos)"}
+    es_documento = q_clean == q.replace(" ", "") and len(q_clean) in (8, 11)
 
     select_fields = (
         "id,razon_social,nombre_comercial,distrito,ruc,dni_representante,"
         "linea_aprobada,linea_disponible,distribuidor_id,solo_dni_sin_ruc,estado"
     )
 
-    if len(q_clean) == 8:
+    if es_documento:
+        campo = "dni_representante" if len(q_clean) == 8 else "ruc"
         rows = _sb_get("bodegas", {
             "select": select_fields,
-            "dni_representante": f"eq.{q_clean}",
+            campo: f"eq.{q_clean}",
             "limit": "1",
         })
-    else:  # 11 digitos = RUC
-        rows = _sb_get("bodegas", {
+        if not rows:
+            tipo = "DNI" if len(q_clean) == 8 else "RUC"
+            hint = ""
+            if len(q_clean) == 11:
+                hint = " Si la bodega se registró solo con DNI, prueba con el DNI del representante."
+            return {"found": False, "error": f"No encontramos una bodega con ese {tipo}{hint}"}
+    else:
+        # ── Busqueda por NOMBRE ──
+        if len(q) < 3:
+            return {"found": False, "error": "Escribí al menos 3 letras del nombre"}
+        # Patron flexible: "market jharfer" -> *market*jharfer* (tolera E.I.R.L. al final,
+        # segundos nombres en el medio, etc.). Se limpian los caracteres que rompen PostgREST.
+        palabras = [
+            "".join(ch for ch in w if ch.isalnum())
+            for w in q.split()
+        ]
+        palabras = [w for w in palabras if len(w) >= 2][:5]
+        if not palabras:
+            return {"found": False, "error": "Escribí al menos 3 letras del nombre"}
+        patron = "*" + "*".join(palabras) + "*"
+        params = {
             "select": select_fields,
-            "ruc": f"eq.{q_clean}",
-            "limit": "1",
-        })
-
-    if not rows:
-        tipo = "DNI" if len(q_clean) == 8 else "RUC"
-        hint = ""
-        if len(q_clean) == 11:
-            hint = " Si la bodega se registró solo con DNI, prueba con el DNI del representante."
-        return {"found": False, "error": f"No encontramos una bodega con ese {tipo}{hint}"}
+            "limit": "40",
+            "or": f"(razon_social.ilike.{patron},nombre_comercial.ilike.{patron})",
+        }
+        if vendedor.get("distribuidor_id"):
+            params["distribuidor_id"] = f"eq.{vendedor['distribuidor_id']}"
+        rows = _sb_get("bodegas", params) or []
+        # Filtro de cartera antes de devolver la lista
+        if rows and not vendedor.get("es_admin"):
+            ids = ",".join(r["id"] for r in rows)
+            cartera = _sb_get("bodega_vendedores", {
+                "select": "bodega_id",
+                "vendedor_id": f"eq.{vendedor['id']}",
+                "bodega_id": f"in.({ids})",
+                "activo": "eq.true",
+                "limit": "60",
+            }) or []
+            permitidas = {c["bodega_id"] for c in cartera}
+            rows = [r for r in rows if r["id"] in permitidas]
+        if not rows:
+            return {"found": False, "error": f"No encontramos ninguna bodega con «{q}»"}
+        # Primero las que pueden recibir preventa: activas y con linea.
+        def _rank(b):
+            activa = 0 if (b.get("estado") or "").lower() == "activo" else 1
+            sin_linea = 0 if float(b.get("linea_disponible") or 0) > 0 else 1
+            return (activa, sin_linea, (b.get("razon_social") or ""))
+        rows.sort(key=_rank)
+        if len(rows) > 1:
+            return {
+                "found": True,
+                "multiple": True,
+                "bodegas": [{
+                    "id": b["id"],
+                    "razon_social": b.get("razon_social") or b.get("nombre_comercial") or "(sin nombre)",
+                    "nombre_comercial": b.get("nombre_comercial"),
+                    "distrito": b.get("distrito") or "",
+                    "linea_disponible": float(b.get("linea_disponible") or 0),
+                    "ruc": b.get("ruc"),
+                    "dni_representante": b.get("dni_representante"),
+                    "identificacion": _bodega_identificacion(b),
+                    "estado": b.get("estado") or "",
+                } for b in rows[:20]],
+            }
 
     bodega = rows[0]
 
@@ -815,7 +866,7 @@ input[type=file]{display:none}
     <div id="sugBox"></div>
     <div id="candBox"></div>
     <div class="find">
-      <input id="docInput" inputmode="numeric" placeholder="Buscar por DNI o RUC">
+      <input id="docInput" placeholder="Buscar por nombre, DNI o RUC">
       <button id="btnFind">Buscar</button>
     </div>
     <div class="err hidden" id="errFind"></div>
@@ -1004,9 +1055,21 @@ $("btnFind").addEventListener("click",function(){
    .then(function(j){
      self.textContent="Buscar";
      if(j.found===false||j.error){throw new Error(j.error||"No encontrada")}
+     var box=$("manualBox"); box.innerHTML="";
+     if(j.multiple && j.bodegas){
+       var t=document.createElement("div");
+       t.className="mt";
+       t.style.marginBottom="6px";
+       t.textContent=j.bodegas.length+" bodegas encontradas \u2014 eleg\u00ed una:";
+       box.appendChild(t);
+       j.bodegas.forEach(function(b){
+         b.razon_social = b.razon_social || b.nombre_comercial || "(sin nombre)";
+         box.appendChild(bodCard(b));
+       });
+       return;
+     }
      var b = j.bodega || j;
      b.razon_social = b.razon_social || b.nombre_comercial || "(sin nombre)";
-     var box=$("manualBox"); box.innerHTML="";
      var c=bodCard(b); box.appendChild(c);
      pickBodega(b.id,b.razon_social,c);
    })

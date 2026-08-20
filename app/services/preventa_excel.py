@@ -127,10 +127,31 @@ def parse_preventa_excel(source, filename: str = None) -> dict:
     }
 
 
+# Sufijos de tipo societario: no distinguen una bodega de otra y llegan escritos
+# de mil formas (E.I.R.L. / EIRL / E I R L / SOCIEDAD ANONIMA CERRADA / S.A.C.).
+# Se eliminan de ambos lados antes de comparar.
+_LEGAL_TOKENS = {
+    "EIRL", "SAC", "SRL", "SA", "SCRL", "SAA",
+    "E", "I", "R", "L", "S", "A", "C",
+    "SOCIEDAD", "ANONIMA", "CERRADA", "RESPONSABILIDAD", "LIMITADA",
+    "INDIVIDUAL", "EMPRESA", "COMERCIAL", "DE",
+}
+
+
 def _norm_nombre(s: str) -> str:
+    """MAYUSCULAS, sin tildes, sin puntuacion, espacios colapsados."""
     import unicodedata
     s = unicodedata.normalize("NFKD", str(s or "")).encode("ascii", "ignore").decode()
+    s = re.sub(r"[^A-Za-z0-9 ]+", " ", s)  # puntos, comas, guiones -> espacio
     return re.sub(r"\s+", " ", s.upper().strip())
+
+
+def _tokens_significativos(nombre: str) -> set:
+    """Tokens del nombre sin los sufijos societarios. Si al quitarlos no queda
+    nada (ej. el nombre era solo 'S.A.C.'), devuelve los tokens originales."""
+    todos = set(_norm_nombre(nombre).split())
+    utiles = {t for t in todos if t not in _LEGAL_TOKENS}
+    return utiles or todos
 
 
 def match_bodega_por_nombre(nombre_archivo: str, distribuidor_id: str) -> tuple[dict | None, list[dict]]:
@@ -143,7 +164,7 @@ def match_bodega_por_nombre(nombre_archivo: str, distribuidor_id: str) -> tuple[
     filas = circa_db.sb.table("bodegas").select(
         "id, razon_social, nombre_comercial, distrito, linea_disponible, estado, distribuidor_id"
     ).eq("distribuidor_id", distribuidor_id).execute().data or []
-    tset = set(target.split())
+    tset = _tokens_significativos(nombre_archivo)
     scored: list[tuple[int, dict]] = []
     for b in filas:
         score = 0
@@ -154,10 +175,18 @@ def match_bodega_por_nombre(nombre_archivo: str, distribuidor_id: str) -> tuple[
             if c == target:
                 score = 100
                 break
-            cset = set(c.split())
-            if tset and cset:
-                ov = len(tset & cset) / len(tset | cset)
-                score = max(score, int(round(ov * 100)))
+            cset = _tokens_significativos(campo)
+            if not (tset and cset):
+                continue
+            # Jaccard sobre tokens significativos
+            ov = len(tset & cset) / len(tset | cset)
+            sc = int(round(ov * 100))
+            # Contencion: si todos los tokens de un lado estan en el otro,
+            # es el mismo negocio aunque uno tenga palabras extra.
+            menor = min(len(tset), len(cset))
+            if menor and len(tset & cset) == menor:
+                sc = max(sc, 90)
+            score = max(score, sc)
         if score >= 55:
             scored.append((score, b))
     scored.sort(key=lambda x: x[0], reverse=True)
