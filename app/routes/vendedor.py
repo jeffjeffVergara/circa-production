@@ -360,11 +360,19 @@ def api_buscar_bodega(
             return {"found": False, "error": "Escribí al menos 3 letras del nombre"}
         # Patron flexible: "market jharfer" -> *market*jharfer* (tolera E.I.R.L. al final,
         # segundos nombres en el medio, etc.). Se limpian los caracteres que rompen PostgREST.
-        palabras = [
-            "".join(ch for ch in w if ch.isalnum())
-            for w in q.split()
-        ]
-        palabras = [w for w in palabras if len(w) >= 2][:5]
+        # Cada caracter no-ASCII (N con virgulilla, tildes) se vuelve comodin: asi
+        # "ZUNIGA" con enie encuentra igual, sin depender del encodeado de la URL.
+        def _limpia(w):
+            out = []
+            for ch in w:
+                if ch.isascii() and ch.isalnum():
+                    out.append(ch)
+                elif ch.isalnum():
+                    out.append("*")   # comodin en lugar del caracter acentuado
+            return "".join(out)
+
+        palabras = [_limpia(w) for w in q.split()]
+        palabras = [w for w in palabras if len(w.replace("*", "")) >= 2][:5]
         if not palabras:
             return {"found": False, "error": "Escribí al menos 3 letras del nombre"}
         patron = "*" + "*".join(palabras) + "*"

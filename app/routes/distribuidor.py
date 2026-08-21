@@ -571,6 +571,7 @@ async def admin_aceptar_preventa(
     pedido_id: str,
     monto_financiado: float | None = None,
     plazo_dias: int = 7,
+    forzar_monto: bool = False,
     admin: bool = Depends(verify_admin),
 ):
     rows = _sb_get(
@@ -595,6 +596,24 @@ async def admin_aceptar_preventa(
     nueva_linea = None
     telefono_wa = ""
     monto = float(monto_financiado or 0)
+    ya_financiado = float(p.get("monto_financiado") or 0)
+    aviso = None
+
+    # ── Guard anti doble-descuento (bug CRC-126 / CRC-144) ──
+    # Si el bodeguero YA confirmo su financiamiento con su clave, el pedido llega
+    # aca con monto_financiado > 0 y la linea YA fue descontada en ese momento.
+    # Aceptar con un monto nuevo pisaba su eleccion y descontaba la linea otra vez
+    # (tipicamente el operador tecleaba el saldo de linea que le quedaba).
+    # Por defecto respetamos lo que el cliente eligio y solo marcamos la preventa
+    # como aceptada. Para cambiarlo a proposito: forzar_monto=true.
+    if ya_financiado > 0 and not forzar_monto:
+        if monto > 0 and abs(monto - ya_financiado) > 0.01:
+            aviso = (
+                f"El bodeguero ya financio S/{ya_financiado:.2f} con su clave; "
+                f"se ignoro el monto S/{monto:.2f} y no se volvio a descontar la linea. "
+                "Usa forzar_monto=true si de verdad querias cambiarlo."
+            )
+        monto = 0.0  # no re-descontar ni re-escribir montos
 
     if monto > 0:
         # Fuente de verdad del fee: app/services/fees.py (7d=1.4%, 15d=3%, 30d=6%, min S/1)
@@ -608,10 +627,17 @@ async def admin_aceptar_preventa(
         ld = float(bod_rows[0].get("linea_disponible") or 0)
         lap = float(bod_rows[0].get("linea_aprobada") or ld)
         telefono_wa = (bod_rows[0].get("telefono_whatsapp") or "").strip()
-        if monto > ld + 1e-6:
+        # Si ya habia financiamiento, la linea ya fue descontada por ese monto:
+        # solo mover la diferencia.
+        delta = monto - ya_financiado
+        if delta > ld + 1e-6:
+            disponible_real = ld + ya_financiado
             raise HTTPException(
                 status_code=400,
-                detail=f"El monto S/{monto:.2f} excede la línea disponible S/{ld:.2f}",
+                detail=(
+                    f"El monto S/{monto:.2f} excede lo financiable S/{disponible_real:.2f} "
+                    f"(linea disponible S/{ld:.2f} + S/{ya_financiado:.2f} ya financiado en este pedido)"
+                ),
             )
         q = calculate_fee(monto, plazo)
         fee = q["fee"]
@@ -636,8 +662,9 @@ async def admin_aceptar_preventa(
                     patch["numero"] = num
             except Exception:
                 pass
-        # Descuento de línea con el mismo guard que pin_flow (nunca negativo, nunca sobre lo aprobado)
-        nueva_linea = min(max(ld - monto, 0.0), lap)
+        # Descuento de línea con el mismo guard que pin_flow (nunca negativo, nunca sobre lo aprobado).
+        # Se descuenta el DELTA: lo ya financiado en este pedido ya salio de la linea.
+        nueva_linea = min(max(ld - delta, 0.0), lap)
 
     _sb_patch("pedidos", patch, {"id": f"eq.{pedido_id}"})
     if nueva_linea is not None:
@@ -680,14 +707,17 @@ async def admin_aceptar_preventa(
             import logging
             logging.getLogger("circa").error(f"WA confirm admin_aceptar_preventa: {_wa_err}")
 
-    return {
+    resultado = {
         "ok": True,
         "pedido_id": pedido_id,
         "estado": "preventa_aceptada",
         "numero": patch.get("numero", p.get("numero")),
-        "monto_financiado": patch.get("monto_financiado", 0),
-        "plazo_dias": patch.get("plazo_dias"),
+        "monto_financiado": patch.get("monto_financiado", ya_financiado),
+        "plazo_dias": patch.get("plazo_dias", p.get("plazo_dias")),
     }
+    if aviso:
+        resultado["aviso"] = aviso
+    return resultado
 
 @router.get("/admin/resumen")
 async def admin_resumen(
