@@ -460,7 +460,14 @@ async def meta_webhook_incoming(request: Request):
             media_url = msg["media_id"]  # Pass media_id to state machine
             # 2.2: número sin bodega → persistir YA (Meta purge ~2-3 semanas),
             # aunque soporte humano tome el hilo después.
-            if not bodega_id_msg:
+            # Express Onboarding piloto: no forzar fase prospecto (maneja su propia foto).
+            _skip_prospect_early = False
+            try:
+                from app.services.express_onboarding_gate import is_express_pilot_phone
+                _skip_prospect_early = is_express_pilot_phone(telefono)
+            except Exception:
+                _skip_prospect_early = False
+            if not bodega_id_msg and not _skip_prospect_early:
                 try:
                     from app.services import prospect_media as pm
                     sess = db.get_session(telefono)

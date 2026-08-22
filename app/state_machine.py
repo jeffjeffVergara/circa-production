@@ -399,6 +399,19 @@ def handle_message(telefono: str, body: str, media_url: str = None) -> list:
     if body_n and body_n in _TEXTO_PIDE_CONTACTO_CIRCA:
         return _desvio_contacto_circa_responses()
 
+    # ── EXPRESS ONBOARDING (piloto por allowlist; no altera flujo clásico) ──
+    try:
+        from app.flows import express_onboarding as express_ob
+        if express_ob.should_handle(telefono, bodega, session):
+            return express_ob.handle(
+                telefono, body_raw, body_n, media_url, session, bodega,
+            )
+    except Exception as e:
+        import logging
+        logging.getLogger("circa").error(
+            "express_onboarding gate error (fallback clásico): %s", e, exc_info=True,
+        )
+
     # ── VENDEDOR POR WHATSAPP (opcional; desactivado → solo flujo bodega) ──
     if VENDEDOR_WA_ENABLED:
         if vendedor and body_n in ("VENDEDOR", "VEND"):
