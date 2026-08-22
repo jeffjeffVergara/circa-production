@@ -463,9 +463,49 @@ async def handle_menu_buttons(btn: str, ctx: MetaWaContext, msg: dict, meta_clie
                     os.remove(contract_path)
                 except OSError:
                     pass
-                await meta_client.send_pin_request(ctx.telefono, mode="create", bodega_id=bod_id)
-                db.upsert_session(ctx.telefono, "reg_pin", {"bodega_id": bod_id}, bod_id)
-                logger.info("Contract signed for bodega %s, hash=%s", bod_id, contract_hash)
+
+                # Express Onboarding: T&C sin pedir clave (fase express_tyc)
+                ses = db.get_session(ctx.telefono)
+                fase = (ses or {}).get("fase") or ""
+                if fase == "express_tyc":
+                    db.update_bodega(bod_id, {
+                        "estado": "activo",
+                        "onboarding_fase": "express_completo",
+                        "pin_hash": None,
+                        "pin_intentos": 0,
+                        "pin_bloqueado_hasta": None,
+                    })
+                    b2 = (
+                        db.sb.table("bodegas")
+                        .select("linea_disponible, linea_aprobada")
+                        .eq("id", bod_id)
+                        .limit(1)
+                        .execute()
+                        .data
+                        or []
+                    )
+                    linea = float(
+                        (b2[0].get("linea_disponible") if b2 else None)
+                        or (b2[0].get("linea_aprobada") if b2 else None)
+                        or bodega_ac.get("linea_aprobada")
+                        or 0
+                    )
+                    db.upsert_session(ctx.telefono, "menu", {}, bod_id)
+                    await meta_client.send_cuenta_activa(ctx.telefono, linea)
+                    logger.info(
+                        "Express: contrato firmado, bodega %s activa sin PIN", bod_id
+                    )
+                else:
+                    # Onboarding clásico: sigue pidiendo crear clave
+                    await meta_client.send_pin_request(
+                        ctx.telefono, mode="create", bodega_id=bod_id
+                    )
+                    db.upsert_session(
+                        ctx.telefono, "reg_pin", {"bodega_id": bod_id}, bod_id
+                    )
+                    logger.info(
+                        "Contract signed for bodega %s, hash=%s", bod_id, contract_hash
+                    )
             else:
                 await meta_client.send_text(ctx.telefono, "Error. Escribe MENU para empezar.")
         except Exception as e:
