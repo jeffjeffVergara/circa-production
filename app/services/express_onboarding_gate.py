@@ -1,8 +1,11 @@
 """
-Allowlist para Express Onboarding (piloto).
+Gate para Express Onboarding (piloto).
 
-Por defecto OFF para todos; solo números en EXPRESS_ONBOARDING_PHONES
-entran al flujo nuevo. El onboarding clásico no se modifica.
+Entran al flujo Express si:
+  - el número está en EXPRESS_ONBOARDING_PHONES (allowlist), o
+  - la bodega tiene es_test=true
+
+El onboarding clásico no se modifica para el resto.
 """
 
 from __future__ import annotations
@@ -10,7 +13,7 @@ from __future__ import annotations
 import os
 import re
 
-# Piloto inicial (sobreescribible por env)
+# Allowlist opcional (además de bodegas es_test)
 _DEFAULT_PILOT_PHONES = (
     "+51942616682",  # 942616682
     "+51993557282",  # 993557282
@@ -39,7 +42,7 @@ def normalize_phone_e164(telefono: str | None) -> str:
 
 
 def express_onboarding_enabled() -> bool:
-    """Master switch. Default true so the pilot list works once deployed."""
+    """Master switch. Default true so the pilot works once deployed."""
     return _env_flag("EXPRESS_ONBOARDING_ENABLED", default=True)
 
 
@@ -51,7 +54,8 @@ def express_pilot_phones() -> set[str]:
     return {normalize_phone_e164(p) for p in _DEFAULT_PILOT_PHONES}
 
 
-def is_express_pilot_phone(telefono: str | None) -> bool:
+def is_express_allowlist_phone(telefono: str | None) -> bool:
+    """Solo allowlist explícita (env / default). No mira es_test."""
     if not express_onboarding_enabled():
         return False
     norm = normalize_phone_e164(telefono)
@@ -61,26 +65,43 @@ def is_express_pilot_phone(telefono: str | None) -> bool:
     return norm in allowed or norm.lstrip("+") in {p.lstrip("+") for p in allowed}
 
 
+# Alias legacy
+is_express_pilot_phone = is_express_allowlist_phone
+
+
+def qualifies_for_express(telefono: str | None, bodega: dict | None = None) -> bool:
+    """
+    True si el contacto debe usar Express:
+    allowlist de teléfonos O bodega de prueba (es_test).
+    """
+    if not express_onboarding_enabled():
+        return False
+    if is_express_allowlist_phone(telefono):
+        return True
+    if bodega and bool(bodega.get("es_test")):
+        return True
+    return False
+
+
 def should_use_express_onboarding(
     telefono: str | None,
     bodega: dict | None,
     session: dict | None,
 ) -> bool:
     """
-    True solo para piloto Express.
     - Ya en fase express_* → seguir
-    - Bodega activa → menú/clásico (no Express)
-    - Sin bodega o inactiva → Express
+    - Bodega activa → menú (no Express)
+    - Allowlist o es_test, sin bodega / inactiva → Express
     """
-    if not is_express_pilot_phone(telefono):
-        return False
-
     fase = (session or {}).get("fase") or ""
     if fase.startswith("express_"):
         return True
 
+    if not qualifies_for_express(telefono, bodega):
+        return False
+
     if bodega and (bodega.get("estado") or "") == "activo":
         return False
 
-    # De cero (sin bodega), precarga o post-afiliar (inactiva)
+    # De cero (allowlist), precarga/test o post-afiliar (inactiva)
     return True

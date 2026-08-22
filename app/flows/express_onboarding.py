@@ -5,11 +5,11 @@ Flujo:
   express_welcome → express_foto (1 foto: DNI *o* selfie)
   → express_linea → express_tyc → activo sin PIN → menu
 
-Entradas cubiertas (mismo gate):
-  - de cero (sin bodega)
-  - precarga
-  - post-afiliar vendedor
+Quién entra (gate):
+  - bodega.es_test = true, o
+  - teléfono en allowlist (EXPRESS_ONBOARDING_PHONES)
 
+Entradas: de cero (allowlist), precarga, post-afiliar vendedor.
 No modifica state_machine reg_* / prospecto clásico.
 """
 
@@ -24,8 +24,8 @@ from datetime import datetime
 from app.services import db
 from app.services.distribuidor_routing import ZOOM_DISTRIBUIDOR_ID
 from app.services.express_onboarding_gate import (
-    is_express_pilot_phone,
     normalize_phone_e164,
+    qualifies_for_express,
     should_use_express_onboarding,
 )
 from app.services.identity import consultar_dni_sync, validate_dni_format
@@ -213,7 +213,7 @@ def handle(
     session: dict | None,
     bodega: dict | None,
 ) -> list:
-    if not is_express_pilot_phone(telefono):
+    if not qualifies_for_express(telefono, bodega):
         return ["❌ Este flujo no está disponible para tu número."]
 
     # De cero
