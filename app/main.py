@@ -272,9 +272,9 @@ Contacto: contacto@circa.pe | +51 986 311 567
 async def terms():
     return PlainTextResponse("""
 CONDICIONES DEL SERVICIO — CIRCA (PALI S.A.C.)
-Última actualización: 20 de mayo de 2026
+Última actualización: 28 de agosto de 2026
 
-Circa es una plataforma de crédito embebido para bodegas peruanas operada por PALI S.A.C. Al usar el servicio, el usuario acepta las condiciones del contrato de línea de crédito revolving. En nuevas operaciones, la comisión se fija al confirmar el pedido según el plan elegido: 7 días (1.4%), 15 días (3%), 30 días (6%), con comisión mínima de S/1.00 por operación. El pago dentro del plazo no modifica el monto acordado. Tras el vencimiento del plan, aplica mora de 0.03% diaria sobre el saldo adeudado. Las operaciones ya originadas conservan los montos acordados en su confirmación. Jurisdicción: Lima, Perú.
+Circa es una plataforma de crédito embebido para bodegas peruanas operada por PALI S.A.C. Al usar el servicio, el usuario acepta las condiciones del contrato de línea de crédito revolving. La comisión se determina según el día en que se realiza el pago, contado desde la entrega del pedido: del día 1 al 7 (1.4%), del día 8 al 14 (3%), del día 15 al 30 (6%), con comisión mínima de S/1.00 por operación. La comisión no se acumula entre tramos. A partir del día 31 aplica una mora de 0.03% diaria sobre el saldo adeudado. Jurisdicción: Lima, Perú.
 
 Contacto: contacto@circa.pe | +51 986 311 567
 """, media_type="text/plain; charset=utf-8")

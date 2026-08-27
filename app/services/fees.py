@@ -1,5 +1,5 @@
 """
-Circa — comisión por plan + mora híbrida con escalón por antigüedad desde entrega.
+Circa — comisión por tramo de pago, con escalón por antigüedad desde entrega.
 
 Al confirmar:
   Plan 7 días  → 1.4%
@@ -7,15 +7,25 @@ Al confirmar:
   Plan 30 días → 6%
   Comisión mínima: S/1.00 por operación
 
-Post-entrega (reloj = fecha_entregado), si no pagan:
+REGIMEN VIGENTE desde FECHA_VIGENCIA_TRAMOS (contrato v4.0) — reloj = fecha_entregado:
+  Días 1–7   → 1.4%
+  Días 8–14  → true-up a 3%
+  Días 15–30 → true-up a 6%
+  Día 31+    → mora 0.03% diaria sobre el saldo (capital + comisión del tramo 15-30)
+
+REGIMEN ANTERIOR (contrato v3.0, evaluaciones previas al corte):
   Días 1–7 (o hasta vencimiento del plan): fee congelado, sin mora
   Tras vencimiento y antes del siguiente escalón: mora 0.03% diaria sobre saldo
-  Día 15+ desde entrega: true-up a fee 3% (si el plan origen era menor); mora se limpia
+  Día 15+ desde entrega: true-up a fee 3%; mora se limpia
   Día 30+ desde entrega: true-up a fee 6%; mora se limpia
 
+El corte es por FECHA DE EVALUACIÓN, no por fecha del pedido: desde el 28/08/2026
+todos los pedidos vivos —vencidos y nuevos— se calculan con los tramos del contrato
+v4.0. Decisión de Paola (27/08/2026): los vendedores comunicaron el cambio la semana
+previa y los clientes lo aceptaron; no se aplica hoy porque los montos a pagar de hoy
+ya fueron entregados a los bodegueros.
+
 El true-up solo sube (`max`); nunca baja un plan 15d/30d.
-Pedidos legacy (fee_regimen != plan_fijo_v20260520): misma lógica de cobro vigente
-usando fee_tasa/fee_monto persistidos como base.
 """
 
 from __future__ import annotations
@@ -29,7 +39,15 @@ from zoneinfo import ZoneInfo
 TZ_PERU = ZoneInfo("America/Lima")
 
 FEE_REGIME_LEGACY = "legacy_v20260428"
-FEE_REGIME_CURRENT = "plan_fijo_v20260520"
+FEE_REGIME_PLAN_FIJO = "plan_fijo_v20260520"
+FEE_REGIME_TRAMOS = "tramos_v20260828"
+
+# Compat: imports viejos siguen apuntando al régimen de plan fijo.
+FEE_REGIME_CURRENT = FEE_REGIME_PLAN_FIJO
+
+# Corte de vigencia del contrato v4.0 (tramos por día de pago).
+# Antes de esta fecha se evalúa con los escalones 15/30 del contrato v3.0.
+FECHA_VIGENCIA_TRAMOS = date(2026, 8, 28)
 
 # Legacy (solo pedidos originados antes del corte; no usar en nuevos pedidos)
 LEGACY_FEE_TABLE = {7: Decimal("0.03"), 15: Decimal("0.05"), 30: Decimal("0.07")}
@@ -39,9 +57,15 @@ MORA_DAILY_RATE = Decimal("0.0003")
 MIN_COMMISSION = Decimal("1.00")
 VALID_PLAZOS = (7, 15, 30)
 
-# Escalones de true-up medidos en días calendario desde fecha_entregado
+# Escalones de true-up medidos en días calendario desde fecha_entregado.
+# Régimen anterior (contrato v3.0):
 ESCALON_15_DIAS = 15
 ESCALON_30_DIAS = 30
+
+# Régimen de tramos (contrato v4.0): el tramo medio arranca el día 8 y el alto el 15.
+TRAMO_MEDIO_DESDE = 8    # días 8–14  → comisión 3%
+TRAMO_ALTO_DESDE = 15    # días 15–30 → comisión 6%
+DIAS_INCUMPLIMIENTO = 30  # mora diaria a partir del día 31
 
 
 @dataclass(frozen=True)
@@ -117,7 +141,7 @@ def calcular_comision_por_plan(monto_financiado: float, plazo_dias: int) -> dict
         "amount": _money(monto),
         "days": plan.days,
         "plan_label": plan.label,
-        "fee_regimen": FEE_REGIME_CURRENT,
+        "fee_regimen": fee_regimen_para_pedido_nuevo(),
     }
 
 
@@ -149,12 +173,31 @@ def dias_desde_entrega(
     return max(0, (hoy - fe).days)
 
 
-def escalon_plazo_por_antiguedad(dias_desde_entrega: int | None) -> int | None:
+def regimen_tramos_vigente(hoy: date | None = None) -> bool:
+    """True si la evaluación cae bajo el contrato v4.0 (tramos por día de pago)."""
+    hoy = hoy or hoy_peru()
+    return hoy >= FECHA_VIGENCIA_TRAMOS
+
+
+def escalon_plazo_por_antiguedad(
+    dias_desde_entrega: int | None,
+    hoy: date | None = None,
+) -> int | None:
     """
     Escalón de true-up según antigüedad desde entrega.
-    None = aún no aplica salto (se mantiene fee de origen + mora híbrida si vence).
+    None = aún no aplica salto (se mantiene fee de origen).
+
+    Los umbrales dependen del régimen vigente a la fecha de evaluación:
+      v4.0 (desde el corte): 8 → 3%, 15 → 6%
+      v3.0 (antes del corte): 15 → 3%, 30 → 6%
     """
     if dias_desde_entrega is None:
+        return None
+    if regimen_tramos_vigente(hoy):
+        if dias_desde_entrega >= TRAMO_ALTO_DESDE:
+            return 30
+        if dias_desde_entrega >= TRAMO_MEDIO_DESDE:
+            return 15
         return None
     if dias_desde_entrega >= ESCALON_30_DIAS:
         return 30
@@ -163,12 +206,16 @@ def escalon_plazo_por_antiguedad(dias_desde_entrega: int | None) -> int | None:
     return None
 
 
-def plazo_vigente_con_escalon(plazo_origen: int, dias_desde_entrega: int | None) -> int:
+def plazo_vigente_con_escalon(
+    plazo_origen: int,
+    dias_desde_entrega: int | None,
+    hoy: date | None = None,
+) -> int:
     """Plazo efectivo = max(origen, escalón). Solo sube."""
     origen = int(plazo_origen or 7)
     if origen not in PAYMENT_PLANS:
         origen = 7
-    esc = escalon_plazo_por_antiguedad(dias_desde_entrega)
+    esc = escalon_plazo_por_antiguedad(dias_desde_entrega, hoy)
     if esc is None:
         return origen
     return max(origen, esc)
@@ -179,13 +226,14 @@ def fee_vigente_trueup(
     fee_congelado: float,
     plazo_origen: int,
     dias_desde_entrega: int | None,
+    hoy: date | None = None,
 ) -> dict:
     """
-    Comisión vigente con true-up al escalón 15/30.
+    Comisión vigente con true-up al escalón del régimen que corresponda.
     Devuelve fee_vigente >= fee_congelado y si hubo salto.
     """
     congelado = _money(_d(fee_congelado))
-    plazo_v = plazo_vigente_con_escalon(plazo_origen, dias_desde_entrega)
+    plazo_v = plazo_vigente_con_escalon(plazo_origen, dias_desde_entrega, hoy)
     quote = calcular_comision_por_plan(monto_financiado, plazo_v)
     vigente = max(congelado, quote["fee"])
     escalonado = vigente > congelado + 1e-9
@@ -243,14 +291,23 @@ def calcular_total_a_pagar(
     if plazo_o not in PAYMENT_PLANS:
         plazo_o = 7
 
-    tu = fee_vigente_trueup(monto_financiado, fee_monto, plazo_o, dias_ent)
+    tu = fee_vigente_trueup(monto_financiado, fee_monto, plazo_o, dias_ent, hoy)
     fee_v = tu["fee_vigente"]
     credito_fijo = _money(_d(monto_financiado) + _d(tu["fee_congelado"]))
     saldo = calcular_saldo_adeudado(monto_financiado, fee_v, monto_pagado)
     dias_atraso = dias_atraso_desde_vencimiento(fecha_vencimiento, hoy)
 
-    # Opción A: al escalar, se limpia la mora acumulada
-    if tu["escalonado"]:
+    if regimen_tramos_vigente(hoy):
+        # Contrato v4.0: los tramos cubren hasta el día 30. La mora solo corre
+        # a partir del día 31 desde la entrega, sobre el saldo ya con fee 6%.
+        if dias_ent is not None and dias_ent > DIAS_INCUMPLIMIENTO:
+            mora_dias = dias_ent - DIAS_INCUMPLIMIENTO
+            mora = calcular_mora(saldo, mora_dias)
+        else:
+            mora = 0.0
+            mora_dias = 0
+    elif tu["escalonado"]:
+        # Contrato v3.0, opción A: al escalar, se limpia la mora acumulada
         mora = 0.0
         mora_dias = 0
     else:
@@ -355,5 +412,6 @@ def get_finance_options(max_amount: float) -> list[dict]:
     return options
 
 
-def fee_regimen_para_pedido_nuevo() -> str:
-    return FEE_REGIME_CURRENT
+def fee_regimen_para_pedido_nuevo(hoy: date | None = None) -> str:
+    """Régimen a persistir en pedidos nuevos, según el contrato vigente ese día."""
+    return FEE_REGIME_TRAMOS if regimen_tramos_vigente(hoy) else FEE_REGIME_PLAN_FIJO

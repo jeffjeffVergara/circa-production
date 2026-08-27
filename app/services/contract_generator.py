@@ -116,17 +116,17 @@ def _build_field_table(fields: list, styles) -> Table:
 
 
 def _build_rates_table(styles) -> Table:
-    """Tabla de plazos y cargos (plan elegido al confirmar el pedido)."""
+    """Tabla de plazos y cargos (tramo segun el dia de pago desde la entrega)."""
     header = [
-        Paragraph("<b>Plan de pago</b>", styles["ClauseBody"]),
+        Paragraph("<b>D\u00eda de pago</b>", styles["ClauseBody"]),
         Paragraph("<b>Comisi\u00f3n</b>", styles["ClauseBody"]),
         Paragraph("<b>M\u00ednimo</b>", styles["ClauseBody"]),
     ]
     rows = [
         header,
-        ["7 d\u00edas", "1.4% del monto financiado (S/1.40 por cada S/100)", "S/ 1.00"],
-        ["15 d\u00edas", "3% del monto financiado (S/3.00 por cada S/100)", "S/ 1.00"],
-        ["30 d\u00edas", "6% del monto financiado (S/6.00 por cada S/100)", "S/ 1.00"],
+        ["Del d\u00eda 1 al d\u00eda 7", "1.4% del monto financiado (S/1.40 por cada S/100)", "S/ 1.00"],
+        ["Del d\u00eda 8 al d\u00eda 14", "3% del monto financiado (S/3.00 por cada S/100)", "S/ 1.00"],
+        ["Del d\u00eda 15 al d\u00eda 30", "6% del monto financiado (S/6.00 por cada S/100)", "S/ 1.00"],
     ]
 
     t = Table(rows, colWidths=[100, 220, 100])
@@ -170,11 +170,12 @@ CLAUSULAS = [
         "hasta en 2 d\u00edas h\u00e1biles.",
     ]),
     ("CL\u00c1USULA 6: INCUMPLIMIENTO Y MORA", [
-        "El BODEGUERO se compromete a realizar el pago dentro del plazo del plan elegido al confirmar el pedido.",
+        "El BODEGUERO se compromete a realizar el pago dentro de los 30 d\u00edas calendario contados desde "
+        "la entrega del pedido.",
         "Si el pago no se realiza dentro de ese plazo, el saldo adeudado (capital financiado m\u00e1s comisi\u00f3n "
         "acordada) ingresar\u00e1 en mora con un cargo diario de 0.03% sobre el monto total adeudado. La mora ser\u00e1 "
         "autom\u00e1tica sin necesidad de interpelaci\u00f3n ni aviso al BODEGUERO.",
-        "Desde el primer d\u00eda de atraso del pago acordado, CIRCA podr\u00e1 suspender el "
+        "Desde el d\u00eda 31, CIRCA podr\u00e1 suspender el "
         "acceso a nuevas compras a cr\u00e9dito hasta que el BODEGUERO regularice su situaci\u00f3n.",
         "CIRCA podr\u00e1 enviar recordatorios de pago por WhatsApp y notificar al distribuidor "
         "asociado sobre el estado de mora del BODEGUERO. Esta informaci\u00f3n podr\u00e1 ser "
@@ -282,7 +283,7 @@ def generate_contract(bodega_data: dict, output_dir: str = "/tmp") -> str:
     story.append(Spacer(1, 6))
     story.append(HRFlowable(width="100%", thickness=2, color=CIRCA_BLUE))
     story.append(Paragraph(
-        f"Versi\u00f3n 3.0 | Fecha de emisi\u00f3n: 20/05/2026",
+        f"Versi\u00f3n 4.0 | Fecha de emisi\u00f3n: 28/08/2026",
         styles["VersionDate"]
     ))
     
@@ -326,8 +327,16 @@ def generate_contract(bodega_data: dict, output_dir: str = "/tmp") -> str:
             story.append(_build_rates_table(styles))
             story.append(Spacer(1, 4))
             story.append(Paragraph(
-                "La comisi\u00f3n se fija al confirmar el pedido seg\u00fan el plan elegido (7, 15 o 30 d\u00edas). "
-                "El pago dentro del plazo acordado no modifica el monto total de la operaci\u00f3n.",
+                "La comisi\u00f3n se determina seg\u00fan el d\u00eda en que el BODEGUERO realiza el pago, contado "
+                "desde la entrega del pedido. La comisi\u00f3n no se acumula entre tramos: se aplica una "
+                "sola vez, seg\u00fan el tramo en que caiga el d\u00eda de pago.",
+                styles["ClauseBody"],
+            ))
+            story.append(Spacer(1, 4))
+            story.append(Paragraph(
+                "Ejemplo sobre un financiamiento de S/ 100: si paga el d\u00eda 4, la comisi\u00f3n es de "
+                "S/ 1.40 (total S/ 101.40); si paga el d\u00eda 10, de S/ 3.00 (total S/ 103.00); "
+                "si paga el d\u00eda 22, de S/ 6.00 (total S/ 106.00).",
                 styles["ClauseBody"],
             ))
             continue

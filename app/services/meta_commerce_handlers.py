@@ -12,9 +12,60 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from app.services import db
-from app.services.fees import calculate_fee, format_rate_pct, fee_regimen_para_pedido_nuevo
+from app.services.fees import (
+    FECHA_VIGENCIA_TRAMOS,
+    calcular_comision_por_plan,
+    calculate_fee,
+    fee_regimen_para_pedido_nuevo,
+    format_rate_pct,
+)
 
 logger = logging.getLogger("circa.meta.handlers")
+
+# Aviso único del cambio de tramos (contrato v4.0). Solo para bodegas ya
+# enroladas: las nuevas firman la v4.0 al afiliarse y no lo necesitan.
+AVISO_TRAMOS_ACCION = "aviso_tramos_v4_mostrado"
+
+
+def _debe_mostrar_aviso_tramos(bodega_id) -> bool:
+    """True si la bodega es previa al contrato v4.0 y todavía no vio el aviso."""
+    if not bodega_id:
+        return False
+    try:
+        b = db.sb.table("bodegas").select("created_at").eq(
+            "id", str(bodega_id)).limit(1).execute()
+        if not b.data:
+            return False
+        creada = str(b.data[0].get("created_at") or "")[:10]
+        if not creada or creada >= FECHA_VIGENCIA_TRAMOS.isoformat():
+            return False
+        ev = db.sb.table("eventos").select("id").eq(
+            "bodega_id", str(bodega_id)).eq(
+            "accion", AVISO_TRAMOS_ACCION).limit(1).execute()
+        return not (ev.data or [])
+    except Exception as e:
+        logger.error("aviso tramos check %s: %s", bodega_id, e, exc_info=True)
+        return False
+
+
+def _texto_aviso_tramos(fin_amt: float) -> str:
+    """
+    Importes reales de los tramos 8-14 (3%) y 15-30 (6%) para este pedido.
+    Devuelve "" cuando el aviso no aporta.
+
+    En montos chicos la comisión mínima de S/1.00 domina los tres tramos y los
+    importes colapsan (financiado < ~S/16.67 da el mismo total en los tres).
+    Decir "si te demoras pagas lo mismo" solo confunde, así que se omite.
+    """
+    t1 = calcular_comision_por_plan(fin_amt, 7)["total"]
+    t2 = calcular_comision_por_plan(fin_amt, 15)["total"]
+    t3 = calcular_comision_por_plan(fin_amt, 30)["total"]
+    if t2 <= t1 and t3 <= t1:
+        return ""
+    return (
+        f"⏱️ Si te demoras: del día 8 al 14 pagas S/{t2:.2f}"
+        f" · del 15 al 30, S/{t3:.2f}\n\n"
+    )
 
 
 def normalize_wa_phone(telefono: str) -> str:
@@ -84,14 +135,27 @@ async def _go_pin_financiado(
         "bodega_id": bod_id,
     }).execute()
     total_pagar = contado + fin_amt + fee
-    await meta_client.send_text(
+    aviso_tramos = (
+        _texto_aviso_tramos(fin_amt)
+        if fin_amt > 0 and _debe_mostrar_aviso_tramos(bod_id)
+        else ""
+    )
+    sent = await meta_client.send_text(
         ctx.telefono,
         f"\U0001f4b3 *Resumen de pago — {dias} días*\n\n"
         f"\U0001f69a Hoy pagas al repartidor: *S/{contado:.2f}*\n"
         f"\U0001f4b3 Cuota Circa S/{fin_amt + fee:.2f} — pagar antes del {fecha_venc}\n\n"
-        f"*Total a pagar: S/{total_pagar:.2f}*\n\n"
+        + aviso_tramos
+        + f"*Total a pagar: S/{total_pagar:.2f}*\n\n"
         f"Confirma con tu clave de 4 dígitos.",
     )
+    if aviso_tramos and sent is not None:
+        # Una sola vez por bodega. Se registra recién cuando el mensaje salió,
+        # para no "gastar" el aviso si el envío falló.
+        try:
+            db.log_evento(pedido["id"], bod_id, AVISO_TRAMOS_ACCION, None, None, "sistema")
+        except Exception as e:
+            logger.error("log aviso tramos %s: %s", bod_id, e, exc_info=True)
     await meta_client.send_pin_request(ctx.telefono, mode="verify", bodega_id=bod_id)
 
 
