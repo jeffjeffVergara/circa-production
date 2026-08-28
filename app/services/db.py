@@ -70,6 +70,75 @@ def activate_bodega(bodega_id: str, pin_hash: str):
         "estado": "activo",
     }).eq("id", bodega_id).execute()
 
+# ── CONTRATO PDF ──────────────────────────────────────────
+def _generar_y_subir_contrato_pdf(bodega_id: str, contract_hash: str, firmado_at: str):
+    """Genera el PDF del contrato y lo sube al bucket `contratos`.
+
+    Devuelve (storage_path, version) o (None, None) si algo falla.
+    Best-effort: nunca rompe la firma, solo loggea.
+    """
+    import logging
+    import os
+    import re
+    import tempfile
+    from datetime import datetime
+
+    try:
+        from circa_contrato_pdf import generar_contrato_pdf, VERSION_CONTRATO
+    except Exception as e:
+        logging.warning(f"contrato_pdf: no pude importar el generador: {e}")
+        return None, None
+
+    try:
+        b = sb.table("bodegas").select(
+            "razon_social, nombre_comercial, representante_legal, dni_representante, "
+            "ruc, direccion_fiscal, direccion_despacho, telefono_whatsapp"
+        ).eq("id", bodega_id).single().execute().data or {}
+
+        razon = b.get("razon_social") or b.get("nombre_comercial") or ""
+        firmante = b.get("representante_legal") or razon
+
+        try:
+            dt = datetime.fromisoformat(str(firmado_at).replace("Z", "+00:00"))
+        except Exception:
+            dt = now_peru()
+
+        datos = {
+            "razon_social": razon,
+            "ruc": b.get("ruc") or "",
+            "representante_legal": firmante,
+            "dni": b.get("dni_representante") or "",
+            "domicilio_fiscal": b.get("direccion_fiscal") or "",
+            "direccion_entrega": b.get("direccion_despacho") or b.get("direccion_fiscal") or "",
+            "email": "",
+            "nombre_firmante": firmante,
+            "dni_firmante": b.get("dni_representante") or "",
+            "telefono": (b.get("telefono_whatsapp") or "").replace("+51", ""),
+            "fecha_aceptacion": dt.strftime("%d/%m/%Y"),
+            "hora_aceptacion": dt.strftime("%H:%M:%S"),
+            "hash_verificacion": contract_hash,
+        }
+
+        slug = re.sub(r"_+", "_", re.sub(r"[^A-Za-z0-9]+", "_", razon)).strip("_").upper()[:60]
+        nombre = "Contrato_%s_%s.pdf" % (slug, dt.strftime("%Y%m%d_%H%M%S"))
+        destino = "%s/%s" % (bodega_id, nombre)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            ruta = os.path.join(tmp, nombre)
+            generar_contrato_pdf(datos, ruta)
+            with open(ruta, "rb") as fh:
+                contenido = fh.read()
+
+        sb.storage.from_("contratos").upload(
+            path=destino, file=contenido,
+            file_options={"content-type": "application/pdf", "upsert": "true"},
+        )
+        return destino, "v%s" % VERSION_CONTRATO
+    except Exception as e:
+        logging.warning(f"contrato_pdf: fallo generando/subiendo para bodega {bodega_id}: {e}")
+        return None, None
+
+
 def sign_contract(bodega_id: str, contract_hash: str):
     firmado_at = now_peru().isoformat()
     # 1. Marcar contrato firmado
@@ -97,10 +166,17 @@ def sign_contract(bodega_id: str, contract_hash: str):
         bodega = sb.table("bodegas").select(
             "razon_social, representante_legal, dni_representante"
         ).eq("id", bodega_id).single().execute().data or {}
-        sb.table("contratos").insert({
+
+        # Genera el PDF y lo sube. Si falla, url_contrato queda None
+        # (la firma sigue siendo valida por el registro + hash).
+        url_pdf, version_pdf = _generar_y_subir_contrato_pdf(
+            bodega_id, contract_hash, firmado_at
+        )
+
+        fila = {
             "bodega_id": bodega_id,
-            "version": "v2.1_2026-04-28",
-            "url_contrato": None,
+            "version": version_pdf or "v3.0",
+            "url_contrato": url_pdf,
             "aceptado_at": firmado_at,
             "canal": "whatsapp",
             "ip_address": None,
@@ -113,10 +189,21 @@ def sign_contract(bodega_id: str, contract_hash: str):
                 "contrato_hash": contract_hash,
                 "captured_via": "sign_contract_inline_v1",
             },
-        }).execute()
+        }
+
+        # Antiduplicado: una bodega no deberia acumular una fila por cada vez
+        # que el flujo pasa por aca. Si ya tiene contrato, se actualiza el vigente.
+        previo = sb.table("contratos").select("id").eq(
+            "bodega_id", bodega_id
+        ).order("aceptado_at", desc=True).limit(1).execute().data or []
+
+        if previo:
+            sb.table("contratos").update(fila).eq("id", previo[0]["id"]).execute()
+        else:
+            sb.table("contratos").insert(fila).execute()
     except Exception as e:
         import logging
-        logging.warning(f"sign_contract: insert en tabla contratos fallo para bodega {bodega_id}: {e}")
+        logging.warning(f"sign_contract: registro de contrato fallo para bodega {bodega_id}: {e}")
 
 # ── CATÁLOGO ──────────────────────────────────
 def get_catalogo(distribuidor_id: str, marca: str = None, categoria: str = None):
