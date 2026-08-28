@@ -431,6 +431,10 @@ def list_visita_credito_preview_items(
     return items
 
 
+def _item_destino_telefono(item: dict[str, Any]) -> str:
+    return _normalize_phone(item.get("telefono_envio") or item.get("telefono") or "")
+
+
 def build_items_for_send(
     custom_items: list[dict[str, Any]],
     *,
@@ -444,9 +448,15 @@ def build_items_for_send(
     items: list[dict[str, Any]] = []
     for raw in custom_items or []:
         if not isinstance(raw, dict):
+            logger.warning("visita_credito build_items_for_send: fila ignorada (no es dict)")
             continue
         telefono = _normalize_phone(raw.get("telefono_envio") or raw.get("telefono") or "")
         if not telefono:
+            logger.warning(
+                "visita_credito build_items_for_send: sin teléfono item_id=%s nombre=%s",
+                raw.get("item_id"),
+                raw.get("nombre"),
+            )
             continue
         bid = raw.get("bodega_id")
         bodega: dict[str, Any] = {}
@@ -477,6 +487,11 @@ def build_items_for_send(
         if raw.get("es_test") is not None:
             item["es_test"] = bool(raw.get("es_test"))
         items.append(item)
+    logger.info(
+        "visita_credito build_items_for_send: %s item(s) listos desde %s payload(s)",
+        len(items),
+        len(custom_items or []),
+    )
     return items
 
 
@@ -574,9 +589,35 @@ async def send_visita_credito_item(
     variables = [str(var_values.get(k, "")) for k in keys]
     tpl_name = cfg["template_name"]
 
+    logger.info(
+        "visita_credito enviando WA item_id=%s tel=%s plantilla=%s vars=%s bodega=%s",
+        item.get("item_id"),
+        telefono,
+        tpl_name,
+        variables,
+        item.get("bodega_nombre"),
+    )
+
     resultado = dist._send_wa_template(telefono, tpl_name, variables)
     if not resultado.get("ok"):
-        return {"ok": False, "error": resultado.get("error") or "Meta rechazó el envío"}
+        err = resultado.get("error") or "Meta rechazó el envío"
+        logger.error(
+            "visita_credito Meta falló item_id=%s tel=%s plantilla=%s error=%s",
+            item.get("item_id"),
+            telefono,
+            tpl_name,
+            err,
+        )
+        return {"ok": False, "error": err, "telefono": telefono, "plantilla": tpl_name}
+
+    logger.info(
+        "visita_credito Meta OK item_id=%s tel=%s plantilla=%s lang=%s wamid=%s",
+        item.get("item_id"),
+        telefono,
+        tpl_name,
+        resultado.get("lang"),
+        ((resultado.get("response") or {}).get("messages") or [{}])[0].get("id", ""),
+    )
 
     wamid = ""
     try:
@@ -622,23 +663,49 @@ async def send_visita_credito_batch(
     sent = 0
     skipped = 0
     errors: list[dict[str, str]] = []
+    send_log: list[str] = []
+
+    logger.info(
+        "visita_credito batch inicio: %s item(s)%s",
+        len(items),
+        f", selected_ids={len(allowed)}" if allowed else "",
+    )
 
     for item in items:
         iid = str(item.get("item_id") or "")
         if allowed is not None and iid not in allowed:
+            msg = f"omitido item_id={iid}: no está en selected_ids"
+            send_log.append(msg)
+            logger.warning("visita_credito %s", msg)
             continue
-        if not item.get("telefono"):
+        telefono = _item_destino_telefono(item)
+        if not telefono:
             skipped += 1
+            err = "Sin teléfono en el item"
+            errors.append({"item_id": iid, "error": err})
+            send_log.append(f"skip item_id={iid}: {err}")
+            logger.warning("visita_credito skip item_id=%s: %s", iid, err)
             continue
         result = await send_visita_credito_item(item, template_config=template_config)
         if result.get("ok"):
             sent += 1
+            send_log.append(
+                f"ok item_id={iid} tel={telefono} plantilla={result.get('plantilla')}"
+            )
             logger.info(
-                "Visita crédito reminder sent: %s — %s",
+                "Visita crédito reminder sent: %s — %s — %s",
                 result.get("bodega"),
                 result.get("plantilla"),
+                telefono,
             )
         else:
-            errors.append({"item_id": iid, "error": str(result.get("error") or "error")})
+            err = str(result.get("error") or "error")
+            errors.append({"item_id": iid, "error": err, "telefono": telefono})
+            send_log.append(f"error item_id={iid} tel={telefono}: {err[:200]}")
+            logger.error("visita_credito error item_id=%s tel=%s: %s", iid, telefono, err)
 
-    return {"sent": sent, "skipped": skipped, "errors": errors}
+    summary = f"fin batch: sent={sent} skipped={skipped} errors={len(errors)}"
+    send_log.append(summary)
+    logger.info("visita_credito %s", summary)
+
+    return {"sent": sent, "skipped": skipped, "errors": errors, "send_log": send_log}

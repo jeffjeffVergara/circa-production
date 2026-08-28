@@ -339,6 +339,10 @@ tr:hover td{background:var(--card-hover)}
 .batch-preview-row{cursor:pointer}
 .batch-preview-row.focused{background:rgba(96,165,250,.1)}
 .batch-preview-row:hover{background:rgba(255,255,255,.03)}
+.batch-template-panel{background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px}
+.batch-template-panel .batch-panel-title{font-weight:600;font-size:13px;margin-bottom:8px;color:var(--text)}
+.batch-csv-help{font-size:11px;color:var(--muted);line-height:1.45;padding:8px 10px;border:1px dashed var(--border);border-radius:8px;background:var(--bg);margin-bottom:10px}
+.batch-csv-help code{color:var(--blue-light);font-size:10px}
 .cm-revision-ok{color:var(--green);font-size:12px;font-weight:600}
 .cm-revision-cell{min-width:140px}
 .cm-revision-pending{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--orange);cursor:pointer;white-space:nowrap}
@@ -2526,13 +2530,29 @@ function batchReadTemplateConfigFromForm(){
   };
 }
 
+function batchEnsureDefaultSelection(){
+  var st = window._batchPreviewState;
+  if(!st || !st.data) return;
+  if(!st.selected) st.selected = {};
+  var defaultOn = st.mode === 'ejecutar';
+  (st.data.items || []).forEach(function(it){
+    if(!it.item_id) return;
+    var id = String(it.item_id);
+    if(st.selected[id] === undefined) st.selected[id] = defaultOn;
+  });
+}
+
 function batchMergePreviewItems(newItems){
   var st = window._batchPreviewState;
   if(!st || !st.data) return;
+  if(!st.selected) st.selected = {};
   var byId = {};
   (st.data.items || []).forEach(function(it){ if(it.item_id) byId[String(it.item_id)] = it; });
   (newItems || []).forEach(function(it){
-    if(it && it.item_id) byId[String(it.item_id)] = it;
+    if(!it || !it.item_id) return;
+    var id = String(it.item_id);
+    byId[id] = it;
+    if(st.mode === 'ejecutar') st.selected[id] = true;
   });
   st.data.items = Object.keys(byId).map(function(k){ return byId[k]; });
   st.data.total = st.data.items.length;
@@ -2635,9 +2655,6 @@ function batchAddBodega(bodegaId){
     if(!r.ok){ showToast((r.d && r.d.detail) || 'Error','error'); return; }
     var p = r.d || {};
     batchMergePreviewItems(p.items || []);
-    (p.items || []).forEach(function(it){
-      if(it.item_id) st.selected[String(it.item_id)] = true;
-    });
     showToast('Bodega agregada','success');
     var search = document.getElementById('batchBodegaSearch');
     var results = document.getElementById('batchBodegaResults');
@@ -2668,8 +2685,8 @@ function batchTemplateConfigPanel(jobMeta, tplCfg){
   if(!jobMeta || !jobMeta.soporta_template_config) return '';
   tplCfg = tplCfg || {};
   var defaults = tplCfg.defaults || {};
-  return '<div class="batch-template-panel" style="border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px;background:var(--bg-soft,#fafafa)">'+
-    '<div style="font-weight:600;font-size:13px;margin-bottom:8px">Plantilla WhatsApp (Meta)</div>'+
+  return '<div class="batch-template-panel">'+
+    '<div class="batch-panel-title">Plantilla WhatsApp (Meta)</div>'+
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">'+
       '<div><label style="font-size:11px;color:var(--muted)">Nombre plantilla</label>'+
         '<input type="text" id="batchTplName" class="input" value="'+escAttr(tplCfg.template_name||'circa_recordatorio_visita_credito')+'" onchange="batchRefreshPreviewWithTemplate()"></div>'+
@@ -2718,7 +2735,7 @@ function batchRecipientsToolsPanel(jobMeta){
       '</div>'
     : '';
   var csvHelp = jobMeta.soporta_csv_import
-    ? '<div style="flex:1 1 100%;font-size:11px;color:var(--muted);line-height:1.45;padding:8px 10px;border:1px dashed var(--border);border-radius:8px">'+
+    ? '<div class="batch-csv-help">'+
         '<strong>Formato CSV (4 columnas):</strong> <code>nombre</code> (bodega), <code>aliado</code> (vendedor), <code>monto</code> (soles), <code>telefono</code> (WhatsApp). '+
         'El teléfono del CSV es el destino del mensaje; si la bodega existe en BD se vincula por nombre.</div>'
     : '';
@@ -2732,14 +2749,41 @@ function openBatchRunConfirm(){
   if(!ids.length){ showToast('Selecciona al menos un destinatario','error'); return; }
   if(isReadOnly()){ showToast('Solo lectura','error'); return; }
   window._batchSelectedIds = ids;
-  var jobId = st.jobId;
-  document.getElementById('modalContainer').innerHTML =
-    '<div class="modal-overlay open" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:480px"><h3>▶ Ejecutar proceso</h3>'+
-    '<p style="font-size:13px;color:var(--muted);margin-bottom:12px">Job: <code>'+escAttr(jobId)+'</code> · <strong>'+ids.length+'</strong> destinatario(s)</p>'+
-    '<div class="modal-field"><label>Comentario (mín. 8 caracteres)</label><input id="batchRunComentario" class="input" value="Ejecución selectiva desde backoffice"></div>'+
-    '<div class="modal-field"><label>Contraseña</label><input type="password" id="batchRunPass" class="input"></div>'+
-    '<div class="modal-actions"><button class="btn btn-outline" onclick="closeModal();showBatchPreviewModal(\''+escAttr(jobId)+'\', window._batchPreviewState.data)">← Volver</button>'+
-    '<button class="btn btn-green" onclick="confirmBatchRun(\''+escAttr(jobId)+'\')">Confirmar</button></div></div></div>';
+  confirmBatchRun(st.jobId);
+}
+
+function confirmBatchRun(jobId){
+  var selected = window._batchSelectedIds || getBatchSelectedIds();
+  if(!selected.length){ showToast('Selecciona al menos un destinatario','error'); return; }
+  closeModal();
+  showPanelLoader('Ejecutando proceso…', true);
+  var st = window._batchPreviewState || {};
+  var mode = st.mode === 'prueba' ? 'test' : (window.MODE_FILTER || localStorage.getItem('circa_mode') || 'real');
+  apiPost('/api/backoffice/batch/'+encodeURIComponent(jobId)+'/run', {
+    dry_run: false,
+    comentario: 'Ejecución batch desde backoffice',
+    test: mode,
+    selected_ids: selected,
+    template_config: st.templateConfig || batchReadTemplateConfigFromForm(),
+    custom_items: batchBuildCustomItemsPayload()
+  }).then(function(x){
+    hidePanelLoader();
+    if(!x.ok){ showToast((x.d && x.d.detail) || 'Error al ejecutar','error'); return; }
+    var d = x.d || {};
+    var log = (d.details && d.details.send_log) ? d.details.send_log : [];
+    if(log.length) console.log('[batch send_log]', log.join('\n'));
+    if(d.failed && d.errors && d.errors.length){
+      var errTxt = d.errors.slice(0, 3).map(function(e){ return (e.item_id||'?')+': '+(e.error||''); }).join(' · ');
+      showToast('Errores ('+d.failed+'): '+errTxt,'error');
+    } else if(!d.ok && !d.processed){
+      var hint = log.length ? log[log.length-1] : 'Ningún mensaje enviado';
+      showToast('Sin envíos: '+hint,'error');
+    } else {
+      showToast('Listo: '+(d.ok||0)+' OK / '+(d.processed||0)+' proc.','success');
+    }
+    loadBatchCenter();
+    if(jobId === 'score_bodegas_diario') loadScoring();
+  }).catch(function(e){ hidePanelLoader(); showToast(e.message,'error'); });
 }
 
 function showBatchPreviewModal(jobId, p){
@@ -2808,6 +2852,7 @@ function showBatchPreviewModal(jobId, p){
         '</div>'+
       '</div>'+
     '</div></div>';
+  batchEnsureDefaultSelection();
   renderBatchPreviewTableRows();
   updateBatchPreviewSelectionCount();
   if(isPrueba && (p.items||[]).length){
@@ -2819,30 +2864,6 @@ function showBatchPreviewModal(jobId, p){
 
 function runBatchJob(jobId, dryRun){
   openBatchPreview(jobId, dryRun ? 'prueba' : 'ejecutar');
-}
-
-function confirmBatchRun(jobId){
-  var pass = (document.getElementById('batchRunPass')||{}).value || '';
-  var com = (document.getElementById('batchRunComentario')||{}).value || '';
-  if(com.trim().length < 8){ showToast('Comentario mínimo 8 caracteres','error'); return; }
-  if(!pass){ showToast('Ingresa contraseña','error'); return; }
-  var selected = window._batchSelectedIds || getBatchSelectedIds();
-  if(!selected.length){ showToast('Selecciona al menos un destinatario','error'); return; }
-  closeModal();
-  showPanelLoader('Ejecutando proceso…', true);
-  var st = window._batchPreviewState || {};
-  var mode = st.mode === 'prueba' ? 'test' : (window.MODE_FILTER || localStorage.getItem('circa_mode') || 'real');
-  apiPost('/api/backoffice/batch/'+encodeURIComponent(jobId)+'/run', {
-    dry_run: false, password: pass, comentario: com, test: mode, selected_ids: selected,
-    template_config: st.templateConfig || batchReadTemplateConfigFromForm(),
-    custom_items: batchBuildCustomItemsPayload()
-  }).then(function(x){
-    hidePanelLoader();
-    if(!x.ok){ showToast((x.d && x.d.detail) || 'Error al ejecutar','error'); return; }
-    showToast('Listo: '+(x.d.ok||0)+' OK / '+(x.d.processed||0)+' proc.','success');
-    loadBatchCenter();
-    if(jobId === 'score_bodegas_diario') loadScoring();
-  }).catch(function(e){ hidePanelLoader(); showToast(e.message,'error'); });
 }
 
 var creditModelData = null;

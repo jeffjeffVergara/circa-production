@@ -2027,7 +2027,6 @@ async def batch_job_run(
             raise HTTPException(status_code=403, detail="Solo lectura: usa dry-run o pide acceso de escritura")
         if len(body.comentario.strip()) < 8:
             raise HTTPException(status_code=400, detail="Comentario mínimo 8 caracteres")
-        verify_reauth_password(body.password)
         if body.selected_ids is not None and len(body.selected_ids) == 0:
             raise HTTPException(status_code=400, detail="Selecciona al menos un destinatario")
 
@@ -2047,6 +2046,20 @@ async def batch_job_run(
         raise HTTPException(status_code=404, detail=str(e)) from e
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
+
+    if job_id == "recordatorio_visita_credito" and not body.dry_run:
+        import logging
+
+        log = logging.getLogger("circa.batch_jobs")
+        details = result.get("details") or {}
+        send_log = details.get("send_log") or []
+        log.info(
+            "batch recordatorio_visita_credito user=%s ok=%s failed=%s log=%s",
+            user.get("email"),
+            result.get("ok"),
+            result.get("failed"),
+            " | ".join(send_log[-8:]),
+        )
 
     if not body.dry_run and user.get("role") != "viewer":
         log_action(
