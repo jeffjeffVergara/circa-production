@@ -2546,8 +2546,8 @@ function batchRefreshPreviewWithTemplate(){
   if(!st || !st.jobMeta || !st.jobMeta.soporta_template_config) return;
   var cfg = batchReadTemplateConfigFromForm();
   st.templateConfig = cfg;
-  var customItems = (st.data.items || []).map(function(it){
-    var o = { item_id: it.item_id, telefono: it.telefono, bodega_id: it.bodega_id, source: it.source || 'manual' };
+    var customItems = (st.data.items || []).map(function(it){
+    var o = { item_id: it.item_id, telefono: it.telefono_envio || it.telefono, telefono_envio: it.telefono_envio || it.telefono, bodega_id: it.bodega_id, source: it.source || 'manual' };
     (it.variables || []).forEach(function(v){ if(v && v.name) o[v.name] = v.value; });
     return o;
   });
@@ -2653,7 +2653,8 @@ function batchBuildCustomItemsPayload(){
   return (st.data.items || []).map(function(it){
     var o = {
       item_id: it.item_id,
-      telefono: it.telefono,
+      telefono: it.telefono_envio || it.telefono,
+      telefono_envio: it.telefono_envio || it.telefono,
       bodega_id: it.bodega_id,
       source: it.source || 'manual'
     };
@@ -2718,8 +2719,8 @@ function batchRecipientsToolsPanel(jobMeta){
     : '';
   var csvHelp = jobMeta.soporta_csv_import
     ? '<div style="flex:1 1 100%;font-size:11px;color:var(--muted);line-height:1.45;padding:8px 10px;border:1px dashed var(--border);border-radius:8px">'+
-        '<strong>Formato CSV (3 columnas):</strong> <code>nombre</code> (bodega), <code>aliado</code> (vendedor), <code>monto</code> (soles). '+
-        'La bodega se busca por nombre; el aliado comercial (ej. Dimax) se toma de la plantilla.</div>'
+        '<strong>Formato CSV (4 columnas):</strong> <code>nombre</code> (bodega), <code>aliado</code> (vendedor), <code>monto</code> (soles), <code>telefono</code> (WhatsApp). '+
+        'El teléfono del CSV es el destino del mensaje; si la bodega existe en BD se vincula por nombre.</div>'
     : '';
   return '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start;margin-bottom:10px">'+csvBtn+search+'</div>'+csvHelp;
 }

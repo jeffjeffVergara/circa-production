@@ -6,6 +6,7 @@ from typing import Any, Optional
 
 from app.services.visita_credito_recordatorios import (
     DEFAULT_TEMPLATE_CONFIG,
+    build_items_for_send,
     list_visita_credito_preview_items,
     send_visita_credito_batch,
 )
@@ -22,11 +23,13 @@ async def run_recordatorio_visita_credito(
     **_kwargs,
 ) -> dict[str, Any]:
     cfg = template_config or DEFAULT_TEMPLATE_CONFIG
-    items = list_visita_credito_preview_items(
-        bodega_ids=bodega_ids,
-        custom_items=custom_items,
-        template_config=cfg,
-    )
+    if custom_items is not None:
+        items = build_items_for_send(custom_items, template_config=cfg)
+    else:
+        items = list_visita_credito_preview_items(
+            bodega_ids=bodega_ids,
+            template_config=cfg,
+        )
 
     if test == "real":
         items = [i for i in items if not i.get("es_test")]

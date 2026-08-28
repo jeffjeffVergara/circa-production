@@ -54,7 +54,7 @@ def test_resolve_item_variables_from_bodega():
 
 
 def test_parse_csv_recipients():
-    csv_text = "nombre,aliado,monto\nBodega Test,Ana,800\n"
+    csv_text = "nombre,aliado,monto,telefono\nBodega Test,Ana,800,999888777\n"
     bodega = {
         "id": "b1",
         "nombre_comercial": "Bodega Test",
@@ -79,6 +79,76 @@ def test_parse_csv_recipients():
     assert items[0]["telefono"] == "51999888777"
     vendedor_var = next(v for v in items[0]["variables"] if v["name"] == "vendedor")
     assert vendedor_var["value"] == "Ana"
+
+
+def test_parse_csv_uses_csv_telefono_even_when_bodega_has_other_phone():
+    csv_text = "nombre,aliado,monto,telefono\nBodega Test,Luis,500,912345678\n"
+    bodega = {
+        "id": "b1",
+        "nombre_comercial": "Bodega Test",
+        "telefono_whatsapp": "51911111111",
+        "es_test": False,
+    }
+    with patch(
+        "app.services.visita_credito_recordatorios._resolve_bodega_by_nombre",
+        return_value=(bodega, ""),
+    ), patch(
+        "app.services.visita_credito_recordatorios._fetch_bodegas_by_ids",
+        return_value={"b1": bodega},
+    ), patch(
+        "app.services.visita_credito_recordatorios._fetch_vendedores_por_bodega",
+        return_value={},
+    ):
+        items, errors = parse_csv_recipients(csv_text)
+    assert not errors
+    assert items[0]["telefono"] == "51912345678"
+    assert items[0]["telefono_envio"] == "51912345678"
+
+
+def test_parse_csv_uses_csv_telefono_without_bodega_match():
+    csv_text = "nombre,aliado,monto,telefono\nBodega Nueva,Luis,500,912345678\n"
+    with patch(
+        "app.services.visita_credito_recordatorios._resolve_bodega_by_nombre",
+        return_value=(None, "bodega no encontrada"),
+    ):
+        items, errors = parse_csv_recipients(csv_text)
+    assert not errors
+    assert len(items) == 1
+    assert items[0]["telefono"] == "51912345678"
+
+
+def test_build_items_for_send_uses_csv_telefono_not_bodega():
+    bodega = {
+        "id": "b1",
+        "nombre_comercial": "Bodega Test",
+        "telefono_whatsapp": "51911111111",
+        "es_test": False,
+    }
+    custom = [
+        {
+            "item_id": "csv-1",
+            "nombre": "Bodega Test",
+            "vendedor": "Ana",
+            "monto": "800",
+            "telefono": "51999888777",
+            "telefono_envio": "51999888777",
+            "bodega_id": "b1",
+            "source": "csv",
+        }
+    ]
+    with patch(
+        "app.services.visita_credito_recordatorios._fetch_bodegas_by_ids",
+        return_value={"b1": bodega},
+    ), patch(
+        "app.services.visita_credito_recordatorios._fetch_vendedores_por_bodega",
+        return_value={},
+    ):
+        from app.services.visita_credito_recordatorios import build_items_for_send
+
+        items = build_items_for_send(custom)
+    assert len(items) == 1
+    assert items[0]["telefono"] == "51999888777"
+    assert items[0]["telefono_envio"] == "51999888777"
 
 
 def test_parse_csv_rejects_wrong_columns():

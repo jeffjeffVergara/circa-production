@@ -47,14 +47,19 @@ _CSV_HEADER_ALIASES: dict[str, str] = {
     "linea": "monto",
     "linea_aprobada": "monto",
     "soles": "monto",
+    "telefono": "telefono",
+    "tel": "telefono",
+    "celular": "telefono",
+    "whatsapp": "telefono",
+    "telefono_whatsapp": "telefono",
 }
 
-CSV_EJEMPLO = """nombre,aliado,monto
-Bodega San Juan,Carlos Mendoza,1500
-Minimarket El Sol,Ana García,800
+CSV_EJEMPLO = """nombre,aliado,monto,telefono
+Bodega San Juan,Carlos Mendoza,1500,999888777
+Minimarket El Sol,Ana García,800,987654321
 """
 
-CSV_COLUMNAS_AYUDA = "nombre (bodega), aliado (vendedor), monto (soles)"
+CSV_COLUMNAS_AYUDA = "nombre (bodega), aliado (vendedor), monto (soles), telefono"
 
 
 def normalize_template_config(cfg: Optional[dict[str, Any]] = None) -> dict[str, Any]:
@@ -284,13 +289,18 @@ def build_preview_item(
     overrides: Optional[dict[str, Any]] = None,
     template_config: Optional[dict[str, Any]] = None,
     source: str = "bodega",
+    telefono_ingresado: Optional[str] = None,
 ) -> dict[str, Any]:
     bodega = bodega or {}
-    telefono = _normalize_phone(
-        (overrides or {}).get("telefono")
-        or bodega.get("telefono_whatsapp")
-        or ""
+    overrides = overrides or {}
+    explicit_tel = _normalize_phone(
+        telefono_ingresado or overrides.get("telefono") or overrides.get("telefono_envio") or ""
     )
+    # CSV / payload manual: solo el número ingresado. Buscador de bodegas: teléfono de BD.
+    if explicit_tel or source in ("csv", "manual"):
+        telefono = explicit_tel
+    else:
+        telefono = _normalize_phone(bodega.get("telefono_whatsapp") or "")
     variables = resolve_item_variables(
         bodega=bodega,
         vendedor=vendedor,
@@ -320,6 +330,7 @@ def build_preview_item(
         "bodega_id": bodega.get("id"),
         "bodega_nombre": bodega_nombre,
         "telefono": telefono or None,
+        "telefono_envio": explicit_tel or telefono or None,
         "vendedor_nombre": vend_nombre,
         "es_test": bool(bodega.get("es_test")),
         "detalle": detalle,
@@ -391,9 +402,20 @@ def list_visita_credito_preview_items(
 
         overrides = {
             k: raw.get(k)
-            for k in ("nombre", "aliado", "vendedor", "monto", "telefono", "nombre_comercial")
+            for k in (
+                "nombre",
+                "aliado",
+                "vendedor",
+                "monto",
+                "telefono",
+                "telefono_envio",
+                "nombre_comercial",
+            )
             if raw.get(k) not in (None, "")
         }
+        explicit_tel = _normalize_phone(
+            raw.get("telefono_envio") or raw.get("telefono") or ""
+        )
         items.append(
             build_preview_item(
                 item_id=item_id,
@@ -402,9 +424,59 @@ def list_visita_credito_preview_items(
                 overrides=overrides,
                 template_config=cfg,
                 source=str(raw.get("source") or "csv"),
+                telefono_ingresado=explicit_tel or None,
             )
         )
 
+    return items
+
+
+def build_items_for_send(
+    custom_items: list[dict[str, Any]],
+    *,
+    template_config: Optional[dict[str, Any]] = None,
+) -> list[dict[str, Any]]:
+    """
+    Arma items para envío usando únicamente el teléfono del payload (CSV/UI),
+    sin reemplazarlo por el de la bodega en BD.
+    """
+    cfg = normalize_template_config(template_config)
+    items: list[dict[str, Any]] = []
+    for raw in custom_items or []:
+        if not isinstance(raw, dict):
+            continue
+        telefono = _normalize_phone(raw.get("telefono_envio") or raw.get("telefono") or "")
+        if not telefono:
+            continue
+        bid = raw.get("bodega_id")
+        bodega: dict[str, Any] = {}
+        vendedor: dict[str, Any] = {}
+        if bid:
+            bodegas = _fetch_bodegas_by_ids([str(bid)])
+            bodega = bodegas.get(str(bid)) or {"id": bid}
+            vendedores = _fetch_vendedores_por_bodega([str(bid)])
+            vendedor = vendedores.get(str(bid)) or {}
+
+        overrides = {
+            k: raw.get(k)
+            for k in ("nombre", "aliado", "vendedor", "monto", "nombre_comercial")
+            if raw.get(k) not in (None, "")
+        }
+        item_id = str(raw.get("item_id") or bid or f"send-{telefono}")
+        item = build_preview_item(
+            item_id=item_id,
+            bodega=bodega,
+            vendedor=vendedor,
+            overrides=overrides,
+            template_config=cfg,
+            source=str(raw.get("source") or "csv"),
+            telefono_ingresado=telefono,
+        )
+        item["telefono"] = telefono
+        item["telefono_envio"] = telefono
+        if raw.get("es_test") is not None:
+            item["es_test"] = bool(raw.get("es_test"))
+        items.append(item)
     return items
 
 
@@ -434,10 +506,10 @@ def parse_csv_recipients(
         return [], ["CSV sin encabezados"]
 
     field_map = {_normalize_csv_header(h): h for h in reader.fieldnames if h}
-    required = {"nombre", "vendedor", "monto"}
+    required = {"nombre", "vendedor", "monto", "telefono"}
     if not required.issubset(set(field_map.keys())):
         return [], [
-            f"El CSV debe tener exactamente las columnas: {CSV_COLUMNAS_AYUDA}. "
+            f"El CSV debe incluir las columnas: {CSV_COLUMNAS_AYUDA}. "
             f"Encabezados detectados: {', '.join(reader.fieldnames)}"
         ]
 
@@ -453,8 +525,9 @@ def parse_csv_recipients(
         nombre = mapped.get("nombre")
         vendedor = mapped.get("vendedor")
         monto = mapped.get("monto")
-        if not nombre or not vendedor or monto in (None, ""):
-            errors.append(f"Fila {i}: requiere nombre, aliado (vendedor) y monto")
+        telefono = _normalize_phone(mapped.get("telefono") or "")
+        if not nombre or not vendedor or monto in (None, "") or not telefono:
+            errors.append(f"Fila {i}: requiere nombre, aliado (vendedor), monto y teléfono")
             continue
 
         try:
@@ -463,19 +536,13 @@ def parse_csv_recipients(
             errors.append(f"Fila {i}: monto inválido ({monto})")
             continue
 
-        bodega, lookup_err = _resolve_bodega_by_nombre(nombre)
-        if not bodega:
-            errors.append(f"Fila {i}: {lookup_err} — «{nombre}»")
-            continue
-
-        telefono = _normalize_phone(bodega.get("telefono_whatsapp") or "")
-        if not telefono:
-            errors.append(f"Fila {i}: bodega sin teléfono WA — «{nombre}»")
-            continue
-
-        mapped["bodega_id"] = bodega["id"]
         mapped["telefono"] = telefono
-        mapped["nombre_comercial"] = bodega.get("nombre_comercial")
+        mapped["telefono_envio"] = telefono
+        bodega, _lookup_err = _resolve_bodega_by_nombre(nombre)
+        if bodega:
+            mapped["bodega_id"] = bodega["id"]
+            mapped["nombre_comercial"] = bodega.get("nombre_comercial")
+            mapped["es_test"] = bool(bodega.get("es_test"))
         raw_rows.append(mapped)
 
     items = list_visita_credito_preview_items(custom_items=raw_rows, template_config=cfg)
@@ -490,7 +557,9 @@ async def send_visita_credito_item(
     from app.routes import distribuidor as dist
 
     cfg = normalize_template_config(template_config)
-    telefono = _normalize_phone(item.get("telefono") or "")
+    telefono = _normalize_phone(
+        item.get("telefono_envio") or item.get("telefono") or ""
+    )
     if not telefono:
         return {"ok": False, "error": "Sin teléfono"}
 
