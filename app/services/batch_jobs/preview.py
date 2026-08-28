@@ -149,7 +149,8 @@ async def preview_recordatorio_visita_credito(
     )
     items = _filter_es_test(items, test)
     note = (
-        "Agrega bodegas con el buscador o sube un CSV (teléfono o bodega_id, nombre, vendedor, monto). "
+        "Agrega bodegas con el buscador o sube un CSV con columnas: "
+        "nombre (bodega), aliado (vendedor), monto (soles). "
         f"Plantilla: {cfg['template_name']}."
     )
     if items:

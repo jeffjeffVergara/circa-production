@@ -54,12 +54,38 @@ def test_resolve_item_variables_from_bodega():
 
 
 def test_parse_csv_recipients():
-    csv_text = "telefono,nombre,vendedor,monto\n999888777,Ana,Luis,800\n"
-    items, errors = parse_csv_recipients(csv_text)
+    csv_text = "nombre,aliado,monto\nBodega Test,Ana,800\n"
+    bodega = {
+        "id": "b1",
+        "nombre_comercial": "Bodega Test",
+        "telefono_whatsapp": "51999888777",
+        "representante_nombre_corto": "Ana",
+        "linea_aprobada": 500,
+        "es_test": False,
+    }
+    with patch(
+        "app.services.visita_credito_recordatorios._resolve_bodega_by_nombre",
+        return_value=(bodega, ""),
+    ), patch(
+        "app.services.visita_credito_recordatorios._fetch_bodegas_by_ids",
+        return_value={"b1": bodega},
+    ), patch(
+        "app.services.visita_credito_recordatorios._fetch_vendedores_por_bodega",
+        return_value={},
+    ):
+        items, errors = parse_csv_recipients(csv_text)
     assert not errors
     assert len(items) == 1
     assert items[0]["telefono"] == "51999888777"
-    assert items[0]["variables"][0]["value"] == "Ana"
+    vendedor_var = next(v for v in items[0]["variables"] if v["name"] == "vendedor")
+    assert vendedor_var["value"] == "Ana"
+
+
+def test_parse_csv_rejects_wrong_columns():
+    csv_text = "telefono,nombre\n999,Juan\n"
+    items, errors = parse_csv_recipients(csv_text)
+    assert not items
+    assert errors and "nombre (bodega)" in errors[0]
 
 
 def test_preview_recordatorio_visita_credito_empty():

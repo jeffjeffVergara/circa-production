@@ -1990,6 +1990,30 @@ async def batch_job_parse_csv(
     return {"items": items, "errors": errors, "total": len(items)}
 
 
+@router.get("/batch/{job_id}/csv-ejemplo")
+async def batch_job_csv_ejemplo(
+    job_id: str,
+    user: dict = Depends(get_backoffice_user),
+):
+    from fastapi.responses import Response
+
+    from app.services.batch_jobs.registry import JOBS_BY_ID
+    from app.services.visita_credito_recordatorios import CSV_COLUMNAS_AYUDA, CSV_EJEMPLO
+
+    job = JOBS_BY_ID.get(job_id)
+    if not job or not job.soporta_csv_import:
+        raise HTTPException(status_code=404, detail="Este job no admite CSV de ejemplo")
+    filename = f"{job_id}_ejemplo.csv"
+    return Response(
+        content=CSV_EJEMPLO.strip() + "\n",
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "X-CSV-Columnas": CSV_COLUMNAS_AYUDA,
+        },
+    )
+
+
 @router.post("/batch/{job_id}/run")
 async def batch_job_run(
     job_id: str,

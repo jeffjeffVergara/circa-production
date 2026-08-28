@@ -32,25 +32,29 @@ DEFAULT_TEMPLATE_CONFIG: dict[str, Any] = {
 }
 
 _CSV_HEADER_ALIASES: dict[str, str] = {
-    "telefono": "telefono",
-    "tel": "telefono",
-    "wa": "telefono",
-    "whatsapp": "telefono",
-    "telefono_whatsapp": "telefono",
-    "bodega_id": "bodega_id",
-    "id": "bodega_id",
     "nombre": "nombre",
+    "bodega": "nombre",
+    "nombre_bodega": "nombre",
+    "nombrecomercial": "nombre",
+    "nombre_comercial": "nombre",
     "representante": "nombre",
     "representante_nombre_corto": "nombre",
-    "nombre_comercial": "nombre_comercial",
+    # En el CSV, «aliado» = nombre del vendedor ({{3}} en Meta; {{2}} aliado queda por defecto).
+    "aliado": "vendedor",
     "vendedor": "vendedor",
     "vendedor_nombre": "vendedor",
-    "aliado": "aliado",
-    "distribuidor": "aliado",
     "monto": "monto",
     "linea": "monto",
     "linea_aprobada": "monto",
+    "soles": "monto",
 }
+
+CSV_EJEMPLO = """nombre,aliado,monto
+Bodega San Juan,Carlos Mendoza,1500
+Minimarket El Sol,Ana García,800
+"""
+
+CSV_COLUMNAS_AYUDA = "nombre (bodega), aliado (vendedor), monto (soles)"
 
 
 def normalize_template_config(cfg: Optional[dict[str, Any]] = None) -> dict[str, Any]:
@@ -113,6 +117,55 @@ def _fetch_bodegas_by_ids(bodega_ids: list[str]) -> dict[str, dict[str, Any]]:
             if row.get("id"):
                 out[str(row["id"])] = row
     return out
+
+
+_BODEGA_LOOKUP_COLS = (
+    "id, nombre_comercial, telefono_whatsapp, es_test, "
+    "representante_nombre_corto, linea_aprobada, razon_social"
+)
+
+
+def _resolve_bodega_by_nombre(nombre: str) -> tuple[Optional[dict[str, Any]], str]:
+    """Busca bodega por nombre comercial (coincidencia exacta o única parcial)."""
+    n = (nombre or "").strip()
+    if len(n) < 2:
+        return None, "nombre de bodega muy corto"
+
+    found: dict[str, dict[str, Any]] = {}
+    pattern = f"%{n}%"
+    for col in ("nombre_comercial", "razon_social", "representante_nombre_corto"):
+        rows = (
+            db.sb.table("bodegas")
+            .select(_BODEGA_LOOKUP_COLS)
+            .ilike(col, pattern)
+            .limit(10)
+            .execute()
+            .data
+            or []
+        )
+        for row in rows:
+            if row.get("id"):
+                found[str(row["id"])] = row
+
+    if not found:
+        return None, "bodega no encontrada"
+
+    exact = [
+        b
+        for b in found.values()
+        if (b.get("nombre_comercial") or "").strip().lower() == n.lower()
+        or (b.get("razon_social") or "").strip().lower() == n.lower()
+        or (b.get("representante_nombre_corto") or "").strip().lower() == n.lower()
+    ]
+    if len(exact) == 1:
+        return exact[0], ""
+    if len(exact) > 1:
+        return None, f"nombre ambiguo ({len(exact)} coincidencias exactas)"
+
+    rows = list(found.values())
+    if len(rows) == 1:
+        return rows[0], ""
+    return None, f"nombre ambiguo ({len(rows)} coincidencias; usa el nombre exacto)"
 
 
 def _fetch_vendedores_por_bodega(bodega_ids: list[str]) -> dict[str, dict[str, Any]]:
@@ -381,6 +434,13 @@ def parse_csv_recipients(
         return [], ["CSV sin encabezados"]
 
     field_map = {_normalize_csv_header(h): h for h in reader.fieldnames if h}
+    required = {"nombre", "vendedor", "monto"}
+    if not required.issubset(set(field_map.keys())):
+        return [], [
+            f"El CSV debe tener exactamente las columnas: {CSV_COLUMNAS_AYUDA}. "
+            f"Encabezados detectados: {', '.join(reader.fieldnames)}"
+        ]
+
     raw_rows: list[dict[str, Any]] = []
 
     for i, row in enumerate(reader, start=2):
@@ -389,12 +449,33 @@ def parse_csv_recipients(
             val = (row.get(orig_key) or "").strip()
             if val:
                 mapped[norm_key] = val
-        telefono = _normalize_phone(mapped.get("telefono") or "")
-        if telefono:
-            mapped["telefono"] = telefono
-        if not telefono and not mapped.get("bodega_id"):
-            errors.append(f"Fila {i}: falta teléfono o bodega_id")
+
+        nombre = mapped.get("nombre")
+        vendedor = mapped.get("vendedor")
+        monto = mapped.get("monto")
+        if not nombre or not vendedor or monto in (None, ""):
+            errors.append(f"Fila {i}: requiere nombre, aliado (vendedor) y monto")
             continue
+
+        try:
+            float(str(monto).replace(",", "."))
+        except ValueError:
+            errors.append(f"Fila {i}: monto inválido ({monto})")
+            continue
+
+        bodega, lookup_err = _resolve_bodega_by_nombre(nombre)
+        if not bodega:
+            errors.append(f"Fila {i}: {lookup_err} — «{nombre}»")
+            continue
+
+        telefono = _normalize_phone(bodega.get("telefono_whatsapp") or "")
+        if not telefono:
+            errors.append(f"Fila {i}: bodega sin teléfono WA — «{nombre}»")
+            continue
+
+        mapped["bodega_id"] = bodega["id"]
+        mapped["telefono"] = telefono
+        mapped["nombre_comercial"] = bodega.get("nombre_comercial")
         raw_rows.append(mapped)
 
     items = list_visita_credito_preview_items(custom_items=raw_rows, template_config=cfg)
