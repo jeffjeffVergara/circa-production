@@ -128,6 +128,37 @@ async def preview_recordatorios(*, test: Optional[str] = None) -> dict[str, Any]
     return _wrap("recordatorios_cobranza", items, test=test, note=note)
 
 
+async def preview_recordatorio_visita_credito(
+    *,
+    test: Optional[str] = None,
+    template_config: Optional[dict[str, Any]] = None,
+    custom_items: Optional[list[dict[str, Any]]] = None,
+    bodega_ids: Optional[list[str]] = None,
+) -> dict[str, Any]:
+    from app.services.visita_credito_recordatorios import (
+        DEFAULT_TEMPLATE_CONFIG,
+        list_visita_credito_preview_items,
+        normalize_template_config,
+    )
+
+    cfg = normalize_template_config(template_config or DEFAULT_TEMPLATE_CONFIG)
+    items = list_visita_credito_preview_items(
+        bodega_ids=bodega_ids,
+        custom_items=custom_items,
+        template_config=cfg,
+    )
+    items = _filter_es_test(items, test)
+    note = (
+        "Agrega bodegas con el buscador o sube un CSV (teléfono o bodega_id, nombre, vendedor, monto). "
+        f"Plantilla: {cfg['template_name']}."
+    )
+    if items:
+        note = f"{len(items)} destinatario(s) en lista. " + note
+    out = _wrap("recordatorio_visita_credito", items, test=test, note=note)
+    out["template_config"] = cfg
+    return out
+
+
 async def preview_marcar_vencidos(*, test: Optional[str] = None) -> dict[str, Any]:
     hoy = date.today().isoformat()
     overdue = (
@@ -188,13 +219,21 @@ async def preview_placeholder(job_id: str, *, test: Optional[str] = None) -> dic
 _HANDLERS = {
     "score_bodegas_diario": preview_score_bodegas,
     "recordatorios_cobranza": preview_recordatorios,
+    "recordatorio_visita_credito": preview_recordatorio_visita_credito,
     "marcar_vencidos": preview_marcar_vencidos,
     "onboarding_abandonado": lambda **kw: preview_placeholder("onboarding_abandonado", **kw),
     "reactivacion_inactivos": lambda **kw: preview_placeholder("reactivacion_inactivos", **kw),
 }
 
 
-async def build_preview(job_id: str, *, test: Optional[str] = "real") -> dict[str, Any]:
+async def build_preview(
+    job_id: str,
+    *,
+    test: Optional[str] = "real",
+    template_config: Optional[dict[str, Any]] = None,
+    custom_items: Optional[list[dict[str, Any]]] = None,
+    bodega_ids: Optional[list[str]] = None,
+) -> dict[str, Any]:
     job = JOBS_BY_ID.get(job_id)
     if not job:
         raise ValueError(f"Job desconocido: {job_id}")
@@ -204,4 +243,10 @@ async def build_preview(job_id: str, *, test: Optional[str] = "real") -> dict[st
     if not handler:
         raise ValueError(f"Sin vista previa para {job_id}")
     effective_test = test if job.soporta_test_filter else test
-    return await handler(test=effective_test)
+    extra: dict[str, Any] = {}
+    if job.soporta_template_config:
+        extra["template_config"] = template_config
+    if job.soporta_csv_import or job.soporta_agregar_bodegas:
+        extra["custom_items"] = custom_items
+        extra["bodega_ids"] = bodega_ids
+    return await handler(test=effective_test, **extra)

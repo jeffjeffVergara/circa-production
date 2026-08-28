@@ -19,6 +19,13 @@ SELECTION_META: dict[str, dict[str, str]] = {
         "search_telefono": "Filtrar teléfono WA…",
         "search_vendedor": "",
     },
+    "recordatorio_visita_credito": {
+        "entity_label": "bodegas",
+        "hint": "Agrega bodegas o sube CSV, edita la plantilla y revisa variables antes de enviar.",
+        "search_bodega": "Filtrar bodega…",
+        "search_telefono": "Filtrar teléfono WA…",
+        "search_vendedor": "Filtrar vendedor…",
+    },
     "marcar_vencidos": {
         "entity_label": "financiamientos",
         "hint": "Elige qué créditos vencidos marcar (por bodega o pedido).",

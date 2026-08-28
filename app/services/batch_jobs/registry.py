@@ -18,6 +18,9 @@ class BatchJobDef:
     permite_dry_run: bool
     soporta_test_filter: bool
     handler: BatchHandler
+    soporta_template_config: bool = False
+    soporta_csv_import: bool = False
+    soporta_agregar_bodegas: bool = False
 
 
 def _placeholder_not_implemented(job_id: str) -> BatchHandler:
@@ -36,10 +39,12 @@ def _placeholder_not_implemented(job_id: str) -> BatchHandler:
 def _load_handlers() -> dict[str, BatchHandler]:
     from app.services.batch_jobs import score_diario
     from app.services.batch_jobs import cobranza_jobs
+    from app.services.batch_jobs import visita_credito_jobs
 
     return {
         "score_bodegas_diario": score_diario.run,
         "recordatorios_cobranza": cobranza_jobs.run_recordatorios,
+        "recordatorio_visita_credito": visita_credito_jobs.run_recordatorio_visita_credito,
         "marcar_vencidos": cobranza_jobs.run_marcar_vencidos,
         "onboarding_abandonado": _placeholder_not_implemented("onboarding_abandonado"),
         "reactivacion_inactivos": _placeholder_not_implemented("reactivacion_inactivos"),
@@ -68,6 +73,22 @@ JOB_DEFINITIONS: list[BatchJobDef] = [
         permite_dry_run=True,
         soporta_test_filter=True,
         handler=_HANDLERS["recordatorios_cobranza"],
+    ),
+    BatchJobDef(
+        id="recordatorio_visita_credito",
+        nombre="Recordatorio visita crédito",
+        descripcion=(
+            "Envía circa_recordatorio_visita_credito por WhatsApp: elige bodegas, sube CSV "
+            "o arma la lista antes de procesar."
+        ),
+        frecuencia_sugerida="Bajo demanda",
+        afecta_whatsapp=True,
+        permite_dry_run=True,
+        soporta_test_filter=True,
+        soporta_template_config=True,
+        soporta_csv_import=True,
+        soporta_agregar_bodegas=True,
+        handler=_HANDLERS["recordatorio_visita_credito"],
     ),
     BatchJobDef(
         id="marcar_vencidos",

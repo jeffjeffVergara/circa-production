@@ -1782,6 +1782,22 @@ class BatchRunRequest(BaseModel):
     comentario: str = Field(default="dry-run", min_length=1, max_length=500)
     password: str = Field(default="")
     selected_ids: Optional[list[str]] = Field(default=None, max_length=500)
+    template_config: Optional[dict[str, Any]] = None
+    custom_items: Optional[list[dict[str, Any]]] = Field(default=None, max_length=500)
+    bodega_ids: Optional[list[str]] = Field(default=None, max_length=500)
+
+
+class BatchPreviewBody(BaseModel):
+    test: Optional[str] = None
+    template_config: Optional[dict[str, Any]] = None
+    custom_items: Optional[list[dict[str, Any]]] = Field(default=None, max_length=500)
+    bodega_ids: Optional[list[str]] = Field(default=None, max_length=500)
+    csv_text: Optional[str] = Field(default=None, max_length=500_000)
+
+
+class BatchParseCsvBody(BaseModel):
+    csv_text: str = Field(..., min_length=1, max_length=500_000)
+    template_config: Optional[dict[str, Any]] = None
 
 
 class BatchScheduleBody(BaseModel):
@@ -1914,6 +1930,66 @@ async def batch_job_preview(
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 
+@router.post("/batch/{job_id}/preview")
+async def batch_job_preview_post(
+    job_id: str,
+    body: BatchPreviewBody,
+    user: dict = Depends(get_backoffice_user),
+):
+    from app.services.batch_jobs.registry import JOBS_BY_ID
+    from app.services.batch_jobs.runner import preview_batch_job
+    from app.services.visita_credito_recordatorios import parse_csv_recipients
+
+    job = JOBS_BY_ID.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Job desconocido: {job_id}")
+
+    mode = body.test or "real"
+    custom_items = list(body.custom_items or [])
+    if body.csv_text and job.soporta_csv_import:
+        parsed, csv_errors = parse_csv_recipients(
+            body.csv_text,
+            template_config=body.template_config,
+        )
+        custom_items.extend(parsed)
+        if csv_errors and not parsed:
+            raise HTTPException(status_code=400, detail="; ".join(csv_errors[:5]))
+
+    try:
+        result = await preview_batch_job(
+            job_id,
+            test=mode,
+            template_config=body.template_config,
+            custom_items=custom_items or None,
+            bodega_ids=body.bodega_ids,
+        )
+        if body.csv_text and job.soporta_csv_import:
+            _, csv_errors = parse_csv_recipients(body.csv_text, template_config=body.template_config)
+            if csv_errors:
+                result["csv_warnings"] = csv_errors[:20]
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@router.post("/batch/{job_id}/parse-csv")
+async def batch_job_parse_csv(
+    job_id: str,
+    body: BatchParseCsvBody,
+    user: dict = Depends(get_backoffice_user),
+):
+    from app.services.batch_jobs.registry import JOBS_BY_ID
+    from app.services.visita_credito_recordatorios import parse_csv_recipients
+
+    job = JOBS_BY_ID.get(job_id)
+    if not job or not job.soporta_csv_import:
+        raise HTTPException(status_code=404, detail="Este job no admite importación CSV")
+    items, errors = parse_csv_recipients(body.csv_text, template_config=body.template_config)
+    return {"items": items, "errors": errors, "total": len(items)}
+
+
 @router.post("/batch/{job_id}/run")
 async def batch_job_run(
     job_id: str,
@@ -1939,6 +2015,9 @@ async def batch_job_run(
             user_email=user.get("email", ""),
             comment=body.comentario.strip() if not body.dry_run else "dry-run",
             selected_ids=body.selected_ids,
+            template_config=body.template_config,
+            custom_items=body.custom_items,
+            bodega_ids=body.bodega_ids,
         )
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e

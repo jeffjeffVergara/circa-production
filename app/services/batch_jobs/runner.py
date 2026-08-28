@@ -56,6 +56,9 @@ def list_jobs_with_status() -> list[dict[str, Any]]:
             "afecta_whatsapp": job.afecta_whatsapp,
             "permite_dry_run": job.permite_dry_run,
             "soporta_test_filter": job.soporta_test_filter,
+            "soporta_template_config": job.soporta_template_config,
+            "soporta_csv_import": job.soporta_csv_import,
+            "soporta_agregar_bodegas": job.soporta_agregar_bodegas,
             "ultima_ejecucion": lr,
         })
     return items
@@ -119,6 +122,9 @@ async def run_batch_job(
     user_email: str = "",
     comment: str = "",
     selected_ids: Optional[list[str]] = None,
+    template_config: Optional[dict[str, Any]] = None,
+    custom_items: Optional[list[Any]] = None,
+    bodega_ids: Optional[list[str]] = None,
 ) -> dict[str, Any]:
     job = JOBS_BY_ID.get(job_id)
     if not job:
@@ -143,6 +149,12 @@ async def run_batch_job(
             kwargs["test"] = test
         if selected_ids:
             kwargs["selected_ids"] = [str(x) for x in selected_ids]
+        if template_config is not None:
+            kwargs["template_config"] = template_config
+        if custom_items is not None:
+            kwargs["custom_items"] = custom_items
+        if bodega_ids is not None:
+            kwargs["bodega_ids"] = [str(x) for x in bodega_ids]
         result = await job.handler(**kwargs)
     except Exception as exc:
         if run_id:
@@ -181,7 +193,16 @@ async def preview_batch_job(
     job_id: str,
     *,
     test: Optional[str] = "real",
+    template_config: Optional[dict[str, Any]] = None,
+    custom_items: Optional[list[Any]] = None,
+    bodega_ids: Optional[list[str]] = None,
 ) -> dict[str, Any]:
     from app.services.batch_jobs.preview import build_preview
 
-    return await build_preview(job_id, test=test)
+    return await build_preview(
+        job_id,
+        test=test,
+        template_config=template_config,
+        custom_items=custom_items,
+        bodega_ids=bodega_ids,
+    )

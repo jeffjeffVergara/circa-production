@@ -2111,6 +2111,7 @@ function renderBatchRuns(runs){
 function loadBatchJobs(){
   return api('/api/backoffice/batch/jobs').then(function(d){
     batchJobsData = d.jobs || [];
+    window._batchJobsCache = batchJobsData;
     renderBatchJobs(batchJobsData);
     return d;
   });
@@ -2351,15 +2352,24 @@ function openBatchPreview(jobId, mode){
   mode = mode || 'ejecutar';
   showPanelLoader(mode === 'prueba' ? 'Cargando modo prueba…' : 'Cargando destinatarios…', true);
   var testMode = mode === 'prueba' ? 'test' : (window.MODE_FILTER || localStorage.getItem('circa_mode') || 'real');
-  api('/api/backoffice/batch/'+encodeURIComponent(jobId)+'/preview?test='+encodeURIComponent(testMode))
-    .then(function(p){
+  var jobs = window._batchJobsCache || [];
+  var jobMeta = jobs.find(function(j){ return j.id === jobId; }) || {};
+  var url = '/api/backoffice/batch/'+encodeURIComponent(jobId)+'/preview?test='+encodeURIComponent(testMode);
+  var req = jobMeta.soporta_template_config || jobMeta.soporta_csv_import
+    ? apiPost('/api/backoffice/batch/'+encodeURIComponent(jobId)+'/preview', { test: testMode })
+    : api(url);
+  req.then(function(r){
+      var p = (r && r.d !== undefined) ? r.d : r;
+      if(r && r.ok === false){ throw new Error((p && p.detail) || 'Error en vista previa'); }
       hidePanelLoader();
       window._batchPreviewState = {
         jobId: jobId,
         mode: mode,
         data: p,
         selected: {},
-        focusItemId: null
+        focusItemId: null,
+        templateConfig: p.template_config || null,
+        jobMeta: jobMeta
       };
       (p.items || []).forEach(function(it){
         if(mode === 'ejecutar' && it.item_id) window._batchPreviewState.selected[String(it.item_id)] = true;
@@ -2500,6 +2510,194 @@ function getBatchSelectedIds(){
   return Object.keys(st.selected).filter(function(k){ return st.selected[k]; });
 }
 
+function batchReadTemplateConfigFromForm(){
+  var st = window._batchPreviewState;
+  var base = (st && st.templateConfig) || (st && st.data && st.data.template_config) || {};
+  var tpl = (document.getElementById('batchTplName')||{}).value;
+  var lang = (document.getElementById('batchTplLang')||{}).value;
+  var aliado = (document.getElementById('batchTplAliado')||{}).value;
+  var body = (document.getElementById('batchTplBody')||{}).value;
+  return {
+    template_name: (tpl || base.template_name || 'circa_recordatorio_visita_credito').trim(),
+    language: (lang || base.language || 'es_MX').trim(),
+    variable_keys: base.variable_keys || ['nombre','aliado','vendedor','monto'],
+    defaults: Object.assign({}, base.defaults || {}, aliado ? { aliado: aliado.trim() } : {}),
+    body_text: body || base.body_text || ''
+  };
+}
+
+function batchMergePreviewItems(newItems){
+  var st = window._batchPreviewState;
+  if(!st || !st.data) return;
+  var byId = {};
+  (st.data.items || []).forEach(function(it){ if(it.item_id) byId[String(it.item_id)] = it; });
+  (newItems || []).forEach(function(it){
+    if(it && it.item_id) byId[String(it.item_id)] = it;
+  });
+  st.data.items = Object.keys(byId).map(function(k){ return byId[k]; });
+  st.data.total = st.data.items.length;
+  st.data.mostrando = st.data.items.length;
+  st.data.con_telefono = st.data.items.filter(function(it){ return it.telefono; }).length;
+  st.data.truncated = false;
+}
+
+function batchRefreshPreviewWithTemplate(){
+  var st = window._batchPreviewState;
+  if(!st || !st.jobMeta || !st.jobMeta.soporta_template_config) return;
+  var cfg = batchReadTemplateConfigFromForm();
+  st.templateConfig = cfg;
+  var customItems = (st.data.items || []).map(function(it){
+    var o = { item_id: it.item_id, telefono: it.telefono, bodega_id: it.bodega_id, source: it.source || 'manual' };
+    (it.variables || []).forEach(function(v){ if(v && v.name) o[v.name] = v.value; });
+    return o;
+  });
+  var bodegaIds = (st.data.items || []).filter(function(it){ return it.bodega_id; }).map(function(it){ return it.bodega_id; });
+  var testMode = st.mode === 'prueba' ? 'test' : (window.MODE_FILTER || localStorage.getItem('circa_mode') || 'real');
+  showPanelLoader('Actualizando vista previa…', true);
+  apiPost('/api/backoffice/batch/'+encodeURIComponent(st.jobId)+'/preview', {
+    test: testMode,
+    template_config: cfg,
+    custom_items: customItems.length ? customItems : null,
+    bodega_ids: bodegaIds.length ? bodegaIds : null
+  }).then(function(r){
+    if(!r.ok){ hidePanelLoader(); showToast((r.d && r.d.detail) || 'Error','error'); return; }
+    var p = r.d;
+    hidePanelLoader();
+    var prevSelected = st.selected || {};
+    st.data = p;
+    st.templateConfig = p.template_config || cfg;
+    st.selected = {};
+    (p.items || []).forEach(function(it){
+      var id = String(it.item_id);
+      if(prevSelected[id] !== false) st.selected[id] = prevSelected[id] !== undefined ? prevSelected[id] : (st.mode === 'ejecutar');
+    });
+    showBatchPreviewModal(st.jobId, p);
+  }).catch(function(e){
+    hidePanelLoader();
+    showToast('Error al actualizar plantilla: '+e.message,'error');
+  });
+}
+
+function batchOnCsvSelected(input){
+  var st = window._batchPreviewState;
+  if(!st || !input || !input.files || !input.files[0]) return;
+  var file = input.files[0];
+  var reader = new FileReader();
+  reader.onload = function(){
+    var text = reader.result || '';
+    var cfg = batchReadTemplateConfigFromForm();
+    apiPost('/api/backoffice/batch/'+encodeURIComponent(st.jobId)+'/parse-csv', {
+      csv_text: text,
+      template_config: cfg
+    }).then(function(r){
+      if(!r.ok){ showToast((r.d && r.d.detail) || 'Error CSV','error'); return; }
+      var d = r.d || {};
+      batchMergePreviewItems(d.items || []);
+      if(d.errors && d.errors.length) showToast('CSV: '+d.errors.length+' fila(s) omitida(s)','error');
+      else showToast('CSV: '+(d.total||0)+' fila(s) importada(s)','success');
+      showBatchPreviewModal(st.jobId, st.data);
+    }).catch(function(e){ showToast(e.message,'error'); });
+    input.value = '';
+  };
+  reader.readAsText(file);
+}
+
+var _batchBodegaSearchTimer = null;
+function batchOnBodegaSearchInput(){
+  clearTimeout(_batchBodegaSearchTimer);
+  var q = (document.getElementById('batchBodegaSearch')||{}).value || '';
+  var box = document.getElementById('batchBodegaResults');
+  if(!box) return;
+  if(q.trim().length < 2){ box.innerHTML = ''; return; }
+  _batchBodegaSearchTimer = setTimeout(function(){
+    api('/api/backoffice/observability/search?q='+encodeURIComponent(q.trim())+'&limit=8')
+      .then(function(d){
+        var rows = d.results || [];
+        if(!rows.length){ box.innerHTML = '<div class="empty" style="padding:8px;font-size:12px">Sin resultados</div>'; return; }
+        box.innerHTML = rows.map(function(b){
+          return '<button type="button" class="btn btn-outline btn-small" style="display:block;width:100%;text-align:left;margin-bottom:4px" onclick="batchAddBodega(\''+escAttr(b.id)+'\')">'+
+            escAttr(b.nombre_comercial||b.razon_social||b.id)+' · <span class="mono">'+escAttr(b.telefono_whatsapp||'—')+'</span></button>';
+        }).join('');
+      });
+  }, 280);
+}
+
+function batchAddBodega(bodegaId){
+  var st = window._batchPreviewState;
+  if(!st || !bodegaId) return;
+  var cfg = batchReadTemplateConfigFromForm();
+  var testMode = st.mode === 'prueba' ? 'test' : (window.MODE_FILTER || localStorage.getItem('circa_mode') || 'real');
+  apiPost('/api/backoffice/batch/'+encodeURIComponent(st.jobId)+'/preview', {
+    test: testMode,
+    template_config: cfg,
+    bodega_ids: [bodegaId]
+  }).then(function(r){
+    if(!r.ok){ showToast((r.d && r.d.detail) || 'Error','error'); return; }
+    var p = r.d || {};
+    batchMergePreviewItems(p.items || []);
+    (p.items || []).forEach(function(it){
+      if(it.item_id) st.selected[String(it.item_id)] = true;
+    });
+    showToast('Bodega agregada','success');
+    var search = document.getElementById('batchBodegaSearch');
+    var results = document.getElementById('batchBodegaResults');
+    if(search) search.value = '';
+    if(results) results.innerHTML = '';
+    showBatchPreviewModal(st.jobId, st.data);
+  }).catch(function(e){ showToast(e.message,'error'); });
+}
+
+function batchBuildCustomItemsPayload(){
+  var st = window._batchPreviewState;
+  if(!st || !st.data) return [];
+  return (st.data.items || []).map(function(it){
+    var o = {
+      item_id: it.item_id,
+      telefono: it.telefono,
+      bodega_id: it.bodega_id,
+      source: it.source || 'manual'
+    };
+    (it.variables || []).forEach(function(v){ if(v && v.name) o[v.name] = v.value; });
+    if(it.variable_values) Object.assign(o, it.variable_values);
+    return o;
+  });
+}
+
+function batchTemplateConfigPanel(jobMeta, tplCfg){
+  if(!jobMeta || !jobMeta.soporta_template_config) return '';
+  tplCfg = tplCfg || {};
+  var defaults = tplCfg.defaults || {};
+  return '<div class="batch-template-panel" style="border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px;background:var(--bg-soft,#fafafa)">'+
+    '<div style="font-weight:600;font-size:13px;margin-bottom:8px">Plantilla WhatsApp (Meta)</div>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">'+
+      '<div><label style="font-size:11px;color:var(--muted)">Nombre plantilla</label>'+
+        '<input type="text" id="batchTplName" class="input" value="'+escAttr(tplCfg.template_name||'circa_recordatorio_visita_credito')+'" onchange="batchRefreshPreviewWithTemplate()"></div>'+
+      '<div><label style="font-size:11px;color:var(--muted)">Idioma</label>'+
+        '<input type="text" id="batchTplLang" class="input" value="'+escAttr(tplCfg.language||'es_MX')+'" onchange="batchRefreshPreviewWithTemplate()"></div>'+
+    '</div>'+
+    '<div style="margin-bottom:8px"><label style="font-size:11px;color:var(--muted)">Aliado por defecto ({{aliado}})</label>'+
+      '<input type="text" id="batchTplAliado" class="input" value="'+escAttr(defaults.aliado||'Dimax (Zoom)')+'" onchange="batchRefreshPreviewWithTemplate()"></div>'+
+    '<div><label style="font-size:11px;color:var(--muted)">Vista previa editable — variables: {{nombre}}, {{aliado}}, {{vendedor}}, {{monto}}</label>'+
+      '<textarea id="batchTplBody" class="input" rows="4" style="resize:vertical;font-family:inherit" onchange="batchRefreshPreviewWithTemplate()">'+escAttr(tplCfg.body_text||'')+'</textarea></div>'+
+    '<div style="font-size:11px;color:var(--muted);margin-top:6px">El envío usa la plantilla aprobada en Meta; este texto es solo referencia en backoffice.</div>'+
+  '</div>';
+}
+
+function batchRecipientsToolsPanel(jobMeta){
+  if(!jobMeta || (!jobMeta.soporta_csv_import && !jobMeta.soporta_agregar_bodegas)) return '';
+  var csvBtn = jobMeta.soporta_csv_import
+    ? '<label class="btn btn-outline btn-small" style="cursor:pointer">📄 Subir CSV<input type="file" accept=".csv,text/csv" style="display:none" onchange="batchOnCsvSelected(this)"></label>'
+    : '';
+  var search = jobMeta.soporta_agregar_bodegas
+    ? '<div style="flex:1;min-width:200px;position:relative">'+
+        '<input type="text" id="batchBodegaSearch" class="input" placeholder="Buscar bodega para agregar…" oninput="batchOnBodegaSearchInput()" autocomplete="off">'+
+        '<div id="batchBodegaResults" style="position:absolute;z-index:5;left:0;right:0;top:100%;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:6px;max-height:180px;overflow:auto"></div>'+
+      '</div>'
+    : '';
+  return '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start;margin-bottom:10px">'+csvBtn+search+
+    '<span style="font-size:11px;color:var(--muted);align-self:center">CSV: telefono o bodega_id, nombre, vendedor, monto, aliado</span></div>';
+}
+
 function openBatchRunConfirm(){
   var st = window._batchPreviewState;
   if(!st) return;
@@ -2520,8 +2718,10 @@ function openBatchRunConfirm(){
 function showBatchPreviewModal(jobId, p){
   p = p || (window._batchPreviewState && window._batchPreviewState.data) || {};
   var st = window._batchPreviewState || {};
+  var jobMeta = st.jobMeta || {};
   var isPrueba = st.mode === 'prueba';
   var sel = p.selection || {};
+  var tplCfg = st.templateConfig || p.template_config || {};
   var testLbl = isPrueba ? 'Pruebas (bodegas test)' : (p.test_filter === 'test' ? 'Pruebas' : 'Reales');
   var hasVend = (p.items || []).some(function(it){ return it.vendedor_nombre; });
   var vendTh = hasVend ? '<th>Vendedor</th>' : '';
@@ -2552,6 +2752,8 @@ function showBatchPreviewModal(jobId, p){
         ' · Modo <strong>'+escAttr(testLbl)+'</strong>'+
         (p.afecta_whatsapp ? ' · <span style="color:var(--orange)">Afecta WhatsApp</span>' : '')+
         '</p>'+
+        batchTemplateConfigPanel(jobMeta, tplCfg)+
+        batchRecipientsToolsPanel(jobMeta)+
         '<div class="import-summary">'+
           '<span>Total: <strong>'+(p.total||0)+'</strong></span>'+
           '<span id="batchPreviewSelCount">0 seleccionado(s)</span>'+
@@ -2604,7 +2806,9 @@ function confirmBatchRun(jobId){
   var st = window._batchPreviewState || {};
   var mode = st.mode === 'prueba' ? 'test' : (window.MODE_FILTER || localStorage.getItem('circa_mode') || 'real');
   apiPost('/api/backoffice/batch/'+encodeURIComponent(jobId)+'/run', {
-    dry_run: false, password: pass, comentario: com, test: mode, selected_ids: selected
+    dry_run: false, password: pass, comentario: com, test: mode, selected_ids: selected,
+    template_config: st.templateConfig || batchReadTemplateConfigFromForm(),
+    custom_items: batchBuildCustomItemsPayload()
   }).then(function(x){
     hidePanelLoader();
     if(!x.ok){ showToast((x.d && x.d.detail) || 'Error al ejecutar','error'); return; }
