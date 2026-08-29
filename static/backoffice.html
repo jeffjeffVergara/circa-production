@@ -2718,7 +2718,7 @@ function batchTemplateConfigPanel(jobMeta, tplCfg){
         '<input type="text" id="batchTplLang" class="input" value="'+escAttr(tplCfg.language||'es_MX')+'" onchange="batchRefreshPreviewWithTemplate()"></div>'+
     '</div>'+
     '<div style="margin-bottom:8px;font-size:11px;color:var(--muted)">'+
-      '<code>{{aliado}}</code> = Dimax (Zoom) fijo. En el CSV editas <code>vendedor</code> (variable Meta {{3}}, no aparece en este texto de vista previa).'+
+      'La columna <code>vendedor</code> del CSV se envía a Meta como <code>{{aliado}}</code> ({{2}}). Sin CSV, <code>{{aliado}}</code> = Dimax (Zoom).'+
     '</div>'+
     '<div><label style="font-size:11px;color:var(--muted)">Vista previa editable — variables: {{nombre}}, {{aliado}}, {{monto}}</label>'+
       '<textarea id="batchTplBody" class="input" rows="4" style="resize:vertical;font-family:inherit" onchange="batchRefreshPreviewWithTemplate()">'+escAttr(tplCfg.body_text||'')+'</textarea></div>'+

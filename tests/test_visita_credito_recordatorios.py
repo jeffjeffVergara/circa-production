@@ -24,6 +24,21 @@ def test_normalize_template_config_defaults():
     assert cfg["variable_keys"] == ["nombre", "aliado", "vendedor", "monto"]
 
 
+def test_compose_visita_credito_mensaje_shows_csv_vendedor_as_aliado():
+    variables = {
+        "nombre": "Jeff",
+        "aliado": "Carlos",
+        "vendedor": "tu vendedor",
+        "monto": "500",
+    }
+    msg = compose_visita_credito_mensaje(
+        telefono="51942616682",
+        bodega_nombre="Bodega Jeff",
+        variables=variables,
+    )
+    assert "aliado de Carlos" in msg["mensaje_preview"]
+
+
 def test_compose_visita_credito_mensaje():
     variables = {
         "nombre": "Juan",
@@ -43,6 +58,15 @@ def test_compose_visita_credito_mensaje():
     assert msg["body_rendered"] == msg["mensaje_preview"]
     assert msg["mensaje_tipo"] == "whatsapp_template"
     assert len(msg["variables"]) == 4
+
+
+def test_resolve_item_variables_csv_vendedor_goes_to_aliado():
+    vals = resolve_item_variables(
+        overrides={"vendedor": "Carlos", "nombre": "Juan", "monto": "500"},
+    )
+    assert vals["aliado"] == "Carlos"
+    assert vals["vendedor"] == "tu vendedor"
+    assert vals["nombre"] == "Juan"
 
 
 def test_resolve_item_variables_from_bodega():
@@ -82,8 +106,8 @@ def test_parse_csv_recipients():
     assert not errors
     assert len(items) == 1
     assert items[0]["telefono"] == "51999888777"
-    vendedor_var = next(v for v in items[0]["variables"] if v["name"] == "vendedor")
-    assert vendedor_var["value"] == "Ana"
+    aliado_var = next(v for v in items[0]["variables"] if v["name"] == "aliado")
+    assert aliado_var["value"] == "Ana"
 
 
 def test_parse_csv_uses_csv_telefono_even_when_bodega_has_other_phone():
@@ -130,8 +154,8 @@ def test_parse_csv_accepts_legacy_aliado_column_as_vendedor():
     ):
         items, errors = parse_csv_recipients(csv_text)
     assert not errors
-    vendedor_var = next(v for v in items[0]["variables"] if v["name"] == "vendedor")
-    assert vendedor_var["value"] == "Luis"
+    aliado_var = next(v for v in items[0]["variables"] if v["name"] == "aliado")
+    assert aliado_var["value"] == "Luis"
 
 
 def test_build_items_for_send_uses_csv_telefono_not_bodega():
@@ -166,6 +190,7 @@ def test_build_items_for_send_uses_csv_telefono_not_bodega():
     assert len(items) == 1
     assert items[0]["telefono"] == "51999888777"
     assert items[0]["telefono_envio"] == "51999888777"
+    assert items[0]["variable_values"]["aliado"] == "Ana"
 
 
 def test_parse_csv_rejects_wrong_columns():

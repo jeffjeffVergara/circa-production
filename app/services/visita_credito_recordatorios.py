@@ -2,7 +2,7 @@
 Recordatorio de ventas — plantilla Meta circa_recordatorio_visita_credito.
 
 Variables Meta (orden fijo):
-  {{1}} nombre · {{2}} aliado (fijo) · {{3}} vendedor · {{4}} monto
+  {{1}} nombre · {{2}} aliado (vendedor CSV) · {{3}} vendedor · {{4}} monto
 """
 
 from __future__ import annotations
@@ -216,6 +216,8 @@ def resolve_item_variables(
     vendedor = vendedor or {}
     overrides = overrides or {}
 
+    csv_vendedor = str(overrides.get("vendedor") or "").strip()
+
     nombre = (
         overrides.get("nombre")
         or bodega.get("representante_nombre_corto")
@@ -223,10 +225,15 @@ def resolve_item_variables(
         or defaults.get("nombre")
         or "estimado cliente"
     )
-    aliado = overrides.get("aliado") or defaults.get("aliado") or "Dimax (Zoom)"
+    # El CSV carga el nombre en columna «vendedor»; Meta lo recibe en {{2}} aliado.
+    aliado = (
+        overrides.get("aliado")
+        or csv_vendedor
+        or defaults.get("aliado")
+        or "Dimax (Zoom)"
+    )
     vendedor_nombre = (
-        overrides.get("vendedor")
-        or vendedor.get("nombre")
+        vendedor.get("nombre")
         or vendedor.get("codigo")
         or defaults.get("vendedor")
         or "tu vendedor"
@@ -302,7 +309,12 @@ def build_preview_item(
         or variables.get("nombre")
         or "—"
     )
-    vend_nombre = variables.get("vendedor") or "—"
+    vend_nombre = (
+        (overrides or {}).get("vendedor")
+        or variables.get("aliado")
+        or variables.get("vendedor")
+        or "—"
+    )
     msg = compose_visita_credito_mensaje(
         telefono=telefono,
         bodega_nombre=bodega_nombre,
