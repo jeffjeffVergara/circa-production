@@ -107,6 +107,52 @@ def validate_dni_format(dni: str) -> tuple[bool, str]:
     return True, ""
 
 
+def validate_ce_format(ce: str) -> tuple[bool, str]:
+    """Validate Carné de Extranjería (CE) — 9 dígitos numéricos. Sin consulta a Migraciones/RENIEC."""
+    if not ce or not ce.isdigit():
+        return False, "El CE debe contener solo números."
+    if len(ce) != 9:
+        return False, "El CE debe tener 9 dígitos."
+    return True, ""
+
+
+def detect_doc_identidad(digits: str) -> str | None:
+    """Clasifica documento de identidad: 'dni' (8), 'ce' (9) o None."""
+    if not digits or not str(digits).isdigit():
+        return None
+    n = len(str(digits))
+    if n == 8:
+        return "dni"
+    if n == 9:
+        return "ce"
+    return None
+
+
+def validate_doc_identidad_format(doc: str) -> tuple[bool, str, str | None]:
+    """
+    Acepta DNI (8) o CE (9).
+    Returns: (ok, mensaje_error, tipo) con tipo in ('dni','ce',None).
+    """
+    digits = "".join(c for c in (doc or "") if c.isdigit())
+    tipo = detect_doc_identidad(digits)
+    if tipo == "dni":
+        ok, msg = validate_dni_format(digits)
+        return ok, msg, tipo if ok else None
+    if tipo == "ce":
+        ok, msg = validate_ce_format(digits)
+        return ok, msg, tipo if ok else None
+    return False, "Escribe tu *DNI* (8 dígitos) o *CE* (9 dígitos).", None
+
+
+def label_doc_identidad(tipo: str | None) -> str:
+    return "CE" if (tipo or "").lower() == "ce" else "DNI"
+
+
+def kyc_nivel_for_doc(tipo: str | None) -> str:
+    """Nivel KYC al completar captura con foto (CE no pasa por RENIEC)."""
+    return "ce" if (tipo or "").lower() == "ce" else "dni"
+
+
 def is_ruc_eligible(ruc_data: dict) -> tuple[bool, str]:
     """Check if a RUC is eligible for Circa credit."""
     if not ruc_data:
