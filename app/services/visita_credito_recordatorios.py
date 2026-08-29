@@ -259,25 +259,14 @@ def compose_visita_credito_mensaje(
     for key in keys:
         body_rendered = body_rendered.replace("{{" + key + "}}", variables.get(key, ""))
 
-    var_lines = [f"{{{i}}} {k} = {variables.get(k, '')}" for i, k in enumerate(keys, 1)]
-    preview_lines = [
-        f"Plantilla Meta: {tpl_name} ({cfg.get('language', 'es_MX')})",
-        f"Destino WA: {telefono or '(sin teléfono)'}",
-        f"Bodega: {bodega_nombre or '—'}",
-        "",
-        "Cuerpo (vista previa):",
-        body_rendered,
-        "",
-        "Variables de la plantilla:",
-        *var_lines,
-    ]
     return {
         "plantilla": tpl_name,
         "telefono_destino": telefono or None,
         "variables": [{"name": k, "value": variables.get(k, "")} for k in keys],
-        "mensaje_preview": "\n".join(preview_lines),
+        "mensaje_preview": body_rendered.strip(),
         "mensaje_tipo": "whatsapp_template",
-        "body_rendered": body_rendered,
+        "body_rendered": body_rendered.strip(),
+        "template_language": str(cfg.get("language", "es_MX")),
     }
 
 
@@ -341,6 +330,8 @@ def build_preview_item(
         ),
         "plantilla": msg["plantilla"],
         "mensaje_preview": msg["mensaje_preview"],
+        "body_rendered": msg.get("body_rendered"),
+        "template_language": msg.get("template_language"),
         "mensaje_tipo": msg["mensaje_tipo"],
         "variables": msg["variables"],
         "variable_values": variables,

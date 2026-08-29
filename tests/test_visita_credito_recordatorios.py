@@ -38,6 +38,9 @@ def test_compose_visita_credito_mensaje():
     )
     assert msg["plantilla"] == "circa_recordatorio_visita_credito"
     assert "Juan" in msg["mensaje_preview"]
+    assert "Plantilla Meta:" not in msg["mensaje_preview"]
+    assert "Dimax (Zoom)" in msg["mensaje_preview"]
+    assert msg["body_rendered"] == msg["mensaje_preview"]
     assert msg["mensaje_tipo"] == "whatsapp_template"
     assert len(msg["variables"]) == 4
 

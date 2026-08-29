@@ -2417,10 +2417,14 @@ function showBatchMessagePreview(item){
   var head = '<div class="batch-msg-preview-head">'+tipo+' '+escAttr(item.bodega_nombre||'—');
   if(item.telefono) head += ' · <span class="mono">'+escAttr(item.telefono)+'</span>';
   head += '</div>';
-  var body = item.mensaje_preview
-    ? escAttr(item.mensaje_preview)
-    : escAttr(item.accion || item.detalle || 'Sin vista previa de mensaje.');
-  panel.innerHTML = '<div class="batch-msg-preview">'+head+'<div style="margin-top:8px">'+body+'</div></div>';
+  var mainText = item.body_rendered || item.mensaje_preview || item.accion || item.detalle || 'Sin vista previa de mensaje.';
+  var html = escAttr(mainText);
+  if(item.mensaje_tipo === 'whatsapp_template' && item.plantilla){
+    html += '<div style="color:var(--muted);font-size:11px;margin-top:10px">'+escAttr(item.plantilla);
+    if(item.template_language) html += ' · '+escAttr(item.template_language);
+    html += '</div>';
+  }
+  panel.innerHTML = '<div class="batch-msg-preview">'+head+'<div style="margin-top:8px">'+html+'</div></div>';
 }
 
 function focusBatchPreviewRow(itemId){
