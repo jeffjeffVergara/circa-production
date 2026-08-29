@@ -1,8 +1,8 @@
 """
-Recordatorio visita crédito — plantilla Meta circa_recordatorio_visita_credito.
+Recordatorio de ventas — plantilla Meta circa_recordatorio_visita_credito.
 
 Variables Meta (orden fijo):
-  {{1}} nombre · {{2}} aliado · {{3}} vendedor · {{4}} monto
+  {{1}} nombre · {{2}} aliado (fijo) · {{3}} vendedor · {{4}} monto
 """
 
 from __future__ import annotations
@@ -39,7 +39,7 @@ _CSV_HEADER_ALIASES: dict[str, str] = {
     "nombre_comercial": "nombre",
     "representante": "nombre",
     "representante_nombre_corto": "nombre",
-    # En el CSV, «aliado» = nombre del vendedor ({{3}} en Meta; {{2}} aliado queda por defecto).
+    # CSV histórico: columna «aliado» se lee como vendedor.
     "aliado": "vendedor",
     "vendedor": "vendedor",
     "vendedor_nombre": "vendedor",
@@ -54,12 +54,12 @@ _CSV_HEADER_ALIASES: dict[str, str] = {
     "telefono_whatsapp": "telefono",
 }
 
-CSV_EJEMPLO = """nombre,aliado,monto,telefono
+CSV_EJEMPLO = """nombre,vendedor,monto,telefono
 Bodega San Juan,Carlos Mendoza,1500,999888777
 Minimarket El Sol,Ana García,800,987654321
 """
 
-CSV_COLUMNAS_AYUDA = "nombre (bodega), aliado (vendedor), monto (soles), telefono"
+CSV_COLUMNAS_AYUDA = "nombre (bodega), vendedor, monto (soles), telefono"
 
 
 def normalize_template_config(cfg: Optional[dict[str, Any]] = None) -> dict[str, Any]:
@@ -404,7 +404,6 @@ def list_visita_credito_preview_items(
             k: raw.get(k)
             for k in (
                 "nombre",
-                "aliado",
                 "vendedor",
                 "monto",
                 "telefono",
@@ -433,6 +432,28 @@ def list_visita_credito_preview_items(
 
 def _item_destino_telefono(item: dict[str, Any]) -> str:
     return _normalize_phone(item.get("telefono_envio") or item.get("telefono") or "")
+
+
+def filter_items_by_test_mode(
+    items: list[dict[str, Any]],
+    test: Optional[str],
+) -> list[dict[str, Any]]:
+    """Filas CSV/manual las eligió el usuario; solo bodegas de BD siguen es_test."""
+    if not test:
+        return items
+    if test == "real":
+        return [
+            i
+            for i in items
+            if i.get("source") in ("csv", "manual") or not i.get("es_test")
+        ]
+    if test == "test":
+        return [
+            i
+            for i in items
+            if i.get("source") in ("csv", "manual") or i.get("es_test")
+        ]
+    return items
 
 
 def build_items_for_send(
@@ -469,7 +490,7 @@ def build_items_for_send(
 
         overrides = {
             k: raw.get(k)
-            for k in ("nombre", "aliado", "vendedor", "monto", "nombre_comercial")
+            for k in ("nombre", "vendedor", "monto", "nombre_comercial")
             if raw.get(k) not in (None, "")
         }
         item_id = str(raw.get("item_id") or bid or f"send-{telefono}")
@@ -542,7 +563,7 @@ def parse_csv_recipients(
         monto = mapped.get("monto")
         telefono = _normalize_phone(mapped.get("telefono") or "")
         if not nombre or not vendedor or monto in (None, "") or not telefono:
-            errors.append(f"Fila {i}: requiere nombre, aliado (vendedor), monto y teléfono")
+            errors.append(f"Fila {i}: requiere nombre, vendedor, monto y teléfono")
             continue
 
         try:
@@ -635,7 +656,7 @@ async def send_visita_credito_item(
             message_id=wamid,
             message_type="visita_credito_recordatorio",
             template_name=tpl_name,
-            content=f"Recordatorio visita crédito — {item.get('bodega_nombre', '')}",
+            content=f"Recordatorio de ventas — {item.get('bodega_nombre', '')}",
             metadata={
                 "item_id": item.get("item_id"),
                 "variables": var_values,

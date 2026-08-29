@@ -36,12 +36,25 @@ logger = logging.getLogger("circa.express_onboarding")
 # Re-export para callers
 should_handle = should_use_express_onboarding
 
-MSG_FOTO = (
-    "📸 *Express Onboarding*\n\n"
-    "Envía *una sola foto*: puede ser el *anverso de tu DNI* "
-    "o una *selfie* clara de tu rostro.\n\n"
-    "Con una alcanza — no hace falta mandar las dos."
-)
+def _persona_nombre(bodega: dict) -> str:
+    return (
+        bodega.get("representante_nombre_corto")
+        or bodega.get("representante_legal")
+        or bodega.get("nombre_comercial")
+        or bodega.get("razon_social")
+        or ""
+    ).strip()
+
+
+def _foto_message(bodega: dict) -> str:
+    nombre = _persona_nombre(bodega)
+    saludo = f"¡Hola, {nombre}!" if nombre else "¡Hola!"
+    return (
+        f"{saludo}\n\n"
+        "Envía *una sola foto*: puede ser el *anverso de tu DNI* "
+        "o una *selfie* clara de tu rostro.\n\n"
+        "Con una alcanza — no hace falta mandar las dos."
+    )
 
 
 def _session_datos(session: dict | None) -> dict:
@@ -83,7 +96,7 @@ def _dist_nombre(bodega: dict | None) -> str:
 
 
 def _welcome_payload(bodega: dict) -> list:
-    nombre = bodega.get("nombre_comercial") or bodega.get("razon_social") or ""
+    nombre = _persona_nombre(bodega)
     linea = float(bodega.get("linea_aprobada") or 500)
     return [{
         "signal": "WELCOME",
@@ -101,7 +114,7 @@ def _enter_welcome(telefono: str, bodega: dict) -> list:
 def _enter_foto(telefono: str, bodega: dict, datos: dict) -> list:
     datos = {**datos, "bodega_id": bodega["id"]}
     db.upsert_session(telefono, "express_foto", datos, bodega["id"])
-    return [MSG_FOTO]
+    return [_foto_message(bodega)]
 
 
 def _enter_linea(telefono: str, bodega: dict, datos: dict) -> list:
@@ -109,9 +122,8 @@ def _enter_linea(telefono: str, bodega: dict, datos: dict) -> list:
     db.upsert_session(telefono, "express_linea", datos, bodega["id"])
     return [{
         "signal": "LINEA_OFERTA",
-        "nombre": bodega.get("nombre_comercial") or bodega.get("razon_social") or "",
         "linea": float(bodega.get("linea_aprobada") or 500),
-        "distribuidor": _dist_nombre(bodega),
+        "express": True,
     }]
 
 
@@ -252,13 +264,10 @@ def handle(
             datos["bodega_id"] = bodega["id"]
             # refrescar bodega para LINEA_OFERTA
             bodega = db.get_bodega_by_phone(telefono) or bodega
-            return [
-                "✅ Foto recibida. Seguimos.",
-                *_enter_linea(telefono, bodega, datos),
-            ]
+            return _enter_linea(telefono, bodega, datos)
         if body_n in ("HOLA", "HI", "MENU"):
-            return [MSG_FOTO]
-        return [MSG_FOTO]
+            return [_foto_message(bodega)]
+        return [_foto_message(bodega)]
 
     # ── aceptar línea (igual que clásico) ──
     if fase == "express_linea":

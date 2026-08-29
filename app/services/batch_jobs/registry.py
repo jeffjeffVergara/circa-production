@@ -76,7 +76,7 @@ JOB_DEFINITIONS: list[BatchJobDef] = [
     ),
     BatchJobDef(
         id="recordatorio_visita_credito",
-        nombre="Recordatorio visita crédito",
+        nombre="Recordatorio de ventas",
         descripcion=(
             "Envía circa_recordatorio_visita_credito por WhatsApp: elige bodegas, sube CSV "
             "o arma la lista antes de procesar."

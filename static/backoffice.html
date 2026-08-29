@@ -2511,7 +2511,11 @@ function renderBatchPreviewTableRows(){
 function getBatchSelectedIds(){
   var st = window._batchPreviewState;
   if(!st) return [];
-  return Object.keys(st.selected).filter(function(k){ return st.selected[k]; });
+  var valid = {};
+  (st.data && st.data.items || []).forEach(function(it){
+    if(it.item_id) valid[String(it.item_id)] = true;
+  });
+  return Object.keys(st.selected).filter(function(k){ return st.selected[k] && valid[k]; });
 }
 
 function batchReadTemplateConfigFromForm(){
@@ -2519,13 +2523,12 @@ function batchReadTemplateConfigFromForm(){
   var base = (st && st.templateConfig) || (st && st.data && st.data.template_config) || {};
   var tpl = (document.getElementById('batchTplName')||{}).value;
   var lang = (document.getElementById('batchTplLang')||{}).value;
-  var aliado = (document.getElementById('batchTplAliado')||{}).value;
   var body = (document.getElementById('batchTplBody')||{}).value;
   return {
     template_name: (tpl || base.template_name || 'circa_recordatorio_visita_credito').trim(),
     language: (lang || base.language || 'es_MX').trim(),
     variable_keys: base.variable_keys || ['nombre','aliado','vendedor','monto'],
-    defaults: Object.assign({}, base.defaults || {}, aliado ? { aliado: aliado.trim() } : {}),
+    defaults: Object.assign({}, base.defaults || {}),
     body_text: body || base.body_text || ''
   };
 }
@@ -2676,10 +2679,15 @@ function batchAddBodega(bodegaId){
   .finally(function(){ hidePanelLoader(); });
 }
 
-function batchBuildCustomItemsPayload(){
+function batchBuildCustomItemsPayload(onlySelected){
   var st = window._batchPreviewState;
   if(!st || !st.data) return [];
-  return (st.data.items || []).map(function(it){
+  var items = st.data.items || [];
+  if(onlySelected) {
+    var sel = st.selected || {};
+    items = items.filter(function(it){ return it.item_id && sel[String(it.item_id)]; });
+  }
+  return items.map(function(it){
     var o = {
       item_id: it.item_id,
       telefono: it.telefono_envio || it.telefono,
@@ -2687,6 +2695,7 @@ function batchBuildCustomItemsPayload(){
       bodega_id: it.bodega_id,
       source: it.source || 'manual'
     };
+    if(it.es_test !== undefined) o.es_test = it.es_test;
     (it.variables || []).forEach(function(v){ if(v && v.name) o[v.name] = v.value; });
     if(it.variable_values) Object.assign(o, it.variable_values);
     return o;
@@ -2696,7 +2705,6 @@ function batchBuildCustomItemsPayload(){
 function batchTemplateConfigPanel(jobMeta, tplCfg){
   if(!jobMeta || !jobMeta.soporta_template_config) return '';
   tplCfg = tplCfg || {};
-  var defaults = tplCfg.defaults || {};
   return '<div class="batch-template-panel">'+
     '<div class="batch-panel-title">Plantilla WhatsApp (Meta)</div>'+
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">'+
@@ -2705,9 +2713,10 @@ function batchTemplateConfigPanel(jobMeta, tplCfg){
       '<div><label style="font-size:11px;color:var(--muted)">Idioma</label>'+
         '<input type="text" id="batchTplLang" class="input" value="'+escAttr(tplCfg.language||'es_MX')+'" onchange="batchRefreshPreviewWithTemplate()"></div>'+
     '</div>'+
-    '<div style="margin-bottom:8px"><label style="font-size:11px;color:var(--muted)">Aliado por defecto ({{aliado}})</label>'+
-      '<input type="text" id="batchTplAliado" class="input" value="'+escAttr(defaults.aliado||'Dimax (Zoom)')+'" onchange="batchRefreshPreviewWithTemplate()"></div>'+
-    '<div><label style="font-size:11px;color:var(--muted)">Vista previa editable — variables: {{nombre}}, {{aliado}}, {{vendedor}}, {{monto}}</label>'+
+    '<div style="margin-bottom:8px;font-size:11px;color:var(--muted)">'+
+      'Variable fija en plantilla Meta: <code>{{aliado}}</code> = Dimax (Zoom). En el CSV solo editas <code>vendedor</code>.'+
+    '</div>'+
+    '<div><label style="font-size:11px;color:var(--muted)">Vista previa editable — variables: {{nombre}}, {{vendedor}}, {{monto}}</label>'+
       '<textarea id="batchTplBody" class="input" rows="4" style="resize:vertical;font-family:inherit" onchange="batchRefreshPreviewWithTemplate()">'+escAttr(tplCfg.body_text||'')+'</textarea></div>'+
     '<div style="font-size:11px;color:var(--muted);margin-top:6px">El envío usa la plantilla aprobada en Meta; este texto es solo referencia en backoffice.</div>'+
   '</div>';
@@ -2748,7 +2757,7 @@ function batchRecipientsToolsPanel(jobMeta){
     : '';
   var csvHelp = jobMeta.soporta_csv_import
     ? '<div class="batch-csv-help">'+
-        '<strong>Formato CSV (4 columnas):</strong> <code>nombre</code> (bodega), <code>aliado</code> (vendedor), <code>monto</code> (soles), <code>telefono</code> (WhatsApp). '+
+        '<strong>Formato CSV (4 columnas):</strong> <code>nombre</code> (bodega), <code>vendedor</code>, <code>monto</code> (soles), <code>telefono</code> (WhatsApp). '+
         'El teléfono del CSV es el destino del mensaje; si la bodega existe en BD se vincula por nombre.</div>'
     : '';
   return '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start;margin-bottom:10px">'+csvBtn+search+'</div>'+csvHelp;
@@ -2777,7 +2786,7 @@ function confirmBatchRun(jobId){
     test: mode,
     selected_ids: selected,
     template_config: st.templateConfig || batchReadTemplateConfigFromForm(),
-    custom_items: batchBuildCustomItemsPayload()
+    custom_items: batchBuildCustomItemsPayload(true)
   }).then(function(x){
     hidePanelLoader();
     if(!x.ok){ showToast((x.d && x.d.detail) || 'Error al ejecutar','error'); return; }
@@ -2788,7 +2797,13 @@ function confirmBatchRun(jobId){
       var errTxt = d.errors.slice(0, 3).map(function(e){ return (e.item_id||'?')+': '+(e.error||''); }).join(' · ');
       showToast('Errores ('+d.failed+'): '+errTxt,'error');
     } else if(!d.ok && !d.processed){
-      var hint = log.length ? log[log.length-1] : 'Ningún mensaje enviado';
+      var hint = 'Ningún mensaje enviado';
+      if(log.length) {
+        var useful = log.filter(function(l){
+          return /sin destinatarios|selected_ids|test_filter|build_items_for_send: 0|coincide|filtro|omitido/i.test(l);
+        });
+        hint = useful.length ? useful.join(' · ') : log.slice(-3).join(' · ');
+      }
       showToast('Sin envíos: '+hint,'error');
     } else {
       showToast('Listo: '+(d.ok||0)+' OK / '+(d.processed||0)+' proc.','success');
