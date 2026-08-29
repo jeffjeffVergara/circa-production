@@ -28,7 +28,7 @@ def test_compose_visita_credito_mensaje_shows_csv_vendedor_as_aliado():
     variables = {
         "nombre": "Jeff",
         "aliado": "Carlos",
-        "vendedor": "tu vendedor",
+        "vendedor": "Carlos",
         "monto": "500",
     }
     msg = compose_visita_credito_mensaje(
@@ -65,7 +65,7 @@ def test_resolve_item_variables_csv_vendedor_goes_to_aliado():
         overrides={"vendedor": "Carlos", "nombre": "Juan", "monto": "500"},
     )
     assert vals["aliado"] == "Carlos"
-    assert vals["vendedor"] == "tu vendedor"
+    assert vals["vendedor"] == "Carlos"
     assert vals["nombre"] == "Juan"
 
 
@@ -108,6 +108,8 @@ def test_parse_csv_recipients():
     assert items[0]["telefono"] == "51999888777"
     aliado_var = next(v for v in items[0]["variables"] if v["name"] == "aliado")
     assert aliado_var["value"] == "Ana"
+    vendedor_var = next(v for v in items[0]["variables"] if v["name"] == "vendedor")
+    assert vendedor_var["value"] == "Ana"
 
 
 def test_parse_csv_uses_csv_telefono_even_when_bodega_has_other_phone():

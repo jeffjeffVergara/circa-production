@@ -2,7 +2,7 @@
 Recordatorio de ventas — plantilla Meta circa_recordatorio_visita_credito.
 
 Variables Meta (orden fijo):
-  {{1}} nombre · {{2}} aliado (vendedor CSV) · {{3}} vendedor · {{4}} monto
+  {{1}} nombre · {{2}} aliado · {{3}} vendedor (mismo valor si viene del CSV) · {{4}} monto
 """
 
 from __future__ import annotations
@@ -225,19 +225,23 @@ def resolve_item_variables(
         or defaults.get("nombre")
         or "estimado cliente"
     )
-    # El CSV carga el nombre en columna «vendedor»; Meta lo recibe en {{2}} aliado.
+    # CSV columna «vendedor» → {{2}} aliado y {{3}} vendedor (mismo valor).
     aliado = (
         overrides.get("aliado")
         or csv_vendedor
         or defaults.get("aliado")
         or "Dimax (Zoom)"
     )
-    vendedor_nombre = (
-        vendedor.get("nombre")
-        or vendedor.get("codigo")
-        or defaults.get("vendedor")
-        or "tu vendedor"
-    )
+    aliado_from_csv = bool(overrides.get("aliado") or csv_vendedor)
+    if aliado_from_csv:
+        vendedor_nombre = str(aliado).strip()
+    else:
+        vendedor_nombre = (
+            vendedor.get("nombre")
+            or vendedor.get("codigo")
+            or defaults.get("vendedor")
+            or "tu vendedor"
+        )
     monto_raw = overrides.get("monto")
     if monto_raw is None:
         monto_raw = bodega.get("linea_aprobada") or defaults.get("monto") or 0
