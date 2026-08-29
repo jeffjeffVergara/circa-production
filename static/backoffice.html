@@ -2714,9 +2714,9 @@ function batchTemplateConfigPanel(jobMeta, tplCfg){
         '<input type="text" id="batchTplLang" class="input" value="'+escAttr(tplCfg.language||'es_MX')+'" onchange="batchRefreshPreviewWithTemplate()"></div>'+
     '</div>'+
     '<div style="margin-bottom:8px;font-size:11px;color:var(--muted)">'+
-      'Variable fija en plantilla Meta: <code>{{aliado}}</code> = Dimax (Zoom). En el CSV solo editas <code>vendedor</code>.'+
+      '<code>{{aliado}}</code> = Dimax (Zoom) fijo. En el CSV editas <code>vendedor</code> (variable Meta {{3}}, no aparece en este texto de vista previa).'+
     '</div>'+
-    '<div><label style="font-size:11px;color:var(--muted)">Vista previa editable — variables: {{nombre}}, {{vendedor}}, {{monto}}</label>'+
+    '<div><label style="font-size:11px;color:var(--muted)">Vista previa editable — variables: {{nombre}}, {{aliado}}, {{monto}}</label>'+
       '<textarea id="batchTplBody" class="input" rows="4" style="resize:vertical;font-family:inherit" onchange="batchRefreshPreviewWithTemplate()">'+escAttr(tplCfg.body_text||'')+'</textarea></div>'+
     '<div style="font-size:11px;color:var(--muted);margin-top:6px">El envío usa la plantilla aprobada en Meta; este texto es solo referencia en backoffice.</div>'+
   '</div>';

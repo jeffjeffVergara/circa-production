@@ -26,7 +26,7 @@ DEFAULT_TEMPLATE_CONFIG: dict[str, Any] = {
     "body_text": (
         "Hola {{nombre}} 👋\n"
         "Somos Circa, aliado de {{aliado}}.\n"
-        "Tu vendedor {{vendedor}} te visitará para activar tu línea de crédito.\n"
+        "Tu vendedor te visitará para activar tu línea de crédito.\n"
         "Línea aprobada: S/ {{monto}}"
     ),
 }
