@@ -2715,8 +2715,10 @@ function batchBuildCustomItemsPayload(onlySelected){
       source: it.source || 'manual'
     };
     if(it.es_test !== undefined) o.es_test = it.es_test;
-    (it.variables || []).forEach(function(v){ if(v && v.name) o[v.name] = v.value; });
-    if(it.variable_values) Object.assign(o, it.variable_values);
+    var vv = it.variable_values || {};
+    if(vv.nombre) o.nombre = vv.nombre;
+    if(vv.monto) o.monto = vv.monto;
+    if(vv.aliado) o.aliado = vv.aliado;
     return o;
   });
 }
@@ -2824,8 +2826,13 @@ function confirmBatchRun(jobId){
         hint = useful.length ? useful.join(' · ') : log.slice(-3).join(' · ');
       }
       showToast('Sin envíos: '+hint,'error');
+    } else if((d.ok || 0) > 0){
+      var okLine = (d.details && d.details.send_log)
+        ? (d.details.send_log.filter(function(l){ return /^ok item_id=/.test(l); }).slice(-2).join(' · ') || '')
+        : '';
+      showToast('Enviados por WhatsApp: '+(d.ok||0)+(okLine ? ' · '+okLine : ''),'success');
     } else {
-      showToast('Listo: '+(d.ok||0)+' OK / '+(d.processed||0)+' proc.','success');
+      showToast('No se confirmó ningún envío a WhatsApp. Revisa la consola (F12 → send_log).','error');
     }
     loadBatchCenter();
     if(jobId === 'score_bodegas_diario') loadScoring();

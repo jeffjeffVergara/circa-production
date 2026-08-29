@@ -172,7 +172,13 @@ def _send_wa_template(to, template_name, variables):
             ultimo_error = str(e)
             continue
         if r.status_code < 400:
-            return {"ok": True, "lang": lang, "response": r.json()}
+            data = r.json()
+            msgs = data.get("messages") or []
+            wamid = (msgs[0] or {}).get("id") if msgs else ""
+            if not wamid:
+                ultimo_error = f"Meta respondió sin message id: {data}"
+                continue
+            return {"ok": True, "lang": lang, "response": data, "wamid": wamid}
         ultimo_error = r.text
         # 132001 = la plantilla no existe en ese idioma -> probar el siguiente.
         # Cualquier otro error no se arregla cambiando idioma -> cortar aqui.

@@ -250,6 +250,55 @@ def resolve_item_variables(
     }
 
 
+def _payload_overrides_from_raw(raw: dict[str, Any]) -> dict[str, Any]:
+    """Arma overrides de envío sin contaminar el vendedor CSV con placeholders de vista previa."""
+    overrides: dict[str, Any] = {}
+    for key in ("nombre", "monto", "nombre_comercial", "aliado"):
+        val = raw.get(key)
+        if val not in (None, ""):
+            overrides[key] = val
+    # Columna CSV «vendedor» → Meta aliado (si aún no hay aliado explícito).
+    vend = str(raw.get("vendedor") or "").strip()
+    if vend and vend not in ("tu vendedor", "—") and not overrides.get("aliado"):
+        overrides["vendedor"] = vend
+    return overrides
+
+
+def _resolve_variables_for_send_item(
+    item: dict[str, Any],
+    *,
+    template_config: Optional[dict[str, Any]] = None,
+) -> dict[str, str]:
+    """Reconstruye variables Meta al enviar (no confiar en variable_values obsoletos)."""
+    bid = item.get("bodega_id")
+    bodega: dict[str, Any] = {}
+    vendedor: dict[str, Any] = {}
+    if bid:
+        bodegas = _fetch_bodegas_by_ids([str(bid)])
+        bodega = bodegas.get(str(bid)) or {}
+        vendedores = _fetch_vendedores_por_bodega([str(bid)])
+        vendedor = vendedores.get(str(bid)) or {}
+
+    vv = item.get("variable_values") or {}
+    raw = {
+        "nombre": vv.get("nombre"),
+        "monto": vv.get("monto"),
+        "aliado": vv.get("aliado"),
+    }
+    for var in item.get("variables") or []:
+        if not isinstance(var, dict) or not var.get("name"):
+            continue
+        name = str(var["name"])
+        if name in ("nombre", "monto", "aliado") and var.get("value") not in (None, ""):
+            raw[name] = var.get("value")
+    return resolve_item_variables(
+        bodega=bodega,
+        vendedor=vendedor,
+        overrides=_payload_overrides_from_raw(raw),
+        template_config=template_config,
+    )
+
+
 def compose_visita_credito_mensaje(
     *,
     telefono: str,
@@ -491,11 +540,7 @@ def build_items_for_send(
             vendedores = _fetch_vendedores_por_bodega([str(bid)])
             vendedor = vendedores.get(str(bid)) or {}
 
-        overrides = {
-            k: raw.get(k)
-            for k in ("nombre", "vendedor", "monto", "nombre_comercial")
-            if raw.get(k) not in (None, "")
-        }
+        overrides = _payload_overrides_from_raw(raw)
         item_id = str(raw.get("item_id") or bid or f"send-{telefono}")
         item = build_preview_item(
             item_id=item_id,
@@ -602,13 +647,8 @@ async def send_visita_credito_item(
     if not telefono:
         return {"ok": False, "error": "Sin teléfono"}
 
-    # Prefer stored variable_values; rebuild if missing
-    var_values = item.get("variable_values")
-    if not var_values:
-        var_values = resolve_item_variables(
-            overrides={v["name"]: v["value"] for v in (item.get("variables") or []) if v.get("name")},
-            template_config=cfg,
-        )
+    # Siempre reconstruir variables al enviar (el payload UI puede traer vendedor="tu vendedor").
+    var_values = _resolve_variables_for_send_item(item, template_config=cfg)
     keys = cfg["variable_keys"]
     variables = [str(var_values.get(k, "")) for k in keys]
     tpl_name = cfg["template_name"]

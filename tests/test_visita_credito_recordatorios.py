@@ -158,6 +158,42 @@ def test_parse_csv_accepts_legacy_aliado_column_as_vendedor():
     assert aliado_var["value"] == "Luis"
 
 
+def test_build_items_for_send_maps_csv_vendedor_to_aliado_despite_stale_payload():
+    """El payload UI puede traer vendedor='tu vendedor'; aliado debe conservar el CSV."""
+    bodega = {
+        "id": "b1",
+        "nombre_comercial": "Bodega Test",
+        "telefono_whatsapp": "51911111111",
+        "es_test": True,
+    }
+    custom = [
+        {
+            "item_id": "csv-1",
+            "nombre": "Jeff",
+            "vendedor": "tu vendedor",
+            "aliado": "Carlos",
+            "monto": "500",
+            "telefono": "51942616682",
+            "telefono_envio": "51942616682",
+            "bodega_id": "b1",
+            "source": "csv",
+        }
+    ]
+    with patch(
+        "app.services.visita_credito_recordatorios._fetch_bodegas_by_ids",
+        return_value={"b1": bodega},
+    ), patch(
+        "app.services.visita_credito_recordatorios._fetch_vendedores_por_bodega",
+        return_value={},
+    ):
+        from app.services.visita_credito_recordatorios import build_items_for_send
+
+        items = build_items_for_send(custom)
+    assert len(items) == 1
+    assert items[0]["variable_values"]["aliado"] == "Carlos"
+    assert items[0]["telefono"] == "51942616682"
+
+
 def test_build_items_for_send_uses_csv_telefono_not_bodega():
     bodega = {
         "id": "b1",
