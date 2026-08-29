@@ -466,6 +466,21 @@ def handle_message(telefono: str, body: str, media_url: str = None) -> list:
     fase = session["fase"]
     datos = json.loads(session["datos"]) if isinstance(session["datos"], str) else (session["datos"] or {})
 
+    # ── CONSTANCIA DE PAGO (bug: la imagen se perdía a los 30 días) ──
+    # Si una bodega activa manda una imagen fuera del flujo de registro, la
+    # persistimos SIEMPRE en Storage y, si hay un pedido cobrable sin sustento,
+    # la enlazamos. Va antes del ruteo por fases para cubrir el caso en que la
+    # constancia llega ANTES de que la bodega toque "Ya pagué".
+    if media_url and bodega and bodega.get("estado") == "activo" and not fase.startswith("reg_"):
+        try:
+            from app.services import constancia_pago
+            constancia_pago.guardar_entrante(telefono, media_url, bodega)
+        except Exception:
+            import logging
+            logging.getLogger("circa").error(
+                "constancia_pago: fallo no bloqueante", exc_info=True,
+            )
+
     if bodega and bodega.get("estado") == "activo":
         if fase == "reset_clave":
             return handle_reset_clave(
