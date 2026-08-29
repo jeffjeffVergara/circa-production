@@ -2376,7 +2376,9 @@ function openBatchPreview(jobId, mode){
         jobMeta: jobMeta
       };
       (p.items || []).forEach(function(it){
-        if(mode === 'ejecutar' && it.item_id) window._batchPreviewState.selected[String(it.item_id)] = true;
+        if(it.item_id && (mode === 'ejecutar' || mode === 'prueba')) {
+          window._batchPreviewState.selected[String(it.item_id)] = true;
+        }
       });
       showBatchPreviewModal(jobId, p);
     })
@@ -2537,11 +2539,16 @@ function batchReadTemplateConfigFromForm(){
   };
 }
 
+function batchPreselectByDefault(){
+  var st = window._batchPreviewState;
+  return !!(st && (st.mode === 'ejecutar' || st.mode === 'prueba'));
+}
+
 function batchEnsureDefaultSelection(){
   var st = window._batchPreviewState;
   if(!st || !st.data) return;
   if(!st.selected) st.selected = {};
-  var defaultOn = st.mode === 'ejecutar';
+  var defaultOn = batchPreselectByDefault();
   (st.data.items || []).forEach(function(it){
     if(!it.item_id) return;
     var id = String(it.item_id);
@@ -2553,13 +2560,14 @@ function batchMergePreviewItems(newItems){
   var st = window._batchPreviewState;
   if(!st || !st.data) return;
   if(!st.selected) st.selected = {};
+  var autoSelect = batchPreselectByDefault();
   var byId = {};
   (st.data.items || []).forEach(function(it){ if(it.item_id) byId[String(it.item_id)] = it; });
   (newItems || []).forEach(function(it){
     if(!it || !it.item_id) return;
     var id = String(it.item_id);
     byId[id] = it;
-    if(st.mode === 'ejecutar') st.selected[id] = true;
+    if(autoSelect) st.selected[id] = true;
   });
   st.data.items = Object.keys(byId).map(function(k){ return byId[k]; });
   st.data.total = st.data.items.length;
@@ -2596,7 +2604,9 @@ function batchRefreshPreviewWithTemplate(){
     st.selected = {};
     (p.items || []).forEach(function(it){
       var id = String(it.item_id);
-      if(prevSelected[id] !== false) st.selected[id] = prevSelected[id] !== undefined ? prevSelected[id] : (st.mode === 'ejecutar');
+      if(prevSelected[id] !== false) {
+        st.selected[id] = prevSelected[id] !== undefined ? prevSelected[id] : batchPreselectByDefault();
+      }
     });
     showBatchPreviewModal(st.jobId, p);
   }).catch(function(e){
@@ -2622,6 +2632,11 @@ function batchOnCsvSelected(input){
       if(!r.ok){ showToast((r.d && r.d.detail) || 'Error CSV','error'); return; }
       var d = r.d || {};
       batchMergePreviewItems(d.items || []);
+      if(batchPreselectByDefault()){
+        (st.data.items || []).forEach(function(it){
+          if(it.item_id) st.selected[String(it.item_id)] = true;
+        });
+      }
       if(d.errors && d.errors.length) showToast('CSV: '+d.errors.length+' fila(s) omitida(s)','error');
       else showToast('CSV: '+(d.total||0)+' fila(s) importada(s)','success');
       showBatchPreviewModal(st.jobId, st.data);
