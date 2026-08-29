@@ -622,10 +622,15 @@ async def meta_webhook_incoming(request: Request):
                             telefono, resp.get("representante", "")
                         )
                     elif signal == "LINEA_OFERTA":
-                        await meta_client.send_linea_oferta(
-                            telefono, resp.get("nombre", ""),
-                            resp.get("linea", 500), resp.get("distribuidor", "")
-                        )
+                        if resp.get("express"):
+                            await meta_client.send_linea_oferta_express(
+                                telefono, resp.get("linea", 500)
+                            )
+                        else:
+                            await meta_client.send_linea_oferta(
+                                telefono, resp.get("nombre", ""),
+                                resp.get("linea", 500), resp.get("distribuidor", "")
+                            )
                     elif signal == "CONTRATO":
                         await meta_client.send_contrato(
                             telefono, resp.get("linea", 500)

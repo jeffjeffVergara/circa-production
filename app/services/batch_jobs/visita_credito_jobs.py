@@ -1,4 +1,4 @@
-"""Job batch: recordatorio visita crédito (plantilla Meta configurable)."""
+"""Job batch: recordatorio de ventas (plantilla Meta configurable)."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ from typing import Any, Optional
 from app.services.visita_credito_recordatorios import (
     DEFAULT_TEMPLATE_CONFIG,
     build_items_for_send,
+    filter_items_by_test_mode,
     list_visita_credito_preview_items,
     send_visita_credito_batch,
 )
@@ -47,10 +48,7 @@ async def run_recordatorio_visita_credito(
         send_log.append(f"list_visita_credito_preview_items: {len(items)} item(s)")
 
     before_test = len(items)
-    if test == "real":
-        items = [i for i in items if not i.get("es_test")]
-    elif test == "test":
-        items = [i for i in items if i.get("es_test")]
+    items = filter_items_by_test_mode(items, test)
     if before_test != len(items):
         msg = f"test_filter={test}: {before_test} -> {len(items)} item(s)"
         send_log.append(msg)
@@ -58,7 +56,8 @@ async def run_recordatorio_visita_credito(
         if not items and before_test:
             warn = (
                 f"Ningún destinatario pasó filtro '{test}'. "
-                "Prueba modo prueba/test si son bodegas es_test."
+                "Las filas CSV/manual siempre se envían; bodegas de BD deben coincidir "
+                "con el modo Real/Prueba del panel."
             )
             send_log.append(warn)
             logger.warning("visita_credito %s", warn)

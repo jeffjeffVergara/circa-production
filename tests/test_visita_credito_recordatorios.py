@@ -6,9 +6,11 @@ os.environ.setdefault("SUPABASE_URL", "http://localhost")
 os.environ.setdefault("SUPABASE_SERVICE_KEY", "test-key")
 
 from app.services.batch_jobs.preview import preview_recordatorio_visita_credito
+from app.services.batch_jobs.visita_credito_jobs import run_recordatorio_visita_credito
 from app.services.visita_credito_recordatorios import (
     DEFAULT_TEMPLATE_CONFIG,
     compose_visita_credito_mensaje,
+    filter_items_by_test_mode,
     normalize_template_config,
     parse_csv_recipients,
     resolve_item_variables,
@@ -54,7 +56,7 @@ def test_resolve_item_variables_from_bodega():
 
 
 def test_parse_csv_recipients():
-    csv_text = "nombre,aliado,monto,telefono\nBodega Test,Ana,800,999888777\n"
+    csv_text = "nombre,vendedor,monto,telefono\nBodega Test,Ana,800,999888777\n"
     bodega = {
         "id": "b1",
         "nombre_comercial": "Bodega Test",
@@ -82,7 +84,7 @@ def test_parse_csv_recipients():
 
 
 def test_parse_csv_uses_csv_telefono_even_when_bodega_has_other_phone():
-    csv_text = "nombre,aliado,monto,telefono\nBodega Test,Luis,500,912345678\n"
+    csv_text = "nombre,vendedor,monto,telefono\nBodega Test,Luis,500,912345678\n"
     bodega = {
         "id": "b1",
         "nombre_comercial": "Bodega Test",
@@ -106,7 +108,7 @@ def test_parse_csv_uses_csv_telefono_even_when_bodega_has_other_phone():
 
 
 def test_parse_csv_uses_csv_telefono_without_bodega_match():
-    csv_text = "nombre,aliado,monto,telefono\nBodega Nueva,Luis,500,912345678\n"
+    csv_text = "nombre,vendedor,monto,telefono\nBodega Nueva,Luis,500,912345678\n"
     with patch(
         "app.services.visita_credito_recordatorios._resolve_bodega_by_nombre",
         return_value=(None, "bodega no encontrada"),
@@ -115,6 +117,18 @@ def test_parse_csv_uses_csv_telefono_without_bodega_match():
     assert not errors
     assert len(items) == 1
     assert items[0]["telefono"] == "51912345678"
+
+
+def test_parse_csv_accepts_legacy_aliado_column_as_vendedor():
+    csv_text = "nombre,aliado,monto,telefono\nBodega Legacy,Luis,500,912345678\n"
+    with patch(
+        "app.services.visita_credito_recordatorios._resolve_bodega_by_nombre",
+        return_value=(None, "bodega no encontrada"),
+    ):
+        items, errors = parse_csv_recipients(csv_text)
+    assert not errors
+    vendedor_var = next(v for v in items[0]["variables"] if v["name"] == "vendedor")
+    assert vendedor_var["value"] == "Luis"
 
 
 def test_build_items_for_send_uses_csv_telefono_not_bodega():
@@ -156,6 +170,59 @@ def test_parse_csv_rejects_wrong_columns():
     items, errors = parse_csv_recipients(csv_text)
     assert not items
     assert errors and "nombre (bodega)" in errors[0]
+
+
+def test_filter_items_by_test_mode_keeps_csv_in_real_mode():
+    items = [
+        {"item_id": "csv-1", "source": "csv", "es_test": True, "telefono": "51999111222"},
+        {"item_id": "b-test", "source": "bodega", "es_test": True, "telefono": "51999222333"},
+        {"item_id": "b-real", "source": "bodega", "es_test": False, "telefono": "51999333444"},
+    ]
+    out = filter_items_by_test_mode(items, "real")
+    assert [i["item_id"] for i in out] == ["csv-1", "b-real"]
+
+
+def test_run_recordatorio_visita_credito_sends_csv_despite_test_bodega_flag():
+    custom = [
+        {
+            "item_id": "csv-1",
+            "nombre": "Bodega",
+            "vendedor": "Ana",
+            "monto": "500",
+            "telefono": "51999888777",
+            "telefono_envio": "51999888777",
+            "bodega_id": "b1",
+            "source": "csv",
+            "es_test": True,
+        }
+    ]
+    with patch(
+        "app.services.visita_credito_recordatorios._fetch_bodegas_by_ids",
+        return_value={
+            "b1": {
+                "id": "b1",
+                "nombre_comercial": "Bodega",
+                "es_test": True,
+            }
+        },
+    ), patch(
+        "app.services.visita_credito_recordatorios._fetch_vendedores_por_bodega",
+        return_value={},
+    ), patch(
+        "app.services.visita_credito_recordatorios.send_visita_credito_item",
+        new_callable=AsyncMock,
+        return_value={"ok": True, "plantilla": "circa_recordatorio_visita_credito"},
+    ) as mock_send:
+        result = asyncio.run(
+            run_recordatorio_visita_credito(
+                dry_run=False,
+                test="real",
+                selected_ids=["csv-1"],
+                custom_items=custom,
+            )
+        )
+    assert result["ok"] == 1
+    mock_send.assert_awaited_once()
 
 
 def test_preview_recordatorio_visita_credito_empty():

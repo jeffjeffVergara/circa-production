@@ -501,6 +501,21 @@ async def send_biometria_request(to: str, nombre_rep: str):
     return await send_text(to=to, text=cuerpo)
 
 
+async def send_linea_oferta_express(to: str, linea: float):
+    """Confirmación corta tras verificación (Express Onboarding)."""
+    return await send_buttons(
+        to=to,
+        body=(
+            "✅ Verificación completa.\n\n"
+            f"Tu línea aprobada: *S/{linea:.0f}*"
+        ),
+        buttons=[
+            {"id": "ACEPTO_LINEA", "title": "✅ Continuar"},
+            {"id": "NO_GRACIAS", "title": "No, gracias"},
+        ],
+    )
+
+
 async def send_linea_oferta(to: str, nombre: str, linea: float, distribuidor: str):
     """Confirm verification + Circa value prop + line amount before contract (sin protagonismo de credito)."""
     return await send_buttons(

@@ -137,6 +137,7 @@ async def preview_recordatorio_visita_credito(
 ) -> dict[str, Any]:
     from app.services.visita_credito_recordatorios import (
         DEFAULT_TEMPLATE_CONFIG,
+        filter_items_by_test_mode,
         list_visita_credito_preview_items,
         normalize_template_config,
     )
@@ -147,10 +148,10 @@ async def preview_recordatorio_visita_credito(
         custom_items=custom_items,
         template_config=cfg,
     )
-    items = _filter_es_test(items, test)
+    items = filter_items_by_test_mode(items, test)
     note = (
         "Agrega bodegas con el buscador o sube un CSV con columnas: "
-        "nombre (bodega), aliado (vendedor), monto (soles), telefono. "
+        "nombre (bodega), vendedor, monto (soles), telefono. "
         f"Plantilla: {cfg['template_name']}."
     )
     if items:
