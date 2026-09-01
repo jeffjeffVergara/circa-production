@@ -442,6 +442,10 @@ def handle_message(telefono: str, body: str, media_url: str = None) -> list:
         # Sesión huérfana (fase onboarding/menu sin bodega) → reiniciar captación
         return _handle_prospecto(telefono, body_raw, body_n, media_url, None)
 
+    # ── Sesion prospecto huerfana pero el telefono ya es bodega → tratar como sin sesion ──
+    if session and session.get("fase") == "prospecto":
+        session = None
+
     # ── NO SESSION ──
     if not session:
         if bodega["estado"] == "activo":
