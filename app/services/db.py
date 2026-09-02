@@ -31,8 +31,35 @@ def upsert_session(telefono: str, fase: str, datos: dict = None, bodega_id: str 
 
 # ── BODEGAS ───────────────────────────────────
 def get_bodega_by_phone(telefono: str):
-    r = sb.table("bodegas").select("*").eq("telefono_whatsapp", telefono).limit(1).execute()
-    return r.data[0] if r.data else None
+    """Bodega por WhatsApp; prueba variantes +51 / sin + / solo dígitos."""
+    tel = (telefono or "").strip()
+    if not tel:
+        return None
+    variants: list[str] = []
+    seen: set[str] = set()
+
+    def _add(v: str) -> None:
+        v = (v or "").strip()
+        if v and v not in seen:
+            seen.add(v)
+            variants.append(v)
+
+    _add(tel)
+    digits = "".join(c for c in tel if c.isdigit())
+    if digits.startswith("51") and len(digits) >= 11:
+        _add(f"+{digits}")
+        _add(digits)
+    elif len(digits) == 9:
+        _add(f"+51{digits}")
+        _add(f"51{digits}")
+    elif tel.startswith("+"):
+        _add(tel[1:])
+
+    for candidate in variants:
+        r = sb.table("bodegas").select("*").eq("telefono_whatsapp", candidate).limit(1).execute()
+        if r.data:
+            return r.data[0]
+    return None
 
 def get_bodega_by_ruc(ruc: str):
     r = sb.table("bodegas").select("*").eq("ruc", ruc).limit(1).execute()

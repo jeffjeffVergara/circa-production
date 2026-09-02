@@ -115,6 +115,31 @@ def _phone_e164(value: str) -> str | None:
     return f"+{digits}"
 
 
+def _telefono_variants(value: str) -> list[str]:
+    """Variantes E.164 / dígitos para matchear messages.telefono y bodegas."""
+    out: list[str] = []
+    seen: set[str] = set()
+
+    def _add(v: str) -> None:
+        v = (v or "").strip()
+        if v and v not in seen:
+            seen.add(v)
+            out.append(v)
+
+    _add(value)
+    e164 = _phone_e164(value)
+    if e164:
+        _add(e164)
+    digits = _digits_only(value)
+    if digits.startswith("51") and len(digits) >= 11:
+        _add(digits)
+        _add(f"+{digits}")
+    elif len(digits) == 9:
+        _add(f"51{digits}")
+        _add(f"+51{digits}")
+    return out
+
+
 def search_bodegas(query: str, *, limit: int = 20) -> list[dict[str, Any]]:
     """Busca bodegas por DNI, teléfono, razón social o nombre comercial."""
     q = (query or "").strip()
@@ -350,10 +375,20 @@ def build_timeline(bodega_id: str) -> dict[str, Any]:
         .order("created_at", desc=True)
         .limit(60)
     )
-    if bodega_id:
+    if bodega_id and tel:
+        tel_variants = _telefono_variants(tel)
+        or_parts = [f"bodega_id.eq.{bodega_id}"] + [
+            f"telefono.eq.{t}" for t in tel_variants
+        ]
+        msg_q = msg_q.or_(",".join(or_parts))
+    elif bodega_id:
         msg_q = msg_q.eq("bodega_id", bodega_id)
     elif tel:
-        msg_q = msg_q.eq("telefono", tel)
+        tel_variants = _telefono_variants(tel)
+        if len(tel_variants) == 1:
+            msg_q = msg_q.eq("telefono", tel_variants[0])
+        else:
+            msg_q = msg_q.or_(",".join(f"telefono.eq.{t}" for t in tel_variants))
     try:
         messages = msg_q.execute().data or []
     except Exception:

@@ -175,6 +175,14 @@ def track_message(
     else:
         rt_ms = response_time_ms
 
+    if not bodega_id:
+        try:
+            b = db.get_bodega_by_phone(tel)
+            if b:
+                bodega_id = b.get("id")
+        except Exception:
+            pass
+
     try:
         payload = {
             "telefono": tel,

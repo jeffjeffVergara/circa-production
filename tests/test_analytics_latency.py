@@ -69,12 +69,32 @@ def test_response_time_from_db_skips_if_already_replied(mock_db):
 
 @patch("app.services.analytics.track_event")
 @patch("app.services.analytics.db")
+def test_track_message_resolves_bodega_id_from_phone(mock_db, _track_event):
+    table = MagicMock()
+    mock_db.sb.table.return_value = table
+    mock_db.get_bodega_by_phone.return_value = {"id": "bodega-99"}
+
+    analytics.track_message(
+        telefono="51998025315",
+        direction="outbound",
+        template_name="circa_recordatorio_visita_credito",
+        measure_response_latency=False,
+    )
+
+    payload = table.insert.call_args[0][0]
+    assert payload["bodega_id"] == "bodega-99"
+    mock_db.get_bodega_by_phone.assert_called_once_with("+51998025315")
+
+
+@patch("app.services.analytics.track_event")
+@patch("app.services.analytics.db")
 def test_track_message_outbound_sets_latency(mock_db, _track_event):
     analytics._pending_inbound._at.clear()
     analytics._pending_inbound.register("+51999111222")
 
     table = MagicMock()
     mock_db.sb.table.return_value = table
+    mock_db.get_bodega_by_phone.return_value = None
 
     analytics.track_message(
         telefono="51999111222",

@@ -9,6 +9,7 @@ from app.services.client_observability import (
     _analytics_title,
     _digits_only,
     _phone_e164,
+    _telefono_variants,
     _timeline_for_claude,
     _wa_message_title,
 )
@@ -22,6 +23,12 @@ def test_digits_only():
 def test_phone_e164():
     assert _phone_e164("956277521") == "+51956277521"
     assert _phone_e164("51956277521") == "+51956277521"
+
+
+def test_telefono_variants_peru():
+    variants = _telefono_variants("+51998025315")
+    assert "+51998025315" in variants
+    assert "51998025315" in variants
 
 
 def test_wa_message_title_inbound():

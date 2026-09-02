@@ -627,6 +627,8 @@ def parse_csv_recipients(
         mapped["telefono"] = telefono
         mapped["telefono_envio"] = telefono
         bodega, _lookup_err = _resolve_bodega_by_nombre(nombre)
+        if not bodega:
+            bodega = db.get_bodega_by_phone(telefono)
         if bodega:
             mapped["bodega_id"] = bodega["id"]
             mapped["nombre_comercial"] = bodega.get("nombre_comercial")

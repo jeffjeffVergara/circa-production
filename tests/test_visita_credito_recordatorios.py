@@ -141,6 +141,9 @@ def test_parse_csv_uses_csv_telefono_without_bodega_match():
     with patch(
         "app.services.visita_credito_recordatorios._resolve_bodega_by_nombre",
         return_value=(None, "bodega no encontrada"),
+    ), patch(
+        "app.services.visita_credito_recordatorios.db.get_bodega_by_phone",
+        return_value=None,
     ):
         items, errors = parse_csv_recipients(csv_text)
     assert not errors
@@ -153,11 +156,41 @@ def test_parse_csv_accepts_legacy_aliado_column_as_vendedor():
     with patch(
         "app.services.visita_credito_recordatorios._resolve_bodega_by_nombre",
         return_value=(None, "bodega no encontrada"),
+    ), patch(
+        "app.services.visita_credito_recordatorios.db.get_bodega_by_phone",
+        return_value=None,
     ):
         items, errors = parse_csv_recipients(csv_text)
     assert not errors
     aliado_var = next(v for v in items[0]["variables"] if v["name"] == "aliado")
     assert aliado_var["value"] == "Luis"
+
+
+def test_parse_csv_links_bodega_by_phone_when_name_misses():
+    csv_text = "nombre,vendedor,monto,telefono\nJeronimo Blas,Adolfo,200,998025315\n"
+    bodega = {
+        "id": "c5159423-a999-4667-a249-e078308dc66e",
+        "nombre_comercial": None,
+        "razon_social": "BLAS FLORES JERONIMO DIMAS",
+        "telefono_whatsapp": "+51998025315",
+        "es_test": False,
+    }
+    with patch(
+        "app.services.visita_credito_recordatorios._resolve_bodega_by_nombre",
+        return_value=(None, "bodega no encontrada"),
+    ), patch(
+        "app.services.visita_credito_recordatorios.db.get_bodega_by_phone",
+        return_value=bodega,
+    ), patch(
+        "app.services.visita_credito_recordatorios._fetch_bodegas_by_ids",
+        return_value={"c5159423-a999-4667-a249-e078308dc66e": bodega},
+    ), patch(
+        "app.services.visita_credito_recordatorios._fetch_vendedores_por_bodega",
+        return_value={},
+    ):
+        items, errors = parse_csv_recipients(csv_text)
+    assert not errors
+    assert items[0]["bodega_id"] == "c5159423-a999-4667-a249-e078308dc66e"
 
 
 def test_build_items_for_send_maps_csv_vendedor_to_aliado_despite_stale_payload():
