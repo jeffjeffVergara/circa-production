@@ -18,7 +18,7 @@ _BODEGA_SELECT = (
     "id,external_id,telefono_whatsapp,dni_representante,ruc,razon_social,"
     "nombre_comercial,representante_legal,direccion_fiscal,distrito,estado,"
     "onboarding_fase,kyc_nivel,linea_aprobada,linea_disponible,distribuidor_id,"
-    "solo_dni_sin_ruc,created_at,updated_at"
+    "solo_dni_sin_ruc,es_test,created_at,updated_at"
 )
 
 
@@ -48,14 +48,28 @@ def _bodega_out(row: dict, *, created: bool = False) -> dict:
         "kyc_nivel": row.get("kyc_nivel"),
         "linea_aprobada": float(row["linea_aprobada"]) if row.get("linea_aprobada") is not None else None,
         "linea_disponible": float(row["linea_disponible"]) if row.get("linea_disponible") is not None else None,
+        "es_test": bool(row.get("es_test")),
         "created": created,
     }
 
 
-def find_bodega(dist_id: str, *, bodega_id: str | None = None, external_id: str | None = None,
-                telefono: str | None = None, ruc: str | None = None,
-                dni: str | None = None) -> dict | None:
+def data_mode_label(es_test: bool) -> str:
+    return "test" if es_test else "prod"
+
+
+def find_bodega(
+    dist_id: str,
+    *,
+    bodega_id: str | None = None,
+    external_id: str | None = None,
+    telefono: str | None = None,
+    ruc: str | None = None,
+    dni: str | None = None,
+    es_test: bool | None = None,
+) -> dict | None:
     q = db.sb.table("bodegas").select(_BODEGA_SELECT).eq("distribuidor_id", dist_id)
+    if es_test is not None:
+        q = q.eq("es_test", es_test)
     if bodega_id:
         rows = q.eq("id", bodega_id).limit(1).execute().data or []
         return rows[0] if rows else None
@@ -75,7 +89,32 @@ def find_bodega(dist_id: str, *, bodega_id: str | None = None, external_id: str 
     return None
 
 
-def upsert_bodega(dist: dict, body: dict) -> dict:
+def _assert_bodega_mode(bodega: dict, es_test: bool) -> None:
+    if bool(bodega.get("es_test")) != bool(es_test):
+        modo = data_mode_label(es_test)
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                f"Bodega no encontrada en modo '{modo}'. "
+                "Use /api/v1/... para datos reales o /api/v1/test/... para pruebas."
+            ),
+        )
+
+
+def _bodega_ids_modo(dist_id: str, es_test: bool) -> list[str]:
+    rows = (
+        db.sb.table("bodegas")
+        .select("id")
+        .eq("distribuidor_id", dist_id)
+        .eq("es_test", es_test)
+        .execute()
+        .data
+        or []
+    )
+    return [str(r["id"]) for r in rows if r.get("id")]
+
+
+def upsert_bodega(dist: dict, body: dict, *, es_test: bool = False) -> dict:
     dist_id = dist["id"]
     tel = normalizar_telefono(body["telefono_whatsapp"])
     external_id = (body.get("external_id") or "").strip() or None
@@ -89,13 +128,13 @@ def upsert_bodega(dist: dict, body: dict) -> dict:
 
     existing = None
     if external_id:
-        existing = find_bodega(dist_id, external_id=external_id)
+        existing = find_bodega(dist_id, external_id=external_id, es_test=es_test)
     if not existing:
-        existing = find_bodega(dist_id, telefono=tel)
+        existing = find_bodega(dist_id, telefono=tel, es_test=es_test)
     if not existing and ruc:
-        existing = find_bodega(dist_id, ruc=ruc)
+        existing = find_bodega(dist_id, ruc=ruc, es_test=es_test)
     if not existing and dni:
-        existing = find_bodega(dist_id, dni=dni)
+        existing = find_bodega(dist_id, dni=dni, es_test=es_test)
 
     razon = (body.get("razon_social") or body.get("nombre_comercial") or "").strip()
     if not razon and dni:
@@ -126,7 +165,7 @@ def upsert_bodega(dist: dict, body: dict) -> dict:
 
     if existing:
         db.sb.table("bodegas").update(patch).eq("id", existing["id"]).execute()
-        row = find_bodega(dist_id, bodega_id=existing["id"])
+        row = find_bodega(dist_id, bodega_id=existing["id"], es_test=es_test)
         return _bodega_out(row or existing, created=False)
 
     linea_aprobada = 200.0  # provisional; el modelo puede ajustar después
@@ -138,7 +177,7 @@ def upsert_bodega(dist: dict, body: dict) -> dict:
         "kyc_nivel": "ninguno",
         "linea_aprobada": linea_aprobada,
         "linea_disponible": 0,  # nunca liberar en precarga
-        "es_test": False,
+        "es_test": bool(es_test),
         "en_piloto": True,
         **onboarding_alta_fields(linea_aprobada),
     }
@@ -150,14 +189,14 @@ def upsert_bodega(dist: dict, body: dict) -> dict:
 
     row = (res.data or [None])[0]
     if not row:
-        row = find_bodega(dist_id, telefono=tel)
+        row = find_bodega(dist_id, telefono=tel, es_test=es_test)
     if not row:
         raise HTTPException(status_code=500, detail="Bodega creada pero no se pudo leer")
     return _bodega_out(row, created=True)
 
 
-def patch_bodega(dist: dict, bodega_id: str, body: dict) -> dict:
-    existing = find_bodega(dist["id"], bodega_id=bodega_id)
+def patch_bodega(dist: dict, bodega_id: str, body: dict, *, es_test: bool = False) -> dict:
+    existing = find_bodega(dist["id"], bodega_id=bodega_id, es_test=es_test)
     if not existing:
         raise HTTPException(status_code=404, detail="Bodega no encontrada")
     updates: dict[str, Any] = {}
@@ -170,17 +209,25 @@ def patch_bodega(dist: dict, bodega_id: str, body: dict) -> dict:
         raise HTTPException(status_code=400, detail="Sin campos para actualizar")
     updates["updated_at"] = datetime.now(timezone.utc).isoformat()
     db.sb.table("bodegas").update(updates).eq("id", bodega_id).execute()
-    row = find_bodega(dist["id"], bodega_id=bodega_id)
+    row = find_bodega(dist["id"], bodega_id=bodega_id, es_test=es_test)
     return _bodega_out(row or existing, created=False)
 
 
-def list_bodegas(dist: dict, *, q: str | None = None, limit: int = 50, offset: int = 0) -> dict:
+def list_bodegas(
+    dist: dict,
+    *,
+    q: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+    es_test: bool = False,
+) -> dict:
     limit = max(1, min(limit, 200))
     offset = max(0, offset)
     query = (
         db.sb.table("bodegas")
         .select(_BODEGA_SELECT)
         .eq("distribuidor_id", dist["id"])
+        .eq("es_test", bool(es_test))
         .order("created_at", desc=True)
         .range(offset, offset + limit - 1)
     )
@@ -191,33 +238,37 @@ def list_bodegas(dist: dict, *, q: str | None = None, limit: int = 50, offset: i
             r for r in rows
             if ql in (r.get("razon_social") or "").lower()
             or ql in (r.get("nombre_comercial") or "").lower()
-            or ql in (r.get("dni_representante") or "")
-            or ql in (r.get("ruc") or "")
-            or ql in (r.get("external_id") or "")
-            or ql in (r.get("telefono_whatsapp") or "")
+            or ql in (r.get("dni_representante") or "").lower()
+            or ql in (r.get("ruc") or "").lower()
+            or ql in (r.get("external_id") or "").lower()
+            or ql in (r.get("telefono_whatsapp") or "").lower()
         ]
     return {"total": len(rows), "items": [_bodega_out(r) for r in rows]}
 
 
-def _resolve_bodega_for_preventa(dist: dict, body: dict) -> dict:
+def _resolve_bodega_for_preventa(dist: dict, body: dict, *, es_test: bool = False) -> dict:
     b = None
     if body.get("bodega_id"):
-        b = find_bodega(dist["id"], bodega_id=body["bodega_id"])
+        b = find_bodega(dist["id"], bodega_id=body["bodega_id"], es_test=es_test)
     if not b and body.get("bodega_external_id"):
-        b = find_bodega(dist["id"], external_id=body["bodega_external_id"])
+        b = find_bodega(dist["id"], external_id=body["bodega_external_id"], es_test=es_test)
     if not b and body.get("telefono_whatsapp"):
-        b = find_bodega(dist["id"], telefono=body["telefono_whatsapp"])
+        b = find_bodega(dist["id"], telefono=body["telefono_whatsapp"], es_test=es_test)
     if not b:
         raise HTTPException(
             status_code=404,
-            detail="Bodega no encontrada. Envíe bodega_id, bodega_external_id o telefono_whatsapp.",
-            # code used by clients
+            detail=(
+                "Bodega no encontrada en este modo de datos. "
+                "Envíe bodega_id, bodega_external_id o telefono_whatsapp "
+                f"válidos para modo '{data_mode_label(es_test)}'."
+            ),
         )
+    _assert_bodega_mode(b, es_test)
     return b
 
 
-def create_preventa(dist: dict, body: dict) -> dict:
-    bodega = _resolve_bodega_for_preventa(dist, body)
+def create_preventa(dist: dict, body: dict, *, es_test: bool = False) -> dict:
+    bodega = _resolve_bodega_for_preventa(dist, body, es_test=es_test)
     external_id = (body.get("external_id") or "").strip() or None
     if external_id:
         existing = (
@@ -231,7 +282,10 @@ def create_preventa(dist: dict, body: dict) -> dict:
             or []
         )
         if existing:
-            return _pedido_out(existing[0])
+            # Solo reusar si la preventa pertenece a una bodega del mismo modo
+            bid = existing[0].get("bodega_id")
+            if bid and find_bodega(dist["id"], bodega_id=str(bid), es_test=es_test):
+                return _pedido_out(existing[0])
 
     items = []
     total = 0.0
@@ -255,7 +309,7 @@ def create_preventa(dist: dict, body: dict) -> dict:
         "distribuidor_id": dist["id"],
         "estado": "preventa_confirmada",
         "tipo_operacion": "preventa",
-        "origen": "preventa_socio_api",
+        "origen": "preventa_socio_api_test" if es_test else "preventa_socio_api",
         "items_json": items,
         "total_pedido": round(total, 2),
         "monto_financiado": 0,
@@ -307,7 +361,7 @@ def _pedido_out(row: dict) -> dict:
     }
 
 
-def get_pedido(dist: dict, pedido_id: str) -> dict:
+def get_pedido(dist: dict, pedido_id: str, *, es_test: bool = False) -> dict:
     rows = (
         db.sb.table("pedidos")
         .select("id,external_id,numero,bodega_id,estado,tipo_operacion,total_pedido,monto_financiado,created_at,items_json,distribuidor_id")
@@ -320,7 +374,11 @@ def get_pedido(dist: dict, pedido_id: str) -> dict:
     )
     if not rows:
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
-    return _pedido_out(rows[0])
+    ped = rows[0]
+    bid = ped.get("bodega_id")
+    if not bid or not find_bodega(dist["id"], bodega_id=str(bid), es_test=es_test):
+        raise HTTPException(status_code=404, detail="Pedido no encontrado")
+    return _pedido_out(ped)
 
 
 def list_pedidos(
@@ -331,13 +389,26 @@ def list_pedidos(
     bodega_id: str | None = None,
     limit: int = 50,
     offset: int = 0,
+    es_test: bool = False,
 ) -> dict:
     limit = max(1, min(limit, 200))
     offset = max(0, offset)
+
+    if bodega_id:
+        b = find_bodega(dist["id"], bodega_id=bodega_id, es_test=es_test)
+        if not b:
+            return {"total": 0, "items": []}
+        allowed_ids = [bodega_id]
+    else:
+        allowed_ids = _bodega_ids_modo(dist["id"], es_test)
+        if not allowed_ids:
+            return {"total": 0, "items": []}
+
     q = (
         db.sb.table("pedidos")
         .select("id,external_id,numero,bodega_id,estado,tipo_operacion,total_pedido,monto_financiado,created_at,items_json")
         .eq("distribuidor_id", dist["id"])
+        .in_("bodega_id", allowed_ids)
         .order("created_at", desc=True)
         .range(offset, offset + limit - 1)
     )
@@ -345,8 +416,6 @@ def list_pedidos(
         q = q.eq("estado", estado)
     if tipo:
         q = q.eq("tipo_operacion", tipo)
-    if bodega_id:
-        q = q.eq("bodega_id", bodega_id)
     rows = q.execute().data or []
     return {"total": len(rows), "items": [_pedido_out(r) for r in rows]}
 
@@ -358,7 +427,17 @@ _PREVENTA_NEXT = {
 }
 
 
-def patch_pedido_estado(dist: dict, pedido_id: str, nuevo_estado: str, comentario: str | None = None) -> dict:
+def patch_pedido_estado(
+    dist: dict,
+    pedido_id: str,
+    nuevo_estado: str,
+    comentario: str | None = None,
+    *,
+    es_test: bool = False,
+) -> dict:
+    # Valida modo vía get_pedido
+    get_pedido(dist, pedido_id, es_test=es_test)
+
     rows = (
         db.sb.table("pedidos")
         .select("*")
@@ -394,4 +473,4 @@ def patch_pedido_estado(dist: dict, pedido_id: str, nuevo_estado: str, comentari
 
     upd = {"estado": nuevo, "updated_at": datetime.now(timezone.utc).isoformat()}
     db.sb.table("pedidos").update(upd).eq("id", pedido_id).execute()
-    return get_pedido(dist, pedido_id)
+    return get_pedido(dist, pedido_id, es_test=es_test)

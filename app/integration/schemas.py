@@ -64,6 +64,10 @@ class BodegaResponse(BaseModel):
     kyc_nivel: Optional[str] = None
     linea_aprobada: Optional[float] = None
     linea_disponible: Optional[float] = None
+    es_test: bool = Field(
+        default=False,
+        description="True si la bodega pertenece al modo prueba (/api/v1/test)",
+    )
     created: bool = Field(default=False, description="True si se creó en este request")
 
 
@@ -125,3 +129,29 @@ class HealthResponse(BaseModel):
     status: Literal["ok"] = "ok"
     service: str = "circa-integration-api"
     version: str = "1.0.0"
+    data_mode: Literal["prod", "test"] = Field(
+        default="prod",
+        description="prod = /api/v1 · test = /api/v1/test",
+    )
+
+
+class TokenRequest(BaseModel):
+    grant_type: Literal["client_credentials"] = "client_credentials"
+    client_id: str = Field(..., min_length=1, description="api_client_id del distribuidor")
+    client_secret: str = Field(..., min_length=1, description="api_client_secret del distribuidor")
+    data_mode: Literal["prod", "test"] = Field(
+        default="prod",
+        description="prod → access_token de producción; test → access_token de pruebas",
+    )
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: Literal["Bearer"] = "Bearer"
+    data_mode: Literal["prod", "test"]
+    expires_in: Optional[int] = Field(
+        default=None,
+        description="Null = token de larga duración (no expira automáticamente)",
+    )
+    distribuidor_id: str
+    distribuidor: Optional[str] = None

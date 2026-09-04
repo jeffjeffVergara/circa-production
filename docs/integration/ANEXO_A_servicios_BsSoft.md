@@ -34,18 +34,24 @@ El requerimiento describe cuatro cosas que Circa necesita. Aquí se traduce cada
 
 | Dato | Valor |
 |------|--------|
-| Base URL producción | `https://circa-production-c517.up.railway.app/api/v1` |
+| Base URL producción (datos reales) | `https://circa-production-c517.up.railway.app/api/v1` |
+| Base URL pruebas (`es_test`) | `https://circa-production-c517.up.railway.app/api/v1/test` |
 | Swagger | `https://circa-production-c517.up.railway.app/api/v1/docs` |
 | ReDoc | `https://circa-production-c517.up.railway.app/api/v1/redoc` |
 | OpenAPI JSON | `https://circa-production-c517.up.railway.app/api/v1/openapi.json` |
 | Landing | `https://circa-production-c517.up.railway.app/static/integration.html` |
-| Autenticación | `Authorization: Bearer <api_token>` |
-| Token | Lo emite Circa Ops **por distribuidor**. Un token ≠ un usuario vendedor. |
+| Autenticación | `POST /auth/token` → `Authorization: Bearer <access_token>` |
+| Token | Circa Ops configura `api_client_id`, `api_client_secret`, `api_token` (prod) y `api_token_test` |
 
-El token viaja en cada request salvo `GET /health`. No compartir tokens del portal HTML de Circa.
+El token viaja en cada request salvo `GET /health` y `POST /auth/token`. No compartir tokens del portal HTML de Circa.
 
 ```http
-Authorization: Bearer <api_token>
+POST /api/v1/auth/token
+Content-Type: application/json
+
+{ "grant_type": "client_credentials", "client_id": "...", "client_secret": "...", "data_mode": "prod" }
+
+Authorization: Bearer <access_token>
 Content-Type: application/json
 ```
 
@@ -390,12 +396,25 @@ Coincide con el punto abierto 7 del requerimiento.
 
 ## 10. Ambiente de pruebas
 
+**Un solo ambiente (producción Railway).** La diferencia es el prefijo de URL **y** el access token:
+
+| Modo | Base | Token | Datos |
+|------|------|--------|--------|
+| Real | `…/api/v1` | `data_mode=prod` | `es_test=false` |
+| Prueba | `…/api/v1/test` | `data_mode=test` | `es_test=true` |
+
 Circa entregará:
 
-- Un `api_token` de prueba (distribuidor ZOOM piloto).
-- Bodegas de prueba (con línea y sin línea).
-- Swagger para probar sin escribir código: `/api/v1/docs`.
-- Colección Postman en el repositorio Circa: `postman/Circa_Integration_API_v1.postman_collection.json`.
+- `api_client_id` + `api_client_secret` (para `POST /auth/token`)
+- `api_token` (prod) y `api_token_test` (pruebas)
+- Bodegas de prueba (`es_test=true`) con y sin línea
+- Swagger: `/api/v1/docs`
+- Postman: carpetas **00 · Auth**, **01 · Producción**, **02 · Pruebas**
+
+```bash
+curl -s -X POST "$BASE/auth/token" -H 'Content-Type: application/json' \
+  -d '{"grant_type":"client_credentials","client_id":"...","client_secret":"...","data_mode":"test"}'
+```
 
 ---
 

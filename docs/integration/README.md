@@ -28,11 +28,49 @@ Variables:
 
 ## Autenticación
 
+### 1) Obtener access token
+
 ```http
-Authorization: Bearer <api_token>
+POST /api/v1/auth/token
+Content-Type: application/json
+
+{
+  "grant_type": "client_credentials",
+  "client_id": "<api_client_id>",
+  "client_secret": "<api_client_secret>",
+  "data_mode": "prod"
+}
 ```
 
-El token lo genera / entrega Circa Ops por distribuidor. No compartir tokens del portal HTML con terceros.
+Respuesta:
+
+```json
+{
+  "access_token": "...",
+  "token_type": "Bearer",
+  "data_mode": "prod",
+  "expires_in": null,
+  "distribuidor_id": "...",
+  "distribuidor": "ZOOM CORP"
+}
+```
+
+Usa `data_mode: "test"` para el token de pruebas.
+
+### 2) Llamar APIs
+
+```http
+Authorization: Bearer <access_token>
+```
+
+| Modo | Base URL | Token |
+|------|----------|--------|
+| **Producción** | `…/api/v1` | token con `data_mode=prod` |
+| **Pruebas** | `…/api/v1/test` | token con `data_mode=test` |
+
+El token de prod **no** funciona en `/test` (403) y viceversa.
+
+Credenciales (`api_client_id`, `api_client_secret`, `api_token`, `api_token_test`) las configura Circa Ops en `distribuidores`.
 
 ## Alcance MVP
 

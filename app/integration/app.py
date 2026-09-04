@@ -1,7 +1,10 @@
 """
 Circa Integration API v1 — sub-aplicación FastAPI con Swagger/ReDoc propios.
 
-URLs (producción):
+URLs (un solo ambiente):
+  Producción (datos reales):  https://<host>/api/v1/...
+  Pruebas (es_test=true):     https://<host>/api/v1/test/...
+
   Swagger UI:  https://<host>/api/v1/docs
   ReDoc:       https://<host>/api/v1/redoc
   OpenAPI:     https://<host>/api/v1/openapi.json
@@ -10,7 +13,7 @@ from __future__ import annotations
 
 from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends, FastAPI, Query
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_redoc_html
 from fastapi.responses import HTMLResponse
@@ -25,17 +28,42 @@ DESCRIPTION = """
 API de Circa para que **sistemas de socios distribuidores** se conecten sin
 duplicar registros de clientes, preventas y pedidos.
 
+### Modos de datos (mismo ambiente)
+
+| Modo | Base URL | Datos | Token |
+|------|----------|--------|--------|
+| **Producción** | `/api/v1` | `es_test=false` | `api_token` (prod) |
+| **Pruebas** | `/api/v1/test` | `es_test=true` | `api_token_test` |
+
+Obtener access token:
+
+```http
+POST /api/v1/auth/token
+Content-Type: application/json
+
+{
+  "grant_type": "client_credentials",
+  "client_id": "<api_client_id>",
+  "client_secret": "<api_client_secret>",
+  "data_mode": "prod"
+}
+```
+
+Luego: `Authorization: Bearer <access_token>`.
+El token de prod **no** sirve en `/test` y viceversa.
+
 ### Autenticación
 ```
-Authorization: Bearer <api_token>
+Authorization: Bearer <access_token>
 ```
-El `api_token` lo emite Circa por distribuidor (`distribuidores.api_token`).
+Credenciales (`client_id` / `client_secret`) y tokens los emite Circa Ops por distribuidor.
 
 ### Principios
 - **Upsert** de bodegas por `external_id`, WhatsApp, RUC o DNI/CE
 - Precarga **no libera línea** (`linea_disponible = 0`)
 - La activación KYC/PIN del dueño sigue en WhatsApp
 - Use `external_id` del sistema del socio para idempotencia
+- No mezclar IDs entre modos: una bodega de `/test` no existe en `/api/v1`
 
 ### Soporte
 contacto@circa.pe · +51 986 311 567
@@ -103,7 +131,6 @@ integration_app.add_middleware(
     allow_headers=["*"],
 )
 
-router = APIRouter(tags=["Integration"])
 DistDep = Annotated[dict, Depends(get_current_distribuidor)]
 
 _SWAGGER_CSS = "https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css"
@@ -112,7 +139,6 @@ _SWAGGER_JS = "https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.
 
 @integration_app.get("/docs", include_in_schema=False)
 async def swagger_ui_html() -> HTMLResponse:
-    # Ruta absoluta para que el browser resuelva bien bajo /api/v1
     openapi_url = "/api/v1/openapi.json"
     html = _DOCS_SHELL.format(
         title="Circa · API Socios",
@@ -124,7 +150,7 @@ async def swagger_ui_html() -> HTMLResponse:
 
 
 @integration_app.get("/redoc", include_in_schema=False)
-async def redoc_html() -> HTMLResponse:
+async def redoc_html():
     return get_redoc_html(
         openapi_url="/api/v1/openapi.json",
         title="Circa · API Socios",
@@ -132,152 +158,172 @@ async def redoc_html() -> HTMLResponse:
     )
 
 
-@router.get(
-    "/health",
-    response_model=S.HealthResponse,
-    summary="Health check",
-    tags=["Meta"],
-)
-async def health():
-    return S.HealthResponse()
+def _register_business_routes(router: APIRouter, *, es_test: bool) -> None:
+    """Registra el mismo catálogo de servicios bajo prod o /test."""
+    modo = "test" if es_test else "prod"
+    tag_suffix = " · test" if es_test else ""
 
-
-# ── Bodegas / Enrolamiento ──────────────────────────────────────────────────
-
-@router.post(
-    "/bodegas",
-    response_model=S.BodegaResponse,
-    summary="Crear o actualizar bodega (enrolamiento / precarga)",
-    tags=["Bodegas"],
-)
-async def upsert_bodega(body: S.BodegaUpsertRequest, dist: DistDep):
-    """
-    Crea la bodega si no existe, o actualiza datos comerciales si ya está.
-    No libera línea de crédito. Idempotente si envía `external_id`.
-    """
-    return svc.upsert_bodega(dist, body.model_dump())
-
-
-@router.get(
-    "/bodegas",
-    response_model=S.ListResponse,
-    summary="Listar / buscar bodegas",
-    tags=["Bodegas"],
-)
-async def list_bodegas(
-    dist: DistDep,
-    q: Optional[str] = Query(None, description="Busca en nombre, DNI, RUC, tel, external_id"),
-    limit: int = Query(50, ge=1, le=200),
-    offset: int = Query(0, ge=0),
-):
-    return svc.list_bodegas(dist, q=q, limit=limit, offset=offset)
-
-
-@router.get(
-    "/bodegas/{bodega_id}",
-    response_model=S.BodegaResponse,
-    summary="Obtener bodega por ID Circa",
-    tags=["Bodegas"],
-)
-async def get_bodega(bodega_id: str, dist: DistDep):
-    row = svc.find_bodega(dist["id"], bodega_id=bodega_id)
-    if not row:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=404, detail="Bodega no encontrada")
-    return svc._bodega_out(row)
-
-
-@router.patch(
-    "/bodegas/{bodega_id}",
-    response_model=S.BodegaResponse,
-    summary="Modificar datos comerciales de bodega",
-    tags=["Bodegas"],
-)
-async def patch_bodega(bodega_id: str, body: S.BodegaPatchRequest, dist: DistDep):
-    return svc.patch_bodega(dist, bodega_id, body.model_dump(exclude_unset=True))
-
-
-# ── Preventas ───────────────────────────────────────────────────────────────
-
-@router.post(
-    "/preventas",
-    response_model=S.PedidoResponse,
-    summary="Crear preventa",
-    tags=["Preventas"],
-)
-async def create_preventa(body: S.PreventaCreateRequest, dist: DistDep):
-    """Crea pedido tipo preventa. Idempotente con `external_id`."""
-    return svc.create_preventa(dist, body.model_dump())
-
-
-@router.get(
-    "/preventas",
-    response_model=S.ListResponse,
-    summary="Listar preventas",
-    tags=["Preventas"],
-)
-async def list_preventas(
-    dist: DistDep,
-    estado: Optional[str] = None,
-    bodega_id: Optional[str] = None,
-    limit: int = Query(50, ge=1, le=200),
-    offset: int = Query(0, ge=0),
-):
-    return svc.list_pedidos(
-        dist, estado=estado, tipo="preventa", bodega_id=bodega_id, limit=limit, offset=offset,
+    @router.get(
+        "/health",
+        response_model=S.HealthResponse,
+        summary=f"Health check ({modo})",
+        tags=[f"Meta{tag_suffix}"],
     )
+    async def health():
+        return S.HealthResponse(data_mode=modo)  # type: ignore[arg-type]
+
+    @router.post(
+        "/bodegas",
+        response_model=S.BodegaResponse,
+        summary=f"Crear o actualizar bodega ({modo})",
+        tags=[f"Bodegas{tag_suffix}"],
+    )
+    async def upsert_bodega(body: S.BodegaUpsertRequest, dist: DistDep):
+        return svc.upsert_bodega(dist, body.model_dump(), es_test=es_test)
+
+    @router.get(
+        "/bodegas",
+        response_model=S.ListResponse,
+        summary=f"Listar / buscar bodegas ({modo})",
+        tags=[f"Bodegas{tag_suffix}"],
+    )
+    async def list_bodegas(
+        dist: DistDep,
+        q: Optional[str] = Query(None, description="Busca en nombre, DNI, RUC, tel, external_id"),
+        limit: int = Query(50, ge=1, le=200),
+        offset: int = Query(0, ge=0),
+    ):
+        return svc.list_bodegas(dist, q=q, limit=limit, offset=offset, es_test=es_test)
+
+    @router.get(
+        "/bodegas/{bodega_id}",
+        response_model=S.BodegaResponse,
+        summary=f"Obtener bodega ({modo})",
+        tags=[f"Bodegas{tag_suffix}"],
+    )
+    async def get_bodega(bodega_id: str, dist: DistDep):
+        row = svc.find_bodega(dist["id"], bodega_id=bodega_id, es_test=es_test)
+        if not row:
+            raise HTTPException(status_code=404, detail="Bodega no encontrada")
+        return svc._bodega_out(row)
+
+    @router.patch(
+        "/bodegas/{bodega_id}",
+        response_model=S.BodegaResponse,
+        summary=f"Modificar bodega ({modo})",
+        tags=[f"Bodegas{tag_suffix}"],
+    )
+    async def patch_bodega(bodega_id: str, body: S.BodegaPatchRequest, dist: DistDep):
+        return svc.patch_bodega(
+            dist, bodega_id, body.model_dump(exclude_unset=True), es_test=es_test,
+        )
+
+    @router.post(
+        "/preventas",
+        response_model=S.PedidoResponse,
+        summary=f"Crear preventa ({modo})",
+        tags=[f"Preventas{tag_suffix}"],
+    )
+    async def create_preventa(body: S.PreventaCreateRequest, dist: DistDep):
+        return svc.create_preventa(dist, body.model_dump(), es_test=es_test)
+
+    @router.get(
+        "/preventas",
+        response_model=S.ListResponse,
+        summary=f"Listar preventas ({modo})",
+        tags=[f"Preventas{tag_suffix}"],
+    )
+    async def list_preventas(
+        dist: DistDep,
+        estado: Optional[str] = None,
+        bodega_id: Optional[str] = None,
+        limit: int = Query(50, ge=1, le=200),
+        offset: int = Query(0, ge=0),
+    ):
+        return svc.list_pedidos(
+            dist,
+            estado=estado,
+            tipo="preventa",
+            bodega_id=bodega_id,
+            limit=limit,
+            offset=offset,
+            es_test=es_test,
+        )
+
+    @router.get(
+        "/preventas/{pedido_id}",
+        response_model=S.PedidoResponse,
+        summary=f"Obtener preventa ({modo})",
+        tags=[f"Preventas{tag_suffix}"],
+    )
+    async def get_preventa(pedido_id: str, dist: DistDep):
+        return svc.get_pedido(dist, pedido_id, es_test=es_test)
+
+    @router.get(
+        "/pedidos",
+        response_model=S.ListResponse,
+        summary=f"Listar pedidos ({modo})",
+        tags=[f"Pedidos{tag_suffix}"],
+    )
+    async def list_pedidos(
+        dist: DistDep,
+        estado: Optional[str] = None,
+        bodega_id: Optional[str] = None,
+        limit: int = Query(50, ge=1, le=200),
+        offset: int = Query(0, ge=0),
+    ):
+        return svc.list_pedidos(
+            dist, estado=estado, bodega_id=bodega_id, limit=limit, offset=offset, es_test=es_test,
+        )
+
+    @router.get(
+        "/pedidos/{pedido_id}",
+        response_model=S.PedidoResponse,
+        summary=f"Obtener pedido ({modo})",
+        tags=[f"Pedidos{tag_suffix}"],
+    )
+    async def get_pedido(pedido_id: str, dist: DistDep):
+        return svc.get_pedido(dist, pedido_id, es_test=es_test)
+
+    @router.patch(
+        "/pedidos/{pedido_id}/estado",
+        response_model=S.PedidoResponse,
+        summary=f"Cambiar estado ({modo})",
+        tags=[f"Pedidos{tag_suffix}"],
+    )
+    async def patch_estado(pedido_id: str, body: S.PedidoEstadoPatch, dist: DistDep):
+        return svc.patch_pedido_estado(
+            dist, pedido_id, body.estado, body.comentario, es_test=es_test,
+        )
 
 
-@router.get(
-    "/preventas/{pedido_id}",
-    response_model=S.PedidoResponse,
-    summary="Obtener preventa",
-    tags=["Preventas"],
+router_prod = APIRouter()
+router_test = APIRouter(prefix="/test")
+_register_business_routes(router_prod, es_test=False)
+_register_business_routes(router_test, es_test=True)
+integration_app.include_router(router_prod)
+integration_app.include_router(router_test)
+
+
+@integration_app.post(
+    "/auth/token",
+    response_model=S.TokenResponse,
+    summary="Obtener access token (client_credentials)",
+    tags=["Auth"],
 )
-async def get_preventa(pedido_id: str, dist: DistDep):
-    ped = svc.get_pedido(dist, pedido_id)
-    return ped
+async def auth_token(body: S.TokenRequest):
+    """Intercambia client_id + client_secret por el Bearer del modo pedido.
 
+    - `data_mode=prod` → token para `/api/v1/...`
+    - `data_mode=test` → token para `/api/v1/test/...`
+    """
+    from app.integration.auth import issue_access_token
 
-# ── Pedidos ─────────────────────────────────────────────────────────────────
-
-@router.get(
-    "/pedidos",
-    response_model=S.ListResponse,
-    summary="Listar pedidos",
-    tags=["Pedidos"],
-)
-async def list_pedidos(
-    dist: DistDep,
-    estado: Optional[str] = None,
-    bodega_id: Optional[str] = None,
-    limit: int = Query(50, ge=1, le=200),
-    offset: int = Query(0, ge=0),
-):
-    return svc.list_pedidos(dist, estado=estado, bodega_id=bodega_id, limit=limit, offset=offset)
-
-
-@router.get(
-    "/pedidos/{pedido_id}",
-    response_model=S.PedidoResponse,
-    summary="Obtener pedido",
-    tags=["Pedidos"],
-)
-async def get_pedido(pedido_id: str, dist: DistDep):
-    return svc.get_pedido(dist, pedido_id)
-
-
-@router.patch(
-    "/pedidos/{pedido_id}/estado",
-    response_model=S.PedidoResponse,
-    summary="Cambiar estado de pedido / preventa",
-    tags=["Pedidos"],
-)
-async def patch_estado(pedido_id: str, body: S.PedidoEstadoPatch, dist: DistDep):
-    return svc.patch_pedido_estado(dist, pedido_id, body.estado, body.comentario)
-
-
-integration_app.include_router(router)
+    return issue_access_token(
+        client_id=body.client_id,
+        client_secret=body.client_secret,
+        data_mode=body.data_mode,
+    )
 
 
 def custom_openapi():
@@ -292,22 +338,18 @@ def custom_openapi():
         routes=integration_app.routes,
         contact=integration_app.contact,
     )
-    schema["components"] = schema.get("components") or {}
-    schema["components"]["securitySchemes"] = {
-        "BearerAuth": {
-            "type": "http",
-            "scheme": "bearer",
-            "bearerFormat": "API Token",
-            "description": "Token del socio distribuidor (distribuidores.api_token)",
-        }
-    }
-    # Aplicar seguridad global (excepto health)
-    for path, methods in schema.get("paths", {}).items():
-        if path.endswith("/health"):
-            continue
-        for method in methods.values():
-            if isinstance(method, dict):
-                method.setdefault("security", [{"BearerAuth": []}])
+    schema["servers"] = [
+        {
+            "url": "/api/v1",
+            "description": "Producción — datos reales (es_test=false)",
+        },
+        {
+            "url": "/api/v1/test",
+            "description": "Pruebas — datos es_test=true (mismo ambiente)",
+        },
+    ]
+    # Evitar duplicar /test en paths cuando el server ya es /api/v1/test:
+    # Swagger lista ambos sets de paths; el server selector cambia la base.
     integration_app.openapi_schema = schema
     return schema
 
