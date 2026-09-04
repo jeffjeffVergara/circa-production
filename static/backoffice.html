@@ -1471,7 +1471,7 @@ function loadPagos(){
         html += '<tr>'+
           '<td class="pedido-num">'+(p.numero||'-')+'</td>'+
           '<td>'+escAttr(b.nombre_comercial||b.razon_social||'?')+'</td>'+
-          '<td class="pagos-col-monto">S/'+Number(p.monto_productos||0).toFixed(2)+'</td>'+
+          '<td class="pagos-col-monto">S/'+Number(p.total_pedido||p.monto_productos||0).toFixed(2)+'</td>'+
           '<td class="pagos-col-monto pagos-col-circa">S/'+Number(p.monto_financiado||0).toFixed(2)+'</td>'+
           '<td><span class="badge badge-'+escAttr(p.estado||'')+'">'+escAttr(p.estado||'')+'</span></td>'+
           '<td class="pagos-col-actions">'+pagoDistBtn+'</td>'+
@@ -1648,7 +1648,7 @@ function loadPedidos(){
       }
       var flujo = p.flujo || {};
       var numCell = '<button type="button" class="pedido-link mono" onclick="openPedidoFlujo(\''+p.id+'\')">'+(p.numero||'—')+'</button>';
-      return '<tr><td>'+fecha+'</td><td class="pedido-num">'+numCell+'</td><td>'+tipoBadge+'</td><td>'+nombreBodega(b)+'</td><td style="color:var(--muted)">'+(dt.nombre_comercial||'?')+'</td><td class="mono">S/'+Number(p.monto_productos||0).toFixed(2)+'</td><td class="mono" style="color:var(--blue-light)">S/'+Number(p.monto_financiado||0).toFixed(2)+'</td><td><span class="badge badge-'+(p.estado||'').replace(' ','_')+'">'+(p.estado||'-')+'</span></td><td>'+flowMiniHtml(flujo)+'</td><td>'+acciones+'</td></tr>';
+      return '<tr><td>'+fecha+'</td><td class="pedido-num">'+numCell+'</td><td>'+tipoBadge+'</td><td>'+nombreBodega(b)+'</td><td style="color:var(--muted)">'+(dt.nombre_comercial||'?')+'</td><td class="mono">S/'+Number(p.total_pedido||p.monto_productos||0).toFixed(2)+'</td><td class="mono" style="color:var(--blue-light)">S/'+Number(p.monto_financiado||0).toFixed(2)+'</td><td><span class="badge badge-'+(p.estado||'').replace(' ','_')+'">'+(p.estado||'-')+'</span></td><td>'+flowMiniHtml(flujo)+'</td><td>'+acciones+'</td></tr>';
     }).join('') : '<tr><td colspan="10" class="empty">Sin pedidos</td></tr>';
   });
 }
@@ -4479,7 +4479,7 @@ function renderBodegaPerfil(d){
         '<td>'+flowMiniHtml(flujo)+'</td>'+
         '<td>'+(p.estado||'-')+'</td>'+
         '<td style="color:var(--muted);font-size:11px">'+(p.origen||'-')+'</td>'+
-        '<td class="mono">S/ '+(p.monto_productos||0).toFixed(2)+'</td>'+
+        '<td class="mono">S/ '+Number(p.total_pedido||p.monto_productos||0).toFixed(2)+'</td>'+
         '<td class="mono">S/ '+(p.monto_financiado||0).toFixed(2)+'</td>'+
         '<td style="font-size:11px">'+(p.fecha_vencimiento?new Date(p.fecha_vencimiento).toLocaleDateString('es-PE'):'—')+'</td>'+
         '<td style="font-size:11px">'+(p.created_at?new Date(p.created_at).toLocaleDateString('es-PE'):'-')+'</td>'+
