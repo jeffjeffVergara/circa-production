@@ -1371,17 +1371,19 @@ function renderAnalyticsPanels(a){
 
 function renderRankings(){
   var byDist = {};
+  // Agrupar por bodega_id, NO por nombre: muchas bodegas no tienen
+  // nombre_comercial y todas caian en el mismo grupo '?'.
   allCobranzas.filter(function(c){return c.status_cobranza==='pagado'}).forEach(function(c){
-    var b = (c.bodega && c.bodega.nombre_comercial) || '?';
+    var b = nombreBodega(c.bodega);
     var d = (c.distribuidor && c.distribuidor.nombre_comercial) || '?';
-    var key = b+'|'+d;
+    var key = ((c.bodega && c.bodega.id) || b)+'|'+d;
     if(!byDist[key]) byDist[key] = {bodega:b, dist:d, pagados:0, total:0};
     byDist[key].pagados++;
   });
   allCobranzas.forEach(function(c){
-    var b = (c.bodega && c.bodega.nombre_comercial) || '?';
+    var b = nombreBodega(c.bodega);
     var d = (c.distribuidor && c.distribuidor.nombre_comercial) || '?';
-    var key = b+'|'+d;
+    var key = ((c.bodega && c.bodega.id) || b)+'|'+d;
     if(!byDist[key]) byDist[key] = {bodega:b, dist:d, pagados:0, total:0};
     byDist[key].total++;
   });
@@ -1389,12 +1391,12 @@ function renderRankings(){
   
   var vencidos = {};
   allCobranzas.filter(function(c){return c.status_cobranza==='vencido'}).forEach(function(c){
-    var b = (c.bodega && c.bodega.nombre_comercial) || '?';
+    var b = nombreBodega(c.bodega);
     var d = (c.distribuidor && c.distribuidor.nombre_comercial) || '?';
-    var key = b+'|'+d;
+    var key = ((c.bodega && c.bodega.id) || b)+'|'+d;
     if(!vencidos[key]) vencidos[key] = {bodega:b, dist:d, count:0, monto:0};
     vencidos[key].count++;
-    vencidos[key].monto += c.total_pagar;
+    vencidos[key].monto += Number(c.total_pagar) || 0;
   });
   var atrasos = Object.values(vencidos).sort(function(a,b){return b.monto-a.monto}).slice(0,5);
   
@@ -1471,7 +1473,7 @@ function loadPagos(){
         html += '<tr>'+
           '<td class="pedido-num">'+(p.numero||'-')+'</td>'+
           '<td>'+escAttr(b.nombre_comercial||b.razon_social||'?')+'</td>'+
-          '<td class="pagos-col-monto">S/'+Number(p.monto_productos||0).toFixed(2)+'</td>'+
+          '<td class="pagos-col-monto">S/'+Number(p.total_pedido||p.monto_productos||0).toFixed(2)+'</td>'+
           '<td class="pagos-col-monto pagos-col-circa">S/'+Number(p.monto_financiado||0).toFixed(2)+'</td>'+
           '<td><span class="badge badge-'+escAttr(p.estado||'')+'">'+escAttr(p.estado||'')+'</span></td>'+
           '<td class="pagos-col-actions">'+pagoDistBtn+'</td>'+
@@ -1648,7 +1650,7 @@ function loadPedidos(){
       }
       var flujo = p.flujo || {};
       var numCell = '<button type="button" class="pedido-link mono" onclick="openPedidoFlujo(\''+p.id+'\')">'+(p.numero||'—')+'</button>';
-      return '<tr><td>'+fecha+'</td><td class="pedido-num">'+numCell+'</td><td>'+tipoBadge+'</td><td>'+nombreBodega(b)+'</td><td style="color:var(--muted)">'+(dt.nombre_comercial||'?')+'</td><td class="mono">S/'+Number(p.monto_productos||0).toFixed(2)+'</td><td class="mono" style="color:var(--blue-light)">S/'+Number(p.monto_financiado||0).toFixed(2)+'</td><td><span class="badge badge-'+(p.estado||'').replace(' ','_')+'">'+(p.estado||'-')+'</span></td><td>'+flowMiniHtml(flujo)+'</td><td>'+acciones+'</td></tr>';
+      return '<tr><td>'+fecha+'</td><td class="pedido-num">'+numCell+'</td><td>'+tipoBadge+'</td><td>'+nombreBodega(b)+'</td><td style="color:var(--muted)">'+(dt.nombre_comercial||'?')+'</td><td class="mono">S/'+Number(p.total_pedido||p.monto_productos||0).toFixed(2)+'</td><td class="mono" style="color:var(--blue-light)">S/'+Number(p.monto_financiado||0).toFixed(2)+'</td><td><span class="badge badge-'+(p.estado||'').replace(' ','_')+'">'+(p.estado||'-')+'</span></td><td>'+flowMiniHtml(flujo)+'</td><td>'+acciones+'</td></tr>';
     }).join('') : '<tr><td colspan="10" class="empty">Sin pedidos</td></tr>';
   });
 }
@@ -4479,7 +4481,7 @@ function renderBodegaPerfil(d){
         '<td>'+flowMiniHtml(flujo)+'</td>'+
         '<td>'+(p.estado||'-')+'</td>'+
         '<td style="color:var(--muted);font-size:11px">'+(p.origen||'-')+'</td>'+
-        '<td class="mono">S/ '+(p.monto_productos||0).toFixed(2)+'</td>'+
+        '<td class="mono">S/ '+Number(p.total_pedido||p.monto_productos||0).toFixed(2)+'</td>'+
         '<td class="mono">S/ '+(p.monto_financiado||0).toFixed(2)+'</td>'+
         '<td style="font-size:11px">'+(p.fecha_vencimiento?new Date(p.fecha_vencimiento).toLocaleDateString('es-PE'):'—')+'</td>'+
         '<td style="font-size:11px">'+(p.created_at?new Date(p.created_at).toLocaleDateString('es-PE'):'-')+'</td>'+
