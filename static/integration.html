@@ -56,8 +56,8 @@
     <h1>API para socios</h1>
     <p class="lead">
       Documentación abierta para que el sistema del socio distribuidor
-      se conecte a Circa: enrolamiento de bodegas, preventas y pedidos —
-      sin duplicar registros.
+      se conecte a Circa: consulta de línea (<code>situacion</code>),
+      precarga con fotos, preventas con monto y plazo — sin duplicar registros.
     </p>
 
     <div class="grid">
@@ -81,14 +81,15 @@
 
     <div class="code">
       POST /api/v1/auth/token → access_token<br>
-      Prod: /api/v1 + token prod<br>
-      Test: /api/v1/test + token test
+      Prod: /api/v1 + token prod &nbsp;·&nbsp; Test: /api/v1/test + token test<br>
+      SVC-01 situacion → SVC-02 fotos → SVC-04 monto + plazo_dias
     </div>
 
     <p class="foot">
-      Colección Postman en el repo:
+      Colección Postman:
       <code>postman/Circa_Integration_API_v1.postman_collection.json</code>
       · Guía: <code>docs/integration/README.md</code>
+      · Anexo: <code>docs/integration/ANEXO_A_servicios_BsSoft.md</code>
     </p>
   </div>
 </body>

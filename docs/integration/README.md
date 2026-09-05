@@ -1,13 +1,22 @@
 # Circa · API Socios v1
 
-API pública para que **sistemas de socios distribuidores** se integren a Circa sin duplicar altas de clientes, preventas y pedidos.
+API pública para que **sistemas de socios distribuidores** (BsSoft / ZOOM u otros) se integren a Circa.
 
 Circa **expone** la API. El socio **consume** la API.
 
-## Documentación interactiva (Swagger / OpenAPI)
+| Documento | Contenido |
+|-----------|-----------|
+| Este README | Guía rápida + contratos actuales |
+| [ANEXO_A_servicios_BsSoft.md](./ANEXO_A_servicios_BsSoft.md) | Catálogo detallado SVC-00…07 |
+| [CASOS_PRUEBA_SVC01.md](./CASOS_PRUEBA_SVC01.md) | Matriz QA de `situacion` |
+| Postman | [`postman/Circa_Integration_API_v1.postman_collection.json`](../../postman/Circa_Integration_API_v1.postman_collection.json) |
 
-| Recurso | URL (producción) |
-|---------|------------------|
+---
+
+## Documentación interactiva
+
+| Recurso | URL |
+|---------|-----|
 | **Swagger UI** | https://circa-production-c517.up.railway.app/api/v1/docs |
 | **ReDoc** | https://circa-production-c517.up.railway.app/api/v1/redoc |
 | **OpenAPI JSON** | https://circa-production-c517.up.railway.app/api/v1/openapi.json |
@@ -15,20 +24,20 @@ Circa **expone** la API. El socio **consume** la API.
 
 Local: `http://localhost:8000/api/v1/docs`
 
-## Postman
+---
 
-Importar la colección:
+## Modos prod / test (un solo ambiente)
 
-[`postman/Circa_Integration_API_v1.postman_collection.json`](../../postman/Circa_Integration_API_v1.postman_collection.json)
+| Modo | Base URL | Datos | Token |
+|------|----------|--------|--------|
+| **Producción** | `…/api/v1` | `es_test=false` | `data_mode=prod` |
+| **Pruebas** | `…/api/v1/test` | `es_test=true` | `data_mode=test` |
 
-Variables:
+El token de prod **no** funciona en `/test` (403) y viceversa.
 
-- `baseUrl` → `https://circa-production-c517.up.railway.app/api/v1`
-- `api_token` → token del distribuidor (`distribuidores.api_token`)
+---
 
 ## Autenticación
-
-### 1) Obtener access token
 
 ```http
 POST /api/v1/auth/token
@@ -42,8 +51,6 @@ Content-Type: application/json
 }
 ```
 
-Respuesta:
-
 ```json
 {
   "access_token": "...",
@@ -55,69 +62,163 @@ Respuesta:
 }
 ```
 
-Usa `data_mode: "test"` para el token de pruebas.
-
-### 2) Llamar APIs
+Luego en cada request (salvo `/health` y `/auth/token`):
 
 ```http
 Authorization: Bearer <access_token>
 ```
 
-| Modo | Base URL | Token |
-|------|----------|--------|
-| **Producción** | `…/api/v1` | token con `data_mode=prod` |
-| **Pruebas** | `…/api/v1/test` | token con `data_mode=test` |
+`expires_in: null` = token de larga duración. Cachearlo; renovar solo ante 401 o rotación Ops.
 
-El token de prod **no** funciona en `/test` (403) y viceversa.
+Credenciales las configura Circa Ops en `distribuidores` (`api_client_id`, `api_client_secret`, `api_token`, `api_token_test`).
 
-Credenciales (`api_client_id`, `api_client_secret`, `api_token`, `api_token_test`) las configura Circa Ops en `distribuidores`.
+---
 
-## Alcance MVP
+## Catálogo de servicios
 
-| Recurso | Métodos |
-|---------|---------|
-| Bodegas (enrolamiento) | `POST` upsert, `GET` list/detail, `PATCH` |
-| Preventas | `POST` create, `GET` list/detail |
-| Pedidos | `GET` list/detail, `PATCH .../estado` |
+| ID | Método | Ruta | Notas |
+|----|--------|------|--------|
+| Auth | `POST` | `/auth/token` | Client credentials |
+| **SVC-00** | `GET` | `/health` | Sin token |
+| **SVC-01** | `GET` | `/bodegas?q=` | Buscar; campo **`situacion`** por item |
+| **SVC-01b** | `GET` | `/bodegas/{id}` | Refresco de una bodega |
+| **SVC-02** | `POST` | `/bodegas` | Precarga **multipart** + fotos |
+| **SVC-03** | `PATCH` | `/bodegas/{id}` | Corregir datos (JSON) |
+| **SVC-04** | `POST` | `/preventas` | Financiar: **`monto_a_financiar`** + **`plazo_dias`** |
+| **SVC-05** | `GET` | `/preventas/{id}` · `/pedidos/{id}` | Resultado / polling |
+| **SVC-06** | `GET` | `/preventas` · `/pedidos` | Listar |
+| **SVC-07** | `PATCH` | `/pedidos/{id}/estado` | Despacho / entrega |
 
-### Reglas de negocio importantes
+---
 
-1. `POST /bodegas` **no libera línea** (`linea_disponible = 0`).
-2. Use `external_id` del sistema del socio para no duplicar.
-3. Activación del dueño (selfie / PIN) sigue en WhatsApp Circa.
-4. Preventa requiere bodega existente (crear primero con upsert).
+## Flujo del socio
 
-## Ejemplo rápido
-
-```bash
-export TOKEN="..."
-export BASE="https://circa-production-c517.up.railway.app/api/v1"
-
-curl -s "$BASE/health"
-
-curl -s -X POST "$BASE/bodegas" \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "external_id": "SOCIO-001",
-    "telefono_whatsapp": "987654321",
-    "dni_representante": "42868000",
-    "razon_social": "BODEGA DEMO",
-    "solo_dni_sin_ruc": true
-  }'
+```
+Auth → token
+  → SVC-01 / 01b  (mirar items[i].situacion)
+       ├─ no_registrada  → SVC-02 (datos + foto_dueno + foto_bodega) → guardar id
+       ├─ en_evaluacion  → esperar / reconsultar SVC-01b (no reenviar SVC-02)
+       ├─ no_disponible  → UI sin cupo
+       └─ con_linea      → SVC-04 (monto + plazo + items)
+                              → SVC-05 (poll)
+                              → SVC-07 (recibido → en_camino → entregado)
 ```
 
-## Migración DB
+### Campo `situacion` (por **bodega**)
 
-Ejecutar en Supabase:
+| Valor | Significado | Acción |
+|-------|-------------|--------|
+| `no_registrada` | No hay match (`total=0`) | Precargar → SVC-02 |
+| `en_evaluacion` | Data ya enviada; aún no activa / sin cupo usable | Reconsultar; **no** SVC-02 |
+| `no_disponible` | Activa con `linea_disponible ≤ 0` | Sin cupo |
+| `con_linea` | Activa con cupo > 0 | Financiar → SVC-04 |
 
-`migrations/20260814_integration_external_ids.sql`
+Decidir siempre con `items[i].situacion`. La `situacion` de la raíz del listado es solo atajo del **primer** item.
 
-(añade `external_id` en `bodegas` y `pedidos`).
+---
+
+## SVC-02 — Precargar (con fotos)
+
+`POST /bodegas` · **`multipart/form-data`**
+
+| Campo | Obl. |
+|-------|------|
+| `telefono_whatsapp` | Sí |
+| `dni_representante` **o** `ruc` | Sí (uno) |
+| `foto_dueno` | **Sí** (JPEG/PNG/WebP ≤ 8 MB) |
+| `foto_bodega` | **Sí** |
+| `razon_social`, dirección, etc. | Recomendados |
+| `external_id` | No (opcional del socio) |
+
+Respuesta típica: `id` Circa, `situacion=en_evaluacion`, `linea_disponible=0`, `tiene_foto_dueno/bodega=true`.
+
+```bash
+curl -X POST "$BASE/bodegas" \
+  -H "Authorization: Bearer $TOKEN" \
+  -F "telefono_whatsapp=987654321" \
+  -F "dni_representante=07631909" \
+  -F "razon_social=BODEGA EJEMPLO" \
+  -F "solo_dni_sin_ruc=true" \
+  -F "foto_dueno=@dueno.jpg;type=image/jpeg" \
+  -F "foto_bodega=@bodega.jpg;type=image/jpeg"
+```
+
+---
+
+## SVC-04 — Solicitar financiamiento
+
+`POST /preventas` · JSON · requiere `situacion=con_linea`
+
+| Campo | Obl. |
+|-------|------|
+| `bodega_id` (o `bodega_external_id` / `telefono_whatsapp`) | Sí* |
+| `items[]` | Sí |
+| `monto_a_financiar` | **Sí** (> 0; ≤ total ítems y ≤ `linea_disponible`) |
+| `plazo_dias` | **Sí** (`7`, `15` o `30`) |
+| `external_id`, `vendedor_codigo`, `notas` | Opcionales |
+
+```json
+{
+  "external_id": "PV-2026-000451",
+  "bodega_id": "<uuid Circa>",
+  "monto_a_financiar": 31.0,
+  "plazo_dias": 7,
+  "vendedor_codigo": "V-014",
+  "items": [
+    {
+      "sku": "CAF-SEL-200",
+      "nombre": "CAFETAL SELECTO 24x200g",
+      "cantidad": 3,
+      "precio_unitario": 10.30
+    }
+  ]
+}
+```
+
+Respuesta: `id`, `estado=preventa_confirmada`, `total_pedido`, `monto_financiado`, `plazo_dias`.
+
+---
+
+## Identificadores a persistir
+
+| Campo socio | Origen Circa |
+|-------------|--------------|
+| `circa_bodega_id` | `id` de bodega (SVC-02 / 01) |
+| `circa_pedido_id` | `id` de preventa (SVC-04) |
+| `circa_pedido_numero` | `numero` (si viene) |
+
+El `id` de bodega lo **genera Circa**. `external_id` del socio es opcional (idempotencia).
+
+---
+
+## Postman
+
+Importar:
+
+[`postman/Circa_Integration_API_v1.postman_collection.json`](../../postman/Circa_Integration_API_v1.postman_collection.json)
+
+Variables: `client_id`, `client_secret`, `baseUrl`, `baseUrlTest`.  
+Carpetas: **00 · Auth**, **01 · Producción**, **02 · Pruebas** (con Examples de `situacion` y SVC-02/04).
+
+---
+
+## Migraciones DB relacionadas
+
+| Archivo | Qué agrega |
+|---------|------------|
+| `migrations/20260814_integration_external_ids.sql` | `external_id` bodegas/pedidos |
+| `migrations/20260903_distribuidores_api_tokens_dual.sql` | tokens duales + client credentials |
+| `migrations/20260904_bodegas_fotos_precarga.sql` | `foto_dueno_url`, `foto_bodega_url` |
+
+---
 
 ## Roadmap
 
-- Webhooks (`bodega.activa`, `pedido.estado_cambiado`, `pago.confirmado`)
-- Invite WhatsApp desde API
-- Catálogo / mapeo SKU socio↔Circa
+- Webhooks (`bodega.activa`, `pedido.estado_cambiado`, `pago.confirmado`) — WHK-01
+- `fecha_entrega_prevista` / prueba de entrega en SVC-07
 - Rate limiting por token
+- Catálogo / mapeo SKU socio ↔ Circa
+
+## Soporte
+
+contacto@circa.pe · +51 986 311 567

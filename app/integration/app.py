@@ -26,45 +26,39 @@ from app.services import prospect_media as media
 DESCRIPTION = """
 ## API para socios
 
-API de Circa para que **sistemas de socios distribuidores** se conecten sin
-duplicar registros de clientes, preventas y pedidos.
+API de Circa para que **sistemas de socios distribuidores** se conecten:
+enrolamiento de bodegas, evaluación, preventas y pedidos.
 
-### Modos de datos (mismo ambiente)
+### Modos (mismo ambiente)
 
 | Modo | Base URL | Datos | Token |
 |------|----------|--------|--------|
-| **Producción** | `/api/v1` | `es_test=false` | `api_token` (prod) |
-| **Pruebas** | `/api/v1/test` | `es_test=true` | `api_token_test` |
-
-Obtener access token:
+| **Producción** | `/api/v1` | `es_test=false` | `data_mode=prod` |
+| **Pruebas** | `/api/v1/test` | `es_test=true` | `data_mode=test` |
 
 ```http
 POST /api/v1/auth/token
-Content-Type: application/json
-
-{
-  "grant_type": "client_credentials",
-  "client_id": "<api_client_id>",
-  "client_secret": "<api_client_secret>",
-  "data_mode": "prod"
-}
+{ "grant_type": "client_credentials", "client_id": "...", "client_secret": "...", "data_mode": "prod" }
 ```
 
-Luego: `Authorization: Bearer <access_token>`.
-El token de prod **no** sirve en `/test` y viceversa.
+Luego: `Authorization: Bearer <access_token>`.  
+Token prod **no** sirve en `/test` y viceversa.
 
-### Autenticación
-```
-Authorization: Bearer <access_token>
-```
-Credenciales (`client_id` / `client_secret`) y tokens los emite Circa Ops por distribuidor.
+### Flujo y `situacion` (por bodega)
+
+1. **SVC-01** `GET /bodegas?q=` → leer `items[i].situacion`
+2. `no_registrada` → **SVC-02** `POST /bodegas` (multipart: datos + `foto_dueno` + `foto_bodega`)
+3. `en_evaluacion` → reconsultar **SVC-01b** (no reenviar precarga)
+4. `no_disponible` → sin cupo
+5. `con_linea` → **SVC-04** `POST /preventas` con `monto_a_financiar` + `plazo_dias` (7|15|30)
+6. Polling **SVC-05** · despacho **SVC-07**
 
 ### Principios
-- **Upsert** de bodegas por `external_id`, WhatsApp, RUC o DNI/CE
-- Precarga **no libera línea** (`linea_disponible = 0`)
-- La activación KYC/PIN del dueño sigue en WhatsApp
-- Use `external_id` del sistema del socio para idempotencia
-- No mezclar IDs entre modos: una bodega de `/test` no existe en `/api/v1`
+
+- Precarga **no libera línea** (`linea_disponible=0`, `situacion=en_evaluacion`)
+- El `id` de bodega lo genera Circa; `external_id` del socio es opcional
+- No mezclar IDs entre modos prod/test
+- Guía: `docs/integration/README.md` · Anexo: `docs/integration/ANEXO_A_servicios_BsSoft.md`
 
 ### Soporte
 contacto@circa.pe · +51 986 311 567

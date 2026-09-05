@@ -4,12 +4,13 @@
 
 | Campo | Detalle |
 |-------|---------|
-| Versión | v1.0 |
-| Fecha | 17 de agosto de 2026 |
+| Versión | v1.1 |
+| Fecha | 5 de septiembre de 2026 |
 | Emite | Circa (Pali S.A.C., RUC 20600627806) |
 | Dirigido a | BsSoft — equipo de producto y desarrollo |
 | Con copia a | ZOOM |
 | Relacionado | *Circa_Requerimiento_Tecnico_BsSoft_v1* (11 ago 2026) |
+| Cambios v1.1 | Campo `situacion`; SVC-02 multipart con fotos; SVC-04 `monto_a_financiar` + `plazo_dias` |
 
 Este anexo cierra el **punto abierto 1** (protocolo) y el **punto abierto 2** (notificación de resultados) del requerimiento: Circa **expone** una API REST; BsSoft **consume**. BsSoft no necesita publicar servicios propios en la primera entrega.
 
@@ -55,7 +56,7 @@ Authorization: Bearer <access_token>
 Content-Type: application/json
 ```
 
-Códigos HTTP habituales: `200` ok · `400` validación · `401` token inválido · `404` no encontrado · `500` error interno.
+Códigos HTTP habituales: `200` ok · `400` validación · `401` token inválido · `403` token de otro modo · `404` no encontrado · `409` sin línea / monto inválido · `500`/`502` error interno.
 
 Si Circa no responde en un tiempo razonable (propuesta: **2 s** al abrir el detalle del pedido), el botón no se muestra y el pedido sigue al contado. Eso cubre el estado **Sin conexión** del requerimiento §6.4.
 
@@ -67,13 +68,12 @@ Para no duplicar clientes ni pedidos, BsSoft guarda estos campos en su pedido / 
 
 | Campo en BsSoft (sugerido) | Origen | Para qué |
 |----------------------------|--------|----------|
-| `circa_bodega_id` | `id` de `POST/GET /bodegas` | UUID Circa de la bodega |
-| `external_id` (cliente) | Código de cliente BsSoft | Idempotencia al precargar |
+| `circa_bodega_id` | `id` de `POST/GET /bodegas` | UUID Circa de la bodega (**lo genera Circa**) |
 | `circa_pedido_id` | `id` de `POST /preventas` | UUID de la solicitud / pedido |
 | `circa_pedido_numero` | `numero` (ej. `CRC-123`) | Número de operación Circa |
-| `external_id` (pedido) | Número de documento BsSoft | Idempotencia de la preventa |
+| `external_id` (pedido) | Número de documento BsSoft | Idempotencia de la preventa (opcional) |
 
-La llave de cruce de negocio sigue siendo **DNI (8) o RUC (11)**, el mismo del maestro de clientes. El `external_id` es la llave técnica.
+La llave de cruce de negocio sigue siendo **DNI (8) o RUC (11)**. El `external_id` de cliente en precarga es **opcional**.
 
 ---
 
@@ -84,7 +84,7 @@ La llave de cruce de negocio sigue siendo **DNI (8) o RUC (11)**, el mismo del m
 | SVC-00 | Salud | BsSoft | `GET` | `/health` | Comprobar conexión | Disponible hoy |
 | SVC-01 | Consultar afiliación y línea | BsSoft | `GET` | `/bodegas?q={documento}` | §6.1 al abrir el detalle | Disponible hoy |
 | SVC-01b | Obtener bodega | BsSoft | `GET` | `/bodegas/{circa_bodega_id}` | Refresco de línea | Disponible hoy |
-| SVC-02 | Precargar bodega | BsSoft | `POST` | `/bodegas` | §6.2 Caso A | Disponible hoy |
+| SVC-02 | Precargar bodega (+ fotos) | BsSoft | `POST` | `/bodegas` | §6.2 Caso A | Disponible hoy (multipart) |
 | SVC-03 | Actualizar datos de bodega | BsSoft | `PATCH` | `/bodegas/{id}` | Corregir WhatsApp / dirección | Disponible hoy |
 | SVC-04 | Solicitar financiamiento | BsSoft | `POST` | `/preventas` | §4 Flujo 2 · §6.3 Caso B | Disponible hoy (`monto_a_financiar` + `plazo_dias`) |
 | SVC-05 | Consultar resultado | BsSoft | `GET` | `/preventas/{id}` o `/pedidos/{id}` | §4.2 · punto abierto 2 | Disponible hoy (consulta) |
@@ -341,17 +341,17 @@ Mismo layout, solo bodegas ya afiliadas.
 Nada de lo siguiente se publica como API. Es el componente del requerimiento §6.
 
 1. Franja colapsada bajo el total del pedido.
-2. Consulta SVC-01 al abrir el detalle.
-3. Caso A: formulario de precarga → SVC-02.
-4. Caso B: monto, plazo, desglose, *Enviar solicitud* → SVC-04.
-5. En espera: polling SVC-05.
-6. Ocultar franja si el pedido está facturado, anulado, o si SVC-01 falla.
+2. Consulta SVC-01 al abrir el detalle → pintar según **`situacion`**.
+3. `no_registrada`: formulario de precarga → SVC-02 (**incluye foto dueño + foto bodega**).
+4. `en_evaluacion`: mensaje de espera; reconsultar SVC-01b.
+5. `con_linea`: monto, plazo (7/15/30), desglose → SVC-04.
+6. En espera: polling SVC-05.
+7. Ocultar franja si el pedido está facturado, anulado, o si SVC-01 falla (`sin_conexion`).
 
-Reglas de datos personales (§6.5), vigentes desde v1:
+Reglas de datos personales:
 
-- El WhatsApp del dueño viaja a Circa en SVC-02; no debe quedar en cola local sin conexión.
-- Las fotos del DNI no deben guardarse en la galería del equipo del vendedor.
-- En v1 Circa no pide esas fotos por API.
+- El celular del dueño viaja a Circa en SVC-02; no debe quedar en cola local sin conexión.
+- Las fotos se envían por API (multipart); no deben quedar en la galería del equipo del vendedor más de lo necesario.
 
 ---
 
@@ -360,26 +360,26 @@ Reglas de datos personales (§6.5), vigentes desde v1:
 ### 8.1 Precargar bodega (una vez)
 
 ```
-Vendedor → BsSoft: abre pedido / toca Precargar
-BsSoft   → Circa  : POST /bodegas          (SVC-02)
-Circa    → BsSoft : id, linea_disponible=0
-Circa    → Dueño  : WhatsApp (KYC, contrato, PIN)
-Dueño    → Circa  : completa activación
-BsSoft   → Circa  : GET /bodegas/{id}      (SVC-01b, al reabrir)
-Circa    → BsSoft : estado=activo, linea_disponible>0
+Vendedor → Socio : abre pedido / toca Precargar
+Socio    → Circa : GET /bodegas?q=…          (SVC-01 → no_registrada)
+Socio    → Circa : POST /bodegas multipart   (SVC-02 + fotos)
+Circa    → Socio : id, situacion=en_evaluacion, linea_disponible=0
+… Circa evalúa / activa …
+Socio    → Circa : GET /bodegas/{id}         (SVC-01b)
+Circa    → Socio : situacion=con_linea (o no_disponible)
 ```
 
 ### 8.2 Financiar un pedido
 
 ```
-Vendedor → BsSoft: Enviar solicitud
-BsSoft   → Circa  : POST /preventas        (SVC-04)
-Circa    → BsSoft : id, estado=preventa_confirmada
-Circa    → Dueño  : resumen + PIN
-Dueño    → Circa  : aprueba
-BsSoft   → Circa  : GET /preventas/{id}    (SVC-05, poll)
-Circa    → BsSoft : preventa_aceptada
-BsSoft   → Circa  : PATCH .../estado       (SVC-07: recibido → en_camino → entregado)
+Vendedor → Socio : Enviar solicitud (monto + plazo)
+Socio    → Circa : POST /preventas           (SVC-04)
+Circa    → Socio : id, monto_financiado, plazo_dias, estado=preventa_confirmada
+Circa    → Dueño : resumen + PIN (si aplica el flujo Circa)
+Dueño    → Circa : aprueba
+Socio    → Circa : GET /preventas/{id}       (SVC-05, poll)
+Circa    → Socio : preventa_aceptada
+Socio    → Circa : PATCH .../estado          (SVC-07: recibido → en_camino → entregado)
 ```
 
 ---

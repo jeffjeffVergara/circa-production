@@ -1,10 +1,10 @@
 # Casos de prueba — SVC-01 Consultar afiliación y línea
 
-Matriz §6.4 del botón Circa. Complementa `tests/test_integration_svc01.py`.
+Matriz de **`situacion`**. Complementa `tests/test_integration_svc01.py` y la guía [`README.md`](./README.md).
 
 **Base prod:** `https://circa-production-c517.up.railway.app/api/v1`  
 **Base test:** `https://circa-production-c517.up.railway.app/api/v1/test`  
-**Auth:** `Authorization: Bearer <api_token>`
+**Auth:** `Authorization: Bearer <access_token>` (obtener vía `POST /auth/token`)
 
 Usar `$BASE` = prod o test según el caso. Los DNIs de prueba deben existir con `es_test=true` si usas `/test`.
 
