@@ -86,7 +86,7 @@ La llave de cruce de negocio sigue siendo **DNI (8) o RUC (11)**, el mismo del m
 | SVC-01b | Obtener bodega | BsSoft | `GET` | `/bodegas/{circa_bodega_id}` | Refresco de línea | Disponible hoy |
 | SVC-02 | Precargar bodega | BsSoft | `POST` | `/bodegas` | §6.2 Caso A | Disponible hoy |
 | SVC-03 | Actualizar datos de bodega | BsSoft | `PATCH` | `/bodegas/{id}` | Corregir WhatsApp / dirección | Disponible hoy |
-| SVC-04 | Solicitar financiamiento | BsSoft | `POST` | `/preventas` | §4 Flujo 2 · §6.3 Caso B | Disponible hoy; campos de monto/plazo en siguiente entrega |
+| SVC-04 | Solicitar financiamiento | BsSoft | `POST` | `/preventas` | §4 Flujo 2 · §6.3 Caso B | Disponible hoy (`monto_a_financiar` + `plazo_dias`) |
 | SVC-05 | Consultar resultado | BsSoft | `GET` | `/preventas/{id}` o `/pedidos/{id}` | §4.2 · punto abierto 2 | Disponible hoy (consulta) |
 | SVC-06 | Listar preventas / pedidos | BsSoft | `GET` | `/preventas` · `/pedidos` | Conciliación | Disponible hoy |
 | SVC-07 | Informar despacho / entrega | BsSoft | `PATCH` | `/pedidos/{id}/estado` | §5 Flujo 3 | Disponible hoy |
@@ -116,25 +116,31 @@ Comprobar que la API está arriba. Sin token.
 
 `GET /bodegas?q={dni_o_ruc}&limit=20`
 
-| Respuesta | Componente (§6.4) |
-|-----------|-------------------|
-| Sin coincidencia o `estado=inactivo` / `linea_disponible=0` y sin contrato | **Sin línea** → Caso A |
-| `estado=activo` y `linea_disponible > 0` | **Con línea** → Caso B |
-| `estado=activo` y `linea_disponible=0` | **No disponible** |
-| Timeout / 5xx | **Sin conexión** → no mostrar franja |
+Usar el campo **`situacion`** (en el listado y en cada item):
+
+| `situacion` | Condición | Acción del socio |
+|-------------|-----------|------------------|
+| `no_registrada` | `total=0` / sin coincidencia | Precargar → **SVC-02** |
+| `en_evaluacion` | Existe, data ya enviada (`estado≠activo`, p.ej. precarga) | **No** reenviar SVC-02; reconsultar luego |
+| `no_disponible` | `estado=activo` y `linea_disponible≤0` | Mostrar sin cupo |
+| `con_linea` | `estado=activo` y `linea_disponible>0` | Financiar → **SVC-04** |
+| *(error red)* | Timeout / 5xx / 401 | Sin conexión → no mostrar franja |
 
 Campos útiles de cada item:
 
 | Campo | Tipo | Uso en el botón |
 |-------|------|-----------------|
 | `id` | UUID | Guardar como `circa_bodega_id` |
-| `external_id` | texto | Código cliente BsSoft |
+| `situacion` | enum | Decisión de UI (preferir este campo) |
+| `external_id` | texto | Código cliente BsSoft (si aplica) |
 | `estado` | texto | `inactivo` / `activo` |
 | `onboarding_fase` | texto | `precargada`, `invited`, … |
 | `kyc_nivel` | texto | Avance de verificación |
 | `linea_aprobada` | decimal | Tope |
 | `linea_disponible` | decimal | Monto a mostrar (S/ N disponible) |
-| `telefono_whatsapp` | texto | Ya hay celular en Circa |
+| `telefono_whatsapp` | texto | Celular en Circa |
+
+El listado también trae `situacion` a nivel raíz (= del primer item, o `no_registrada` si vacío).
 
 Si BsSoft ya persistió `circa_bodega_id`, preferir **SVC-01b**.
 
@@ -142,40 +148,32 @@ Si BsSoft ya persistió `circa_bodega_id`, preferir **SVC-01b**.
 
 ### SVC-02 Precargar bodega
 
-**Cuándo:** el vendedor toca *Precargar bodega* (§6.2). Ocurre **una vez por bodega**.
+**Cuándo:** SVC-01 devolvió `situacion=no_registrada` (o hay que enviar datos + fotos a evaluación).
 
-`POST /bodegas`
+`POST /bodegas`  
+**Content-Type:** `multipart/form-data`  
+**Obligatorio:** `foto_dueno` + `foto_bodega` (JPEG/PNG/WebP, máx 8 MB c/u).
 
-Idempotente si se envía `external_id` (código de cliente BsSoft), WhatsApp, RUC o DNI. **No libera línea:** `linea_disponible` queda en `0` hasta que el dueño termina KYC, contrato y PIN por WhatsApp.
+Idempotente por teléfono / DNI / RUC / `external_id`. **No libera línea:** `linea_disponible=0` y `situacion=en_evaluacion`.
 
-#### Request
+#### Request (form fields)
 
 | Campo | Tipo | Obl. | Nota |
 |-------|------|------|------|
-| `external_id` | string ≤64 | Recomendado | Código de cliente en BsSoft |
-| `telefono_whatsapp` | string | Sí | 9 dígitos que empiezan en 9, o `+51XXXXXXXXX` |
-| `dni_representante` | string | Sí* | DNI 8 dígitos o CE 9 |
-| `ruc` | string | No | 11 dígitos |
-| `razon_social` | string | Recomendado | Del maestro |
+| `telefono_whatsapp` | string | Sí | 9 dígitos o `+51…` |
+| `dni_representante` | string | Sí* | DNI 8 o CE 9 |
+| `ruc` | string | Sí* | 11 dígitos |
+| `foto_dueno` | file | **Sí** | Foto del dueño |
+| `foto_bodega` | file | **Sí** | Foto fachada / local |
+| `razon_social` | string | Recomendado | |
 | `nombre_comercial` | string | No | |
 | `representante_legal` | string | No | |
-| `direccion_fiscal` | string | Recomendado | Del maestro |
+| `direccion_fiscal` | string | Recomendado | |
 | `distrito` | string | No | |
-| `solo_dni_sin_ruc` | bool | No | `true` si no tiene RUC |
+| `solo_dni_sin_ruc` | bool | No | Default `true` si no hay RUC |
+| `external_id` | string | No | Código del socio (opcional) |
 
-\* Se necesita DNI o RUC para el cruce posterior.
-
-```json
-{
-  "external_id": "CLI-07631909",
-  "telefono_whatsapp": "987654321",
-  "dni_representante": "07631909",
-  "razon_social": "RABANAL ALVARADO GLADYS ROCIO",
-  "direccion_fiscal": "Av. Ejemplo 123",
-  "distrito": "Comas",
-  "solo_dni_sin_ruc": true
-}
-```
+\* Se necesita **DNI o RUC**. El `id` lo genera Circa.
 
 #### Response
 
@@ -183,13 +181,24 @@ Idempotente si se envía `external_id` (código de cliente BsSoft), WhatsApp, RU
 |-------|------|
 | `id` | UUID Circa — persistir |
 | `created` | `true` si se creó en este request |
-| `estado` | Queda `inactivo` en precarga |
-| `linea_aprobada` | Tope provisional; Circa puede ajustar con el historial |
-| `linea_disponible` | Siempre `0` hasta activación |
+| `estado` | `inactivo` en precarga |
+| `situacion` | `en_evaluacion` |
+| `linea_disponible` | `0` hasta evaluación/activación |
+| `tiene_foto_dueno` | `true` si se guardó |
+| `tiene_foto_bodega` | `true` si se guardó |
 
-**Adjuntos (foto DNI / foto bodega):** el requerimiento §6.2 los marca opcionales. En v1 **no viajan por este servicio**. Circa los capta en WhatsApp durante la verificación. La vista embebida servida por Circa (§6.5) queda para una entrega posterior.
+```bash
+curl -X POST "$BASE/bodegas" \
+  -H "Authorization: Bearer $TOKEN" \
+  -F "telefono_whatsapp=987654321" \
+  -F "dni_representante=07631909" \
+  -F "razon_social=BODEGA EJEMPLO" \
+  -F "solo_dni_sin_ruc=true" \
+  -F "foto_dueno=@./dueno.jpg;type=image/jpeg" \
+  -F "foto_bodega=@./bodega.jpg;type=image/jpeg"
+```
 
-**Historial de esa bodega en el mismo clic:** no viaja en el `POST`. Se cubre con HIST-01 / HIST-02 (archivo). Circa ya puede precargar sin historial; la línea se refina cuando llega el archivo.
+**Historial de compras:** no viaja en este `POST` (HIST-01 / HIST-02 por archivo).
 
 ---
 
@@ -201,12 +210,12 @@ Idempotente si se envía `external_id` (código de cliente BsSoft), WhatsApp, RU
 
 Idempotente con `external_id` = número de documento BsSoft.
 
-#### Request — disponible hoy
+#### Request
 
 | Campo | Tipo | Obl. | Nota |
 |-------|------|------|------|
 | `external_id` | string | Recomendado | Número de preventa/pedido BsSoft |
-| `bodega_id` | UUID | Una de tres | `circa_bodega_id` |
+| `bodega_id` | UUID | Una de tres | `circa_bodega_id` (preferido) |
 | `bodega_external_id` | string | Una de tres | Código cliente BsSoft |
 | `telefono_whatsapp` | string | Una de tres | Lookup alternativo |
 | `items[]` | lista | Sí | Debe cuadrar con el total |
@@ -215,14 +224,18 @@ Idempotente con `external_id` = número de documento BsSoft.
 | `items[].unidad` | string | No | Default `UND` |
 | `items[].cantidad` | decimal | Sí | |
 | `items[].precio_unitario` | decimal | Sí | |
+| `monto_a_financiar` | decimal | **Sí** | > 0; ≤ total ítems y ≤ `linea_disponible` |
+| `plazo_dias` | entero | **Sí** | Solo `7`, `15` o `30` |
 | `vendedor_codigo` | string | Recomendado | Atribución |
 | `notas` | string | No | |
 
 ```json
 {
   "external_id": "PV-2026-000451",
-  "bodega_external_id": "CLI-07631909",
+  "bodega_id": "a1b2c3d4-0001-4000-8000-000000000011",
   "vendedor_codigo": "V-014",
+  "monto_a_financiar": 30.90,
+  "plazo_dias": 7,
   "items": [
     {
       "sku": "CAF-SEL-200",
@@ -235,16 +248,7 @@ Idempotente con `external_id` = número de documento BsSoft.
 }
 ```
 
-#### Request — siguiente entrega (ya previstos en el requerimiento §4.1)
-
-Estos campos **aún no están en el contrato publicado**. Circa los añadirá antes del piloto del botón. BsSoft puede dejarlos en el formulario y no enviarlos hasta el aviso de Circa.
-
-| Campo | Tipo | Nota |
-|-------|------|------|
-| `monto_a_financiar` | decimal | Default: `min(linea_disponible, total)`. El resto es contado. |
-| `plazo_dias` | entero | `7` (preseleccionado), `15` o `30` |
-| `fecha_entrega_prevista` | date | Fecha de entrega planeada |
-| `total_pedido` | decimal | Control: debe coincidir con la suma de líneas |
+El resto del pedido (`total − monto_a_financiar`) queda como contado.
 
 #### Response inmediata (acuse)
 
@@ -254,7 +258,8 @@ Estos campos **aún no están en el contrato publicado**. Circa los añadirá an
 | `numero` | Número de operación Circa (puede llegar nulo al crear) |
 | `estado` | Ver tabla de estados abajo |
 | `total_pedido` | Total de líneas |
-| `monto_financiado` | Monto Circa (hoy 0 al crear; se completa al aprobar) |
+| `monto_financiado` | Monto solicitado (`monto_a_financiar`) |
+| `plazo_dias` | 7 / 15 / 30 |
 
 Tras el acuse, el botón queda **inhabilitado** (estado **En espera**). BsSoft **no** acepta el crédito en nombre de la bodega.
 
@@ -389,8 +394,7 @@ Coincide con el punto abierto 7 del requerimiento.
 | 2 | HIST-01 archivo de cartera | BsSoft + ZOOM + Circa Ops |
 | 3 | SVC-02 precarga desde el botón | BsSoft UI + Circa (ya publicado) |
 | 4 | SVC-07 estados de despacho | BsSoft |
-| 5 | Campos `monto_a_financiar` / `plazo_dias` en SVC-04 | Circa siguiente entrega |
-| 6 | WHK-01 webhook de resultado | Circa siguiente entrega · BsSoft URL |
+| 5 | WHK-01 webhook de resultado | Circa · BsSoft URL |
 
 ---
 

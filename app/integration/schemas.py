@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class ErrorResponse(BaseModel):
@@ -12,16 +12,21 @@ class ErrorResponse(BaseModel):
 
 
 class BodegaUpsertRequest(BaseModel):
-    """Alta o actualización de bodega/cliente desde el sistema del socio."""
+    """Alta o actualización de bodega/cliente desde el sistema del socio.
+
+    En producción el socio debe usar `multipart/form-data` e incluir
+    `foto_dueno` + `foto_bodega`. Este schema documenta los campos de texto;
+    las fotos van como archivos en el mismo POST.
+    """
 
     external_id: Optional[str] = Field(
         default=None,
-        description="ID del cliente en el sistema del socio (recomendado para no duplicar).",
+        description="ID del cliente en el sistema del socio (opcional).",
         max_length=64,
     )
     telefono_whatsapp: str = Field(
         ...,
-        description="WhatsApp del dueño. 9 dígitos o +51XXXXXXXXX",
+        description="Celular del dueño. 9 dígitos o +51XXXXXXXXX",
         examples=["987654321"],
     )
     dni_representante: Optional[str] = Field(
@@ -39,6 +44,12 @@ class BodegaUpsertRequest(BaseModel):
         default=True,
         description="True si no tiene RUC (onboarding solo DNI/CE)",
     )
+
+    @model_validator(mode="after")
+    def _exige_identidad(self) -> "BodegaUpsertRequest":
+        if not (self.dni_representante or "").strip() and not (self.ruc or "").strip():
+            raise ValueError("Envíe dni_representante o ruc")
+        return self
 
 
 class BodegaPatchRequest(BaseModel):
@@ -64,6 +75,22 @@ class BodegaResponse(BaseModel):
     kyc_nivel: Optional[str] = None
     linea_aprobada: Optional[float] = None
     linea_disponible: Optional[float] = None
+    situacion: Literal[
+        "en_evaluacion",
+        "no_disponible",
+        "con_linea",
+    ] = Field(
+        ...,
+        description=(
+            "Resumen para UI del socio: "
+            "en_evaluacion = data ya enviada / sin activar; "
+            "no_disponible = activa sin cupo; "
+            "con_linea = puede financiar (SVC-04). "
+            "En listados vacíos usar situacion=no_registrada a nivel respuesta."
+        ),
+    )
+    tiene_foto_dueno: bool = False
+    tiene_foto_bodega: bool = False
     es_test: bool = Field(
         default=False,
         description="True si la bodega pertenece al modo prueba (/api/v1/test)",
@@ -94,6 +121,15 @@ class PreventaCreateRequest(BaseModel):
         description="WhatsApp bodega (alternativa de lookup)",
     )
     items: list[PreventaItem] = Field(..., min_length=1)
+    monto_a_financiar: float = Field(
+        ...,
+        gt=0,
+        description="Monto a financiar con Circa (S/). Debe ser ≤ total de ítems y ≤ linea_disponible",
+    )
+    plazo_dias: Literal[7, 15, 30] = Field(
+        ...,
+        description="Plazo del crédito en días: 7, 15 o 30",
+    )
     vendedor_codigo: Optional[str] = None
     notas: Optional[str] = None
 
@@ -116,6 +152,7 @@ class PedidoResponse(BaseModel):
     tipo_operacion: Optional[str] = None
     total_pedido: Optional[float] = None
     monto_financiado: Optional[float] = None
+    plazo_dias: Optional[int] = None
     created_at: Optional[str] = None
     items: Optional[list[dict[str, Any]]] = None
 
@@ -123,6 +160,18 @@ class PedidoResponse(BaseModel):
 class ListResponse(BaseModel):
     total: int
     items: list[dict[str, Any]]
+    situacion: Literal[
+        "no_registrada",
+        "en_evaluacion",
+        "no_disponible",
+        "con_linea",
+    ] = Field(
+        ...,
+        description=(
+            "Situación del primer match (o no_registrada si total=0). "
+            "El socio debe preferir items[0].situacion si eligió otro item."
+        ),
+    )
 
 
 class HealthResponse(BaseModel):

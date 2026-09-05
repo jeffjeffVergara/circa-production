@@ -10,15 +10,19 @@ Usar `$BASE` = prod o test según el caso. Los DNIs de prueba deben existir con 
 
 ## Cómo interpretar la respuesta
 
-| Condición | Franja UI | Acción BsSoft |
-|-----------|-----------|---------------|
-| Timeout / 5xx / 401 | `sin_conexion` | No mostrar Circa |
-| `total=0` / `items=[]` | `sin_linea` | Caso A → SVC-02 |
-| `estado≠activo` | `sin_linea` | Caso A → SVC-02 |
+Usar el campo **`situacion`** (raíz del listado o `items[0].situacion` / bodega SVC-01b).
+
+| Condición | `situacion` | Acción BsSoft |
+|-----------|-------------|---------------|
+| Timeout / 5xx / 401 | `sin_conexion`* | No mostrar Circa |
+| `total=0` / `items=[]` | `no_registrada` | Caso A → SVC-02 |
+| Existe, `estado≠activo` (data ya enviada) | `en_evaluacion` | Esperar / reconsultar; **no** SVC-02 |
 | `estado=activo` y `linea_disponible≤0` | `no_disponible` | Bloquear financiar |
 | `estado=activo` y `linea_disponible>0` | `con_linea` | Caso B → SVC-04 |
 
-En código Circa: `app.integration.franja.interpretar_franja_svc01`.
+\* `sin_conexion` no viene en el JSON de bodega: lo deriva el cliente ante fallo de red/HTTP.
+
+En código Circa: `app.integration.franja.calcular_situacion` / `interpretar_franja_svc01`.
 
 ---
 
@@ -36,7 +40,7 @@ En código Circa: `app.integration.franja.interpretar_franja_svc01`.
 
 ## Casos
 
-### TP-01 — No encuentra bodega → Sin línea
+### TP-01 — No encuentra bodega → no_registrada
 
 ```bash
 curl -s -H "Authorization: Bearer $TOKEN" \
@@ -46,10 +50,10 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 | Esperado | Valor |
 |----------|--------|
 | HTTP | `200` |
-| Body | `{"total":0,"items":[]}` |
+| Body | `{"total":0,"items":[],"situacion":"no_registrada"}` |
 | Franja | `sin_linea` |
 
-### TP-02 — Bodega inactiva → Sin línea (Caso A)
+### TP-02 — Bodega inactiva → en_evaluacion
 
 ```bash
 curl -s -H "Authorization: Bearer $TOKEN" \
@@ -60,8 +64,9 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 |----------|--------|
 | HTTP | `200` |
 | `items[0].estado` | `inactivo` |
-| `items[0].created` | `false` |
-| Franja | `sin_linea` (aunque `linea_aprobada` > 0) |
+| `items[0].situacion` | `en_evaluacion` |
+| `situacion` (raíz) | `en_evaluacion` |
+| Acción | No reenviar SVC-02; reconsultar |
 
 ### TP-03 — Activa sin cupo → No disponible
 
@@ -132,7 +137,7 @@ curl -s -o /dev/null -w "%{http_code}" \
 | Esperado | Valor |
 |----------|--------|
 | HTTP | `404` |
-| Franja | `sin_linea` |
+| Situación | `no_registrada` |
 
 ### TP-09 — Inactiva con tope aprobado
 
@@ -140,7 +145,7 @@ Misma query que TP-02 con `linea_aprobada > 0`.
 
 | Esperado | Valor |
 |----------|--------|
-| Franja | `sin_linea` (no usar el tope hasta `activo`) |
+| Situación | `en_evaluacion` (no usar el tope hasta `activo`) |
 
 ### TP-10 — Varias coincidencias
 
@@ -150,7 +155,7 @@ Buscar un término ambiguo (`q=BODEGA`) si hay más de un match.
 |----------|--------|
 | HTTP | `200` |
 | `total` | `> 1` |
-| Acción | Elegir por `external_id` / DNI exacto; evaluar franja sobre ese item |
+| Acción | Elegir por DNI exacto; usar `items[i].situacion` |
 
 ---
 

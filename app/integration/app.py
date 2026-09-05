@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query
+from fastapi import APIRouter, Depends, FastAPI, File, Form, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_redoc_html
 from fastapi.responses import HTMLResponse
@@ -21,6 +21,7 @@ from fastapi.responses import HTMLResponse
 from app.integration.auth import get_current_distribuidor
 from app.integration import schemas as S
 from app.integration import service as svc
+from app.services import prospect_media as media
 
 DESCRIPTION = """
 ## API para socios
@@ -158,6 +159,25 @@ async def redoc_html():
     )
 
 
+_MAX_FOTO_BYTES = 8 * 1024 * 1024  # 8 MB
+_ALLOWED_IMAGE_CT = frozenset({"image/jpeg", "image/jpg", "image/png", "image/webp"})
+
+
+async def _read_foto(upload: UploadFile, *, campo: str) -> tuple[bytes, str]:
+    ct = (upload.content_type or "image/jpeg").split(";")[0].strip().lower()
+    if ct not in _ALLOWED_IMAGE_CT:
+        raise HTTPException(
+            status_code=400,
+            detail=f"{campo} debe ser imagen JPEG/PNG/WebP (recibido: {ct or 'desconocido'})",
+        )
+    data = await upload.read()
+    if not data:
+        raise HTTPException(status_code=400, detail=f"{campo} está vacío")
+    if len(data) > _MAX_FOTO_BYTES:
+        raise HTTPException(status_code=400, detail=f"{campo} supera el máximo de 8 MB")
+    return data, ct
+
+
 def _register_business_routes(router: APIRouter, *, es_test: bool) -> None:
     """Registra el mismo catálogo de servicios bajo prod o /test."""
     modo = "test" if es_test else "prod"
@@ -175,11 +195,55 @@ def _register_business_routes(router: APIRouter, *, es_test: bool) -> None:
     @router.post(
         "/bodegas",
         response_model=S.BodegaResponse,
-        summary=f"Crear o actualizar bodega ({modo})",
+        summary=f"Precargar bodega con fotos ({modo})",
         tags=[f"Bodegas{tag_suffix}"],
     )
-    async def upsert_bodega(body: S.BodegaUpsertRequest, dist: DistDep):
-        return svc.upsert_bodega(dist, body.model_dump(), es_test=es_test)
+    async def upsert_bodega(
+        dist: DistDep,
+        telefono_whatsapp: str = Form(..., description="Celular PE 9 dígitos o +51…"),
+        foto_dueno: UploadFile = File(..., description="Foto del dueño (JPEG/PNG/WebP, máx 8 MB)"),
+        foto_bodega: UploadFile = File(..., description="Foto de la bodega/fachada (máx 8 MB)"),
+        dni_representante: Optional[str] = Form(None),
+        ruc: Optional[str] = Form(None),
+        razon_social: Optional[str] = Form(None),
+        nombre_comercial: Optional[str] = Form(None),
+        representante_legal: Optional[str] = Form(None),
+        direccion_fiscal: Optional[str] = Form(None),
+        distrito: Optional[str] = Form(None),
+        external_id: Optional[str] = Form(None),
+        solo_dni_sin_ruc: bool = Form(True),
+    ):
+        """SVC-02 — multipart/form-data. Requiere foto_dueno + foto_bodega."""
+        if not (dni_representante or "").strip() and not (ruc or "").strip():
+            raise HTTPException(status_code=400, detail="Envíe dni_representante o ruc")
+
+        body = {
+            "telefono_whatsapp": telefono_whatsapp,
+            "dni_representante": dni_representante,
+            "ruc": ruc,
+            "razon_social": razon_social,
+            "nombre_comercial": nombre_comercial,
+            "representante_legal": representante_legal,
+            "direccion_fiscal": direccion_fiscal,
+            "distrito": distrito,
+            "external_id": external_id,
+            "solo_dni_sin_ruc": solo_dni_sin_ruc,
+        }
+
+        dueno_bytes, dueno_ct = await _read_foto(foto_dueno, campo="foto_dueno")
+        bodega_bytes, bodega_ct = await _read_foto(foto_bodega, campo="foto_bodega")
+
+        tel = svc.normalizar_telefono(telefono_whatsapp)
+        saved_dueno = media.persist_image_bytes(tel, dueno_bytes, "dueno", dueno_ct)
+        if not saved_dueno:
+            raise HTTPException(status_code=502, detail="No se pudo guardar foto_dueno")
+        saved_bodega = media.persist_image_bytes(tel, bodega_bytes, "local", bodega_ct)
+        if not saved_bodega:
+            raise HTTPException(status_code=502, detail="No se pudo guardar foto_bodega")
+
+        body["foto_dueno_url"] = saved_dueno["path"]
+        body["foto_bodega_url"] = saved_bodega["path"]
+        return svc.upsert_bodega(dist, body, es_test=es_test)
 
     @router.get(
         "/bodegas",

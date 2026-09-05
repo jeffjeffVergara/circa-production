@@ -1,6 +1,6 @@
 """Casos de prueba SVC-01 — consultar afiliación y línea (§6.4).
 
-Cubre interpretación de franja UI + listado mockeado.
+Cubre interpretación de situacion/franja UI + listado mockeado.
 Ejecutar: python3 -m pytest tests/test_integration_svc01.py -q
 """
 
@@ -15,7 +15,7 @@ os.environ.setdefault("SUPABASE_KEY", "test-key")
 
 import pytest
 
-from app.integration.franja import describir_franja, interpretar_franja_svc01
+from app.integration.franja import calcular_situacion, describir_franja, interpretar_franja_svc01
 from app.integration.service import _bodega_out, list_bodegas
 
 
@@ -46,7 +46,7 @@ def _bodega(
     return row
 
 
-# ── Matriz §6.4 — interpretación de franja ─────────────────────────────────
+# ── Matriz §6.4 — interpretación de situacion ──────────────────────────────
 
 @pytest.mark.parametrize(
     "kwargs,esperado,accion_substr",
@@ -54,17 +54,17 @@ def _bodega(
         # TP-01: no encuentra bodega (lista vacía)
         (
             {"http_status": 200, "total": 0, "items": []},
-            "sin_linea",
+            "no_registrada",
             "Precargar",
         ),
-        # TP-02: existe pero inactiva (precarga / sin activar)
+        # TP-02: existe pero inactiva (precarga / en evaluación)
         (
             {
                 "http_status": 200,
                 "items": [_bodega_out(_bodega(estado="inactivo", linea_disponible=0, linea_aprobada=200))],
             },
-            "sin_linea",
-            "Precargar",
+            "en_evaluacion",
+            "reconsultar",
         ),
         # TP-03: activa sin cupo (linea_disponible = 0)
         (
@@ -105,18 +105,18 @@ def _bodega(
         # TP-08: SVC-01b 404 (UUID inexistente)
         (
             {"http_status": 404},
-            "sin_linea",
+            "no_registrada",
             "Precargar",
         ),
-        # TP-09: inactiva con linea_aprobada > 0 (aún Caso A)
+        # TP-09: inactiva con linea_aprobada > 0 → en evaluación
         (
             {
                 "bodega": _bodega_out(
                     _bodega(estado="inactivo", linea_aprobada=800, linea_disponible=0, onboarding_fase="precargada")
                 ),
             },
-            "sin_linea",
-            "Precargar",
+            "en_evaluacion",
+            "reconsultar",
         ),
         # TP-10: activa con linea_disponible None → no disponible
         (
@@ -124,6 +124,7 @@ def _bodega(
                 "bodega": {
                     **_bodega_out(_bodega(estado="activo")),
                     "linea_disponible": None,
+                    "situacion": "no_disponible",
                 },
             },
             "no_disponible",
@@ -132,7 +133,7 @@ def _bodega(
     ],
     ids=[
         "TP-01_no_encuentra",
-        "TP-02_inactiva",
+        "TP-02_inactiva_en_evaluacion",
         "TP-03_activa_sin_cupo",
         "TP-04_activa_con_linea",
         "TP-05_timeout",
@@ -150,14 +151,19 @@ def test_interpretar_franja_matriz(kwargs, esperado, accion_substr):
 
 
 def test_tp04_elige_primer_item_del_listado():
-    """Si hay varias coincidencias, la franja se evalúa sobre el item elegido (aquí el primero)."""
+    """Si hay varias coincidencias, la situacion se evalúa sobre el item elegido (aquí el primero)."""
     items = [
         _bodega_out(_bodega(id="b1", estado="activo", linea_disponible=100, dni="11111111")),
         _bodega_out(_bodega(id="b2", estado="inactivo", linea_disponible=0, dni="22222222")),
     ]
     assert interpretar_franja_svc01(http_status=200, total=2, items=items) == "con_linea"
-    # Si BsSoft elige la inactiva a mano:
-    assert interpretar_franja_svc01(bodega=items[1]) == "sin_linea"
+    assert interpretar_franja_svc01(bodega=items[1]) == "en_evaluacion"
+
+
+def test_calcular_situacion_matriz():
+    assert calcular_situacion(_bodega(estado="inactivo", linea_disponible=0)) == "en_evaluacion"
+    assert calcular_situacion(_bodega(estado="activo", linea_disponible=0)) == "no_disponible"
+    assert calcular_situacion(_bodega(estado="activo", linea_disponible=10)) == "con_linea"
 
 
 # ── list_bodegas (SVC-01) con DB mock ──────────────────────────────────────
@@ -183,7 +189,8 @@ def test_tp01_list_bodegas_q_sin_match(mock_db):
     out = list_bodegas(DIST, q="99999999", limit=20)
     assert out["total"] == 0
     assert out["items"] == []
-    assert interpretar_franja_svc01(http_status=200, **out) == "sin_linea"
+    assert out["situacion"] == "no_registrada"
+    assert interpretar_franja_svc01(http_status=200, **out) == "no_registrada"
 
 
 @patch("app.integration.service.db")
@@ -195,8 +202,10 @@ def test_tp02_list_bodegas_inactiva(mock_db):
     assert out["total"] == 1
     item = out["items"][0]
     assert item["estado"] == "inactivo"
+    assert item["situacion"] == "en_evaluacion"
+    assert out["situacion"] == "en_evaluacion"
     assert item["created"] is False
-    assert interpretar_franja_svc01(http_status=200, **out) == "sin_linea"
+    assert interpretar_franja_svc01(http_status=200, **out) == "en_evaluacion"
 
 
 @patch("app.integration.service.db")
@@ -207,6 +216,8 @@ def test_tp03_list_bodegas_activa_sin_cupo(mock_db):
     out = list_bodegas(DIST, q="07631909")
     assert out["items"][0]["linea_aprobada"] == 500.0
     assert out["items"][0]["linea_disponible"] == 0.0
+    assert out["items"][0]["situacion"] == "no_disponible"
+    assert out["situacion"] == "no_disponible"
     assert interpretar_franja_svc01(http_status=200, **out) == "no_disponible"
 
 
@@ -219,6 +230,8 @@ def test_tp04_list_bodegas_activa_con_linea(mock_db):
     item = out["items"][0]
     assert item["id"]
     assert item["linea_disponible"] == 350.0
+    assert item["situacion"] == "con_linea"
+    assert out["situacion"] == "con_linea"
     assert interpretar_franja_svc01(http_status=200, **out) == "con_linea"
 
 
@@ -246,9 +259,61 @@ def test_list_bodegas_pasa_filtro_es_test(mock_db):
     assert any(c.args[:2] == ("es_test", False) for c in eq_calls)
 
 
-def test_bodega_out_incluye_es_test():
+def test_bodega_out_incluye_es_test_y_situacion():
     row = _bodega()
     row["es_test"] = True
     out = _bodega_out(row)
     assert out["es_test"] is True
     assert out["created"] is False
+    assert out["situacion"] == "con_linea"
+    assert out["tiene_foto_dueno"] is False
+    assert out["tiene_foto_bodega"] is False
+
+
+def test_bodega_out_flags_fotos():
+    row = _bodega(estado="inactivo", linea_disponible=0)
+    row["foto_dueno_url"] = "prospecto/+51987654321/dueno_x.jpg"
+    row["foto_bodega_url"] = "prospecto/+51987654321/local_x.jpg"
+    out = _bodega_out(row)
+    assert out["tiene_foto_dueno"] is True
+    assert out["tiene_foto_bodega"] is True
+    assert out["situacion"] == "en_evaluacion"
+
+
+@patch("app.integration.service.db")
+def test_upsert_guarda_paths_fotos(mock_db):
+    from app.integration.service import upsert_bodega
+
+    chain = _mock_table([])
+    # find returns empty; insert returns row
+    inserted = _bodega(estado="inactivo", linea_disponible=0, linea_aprobada=200)
+    inserted["foto_dueno_url"] = "prospecto/+51987654321/dueno.jpg"
+    inserted["foto_bodega_url"] = "prospecto/+51987654321/local.jpg"
+    inserted["es_test"] = False
+
+    def _table(_name):
+        t = MagicMock()
+        t.select.return_value = t
+        t.eq.return_value = t
+        t.limit.return_value = t
+        t.execute.return_value = MagicMock(data=[])
+        t.insert.return_value = MagicMock(execute=MagicMock(return_value=MagicMock(data=[inserted])))
+        return t
+
+    mock_db.sb.table.side_effect = _table
+
+    out = upsert_bodega(
+        DIST,
+        {
+            "telefono_whatsapp": "987654321",
+            "dni_representante": "07631909",
+            "razon_social": "BODEGA DEMO",
+            "foto_dueno_url": inserted["foto_dueno_url"],
+            "foto_bodega_url": inserted["foto_bodega_url"],
+        },
+        es_test=False,
+    )
+    assert out["created"] is True
+    assert out["tiene_foto_dueno"] is True
+    assert out["tiene_foto_bodega"] is True
+    assert out["situacion"] == "en_evaluacion"

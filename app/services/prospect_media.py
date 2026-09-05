@@ -112,6 +112,8 @@ def persist_image_bytes(
         bucket, path = BUCKET_DNI, f"prospecto/{tel}/dni_{ts}.{ext}"
     elif kind == "local":
         bucket, path = BUCKET_LOCAL, f"prospecto/{tel}/local_{ts}.{ext}"
+    elif kind == "dueno":
+        bucket, path = BUCKET_LOCAL, f"prospecto/{tel}/dueno_{ts}.{ext}"
     else:
         bucket, path = BUCKET_LOCAL, f"prospecto/{tel}/otro_{ts}.{ext}"
     if not upload_bytes(bucket, path, image_bytes, ct):

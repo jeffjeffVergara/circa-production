@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Circa Integration API v1",
-    "description": "API socios → Circa (un ambiente, dos modos).\n\n1) Auth → Obtener token (prod o test)\n2) Carpeta **01 · Producción** usa {{access_token_prod}} + {{baseUrl}}\n3) Carpeta **02 · Pruebas** usa {{access_token_test}} + {{baseUrlTest}}\n\nSwagger: {{baseUrl}}/docs",
+    "description": "## API socios → Circa\n\nUn ambiente, dos modos de datos.\n\n| Modo | Base | Token |\n|------|------|-------|\n| Prod | `{{baseUrl}}` | `{{access_token_prod}}` |\n| Test | `{{baseUrlTest}}` | `{{access_token_test}}` |\n\n### Flujo recomendado\n1. **Auth** → obtener token\n2. **SVC-01** → mirar `items[i].situacion`\n3. `no_registrada` → **SVC-02** (multipart + fotos)\n4. `en_evaluacion` → reconsultar SVC-01b\n5. `con_linea` → **SVC-04** → SVC-05 → SVC-07\n\n### `situacion` (por bodega)\n| Valor | Acción |\n|-------|--------|\n| `no_registrada` | Precargar (SVC-02) |\n| `en_evaluacion` | Esperar / reconsultar |\n| `no_disponible` | Sin cupo |\n| `con_linea` | Financiar (SVC-04) |\n\nSwagger: `{{baseUrl}}/docs`",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -23,7 +23,7 @@
   "item": [
     {
       "name": "00 · Auth",
-      "description": "Obtener access tokens. Sin Bearer previo.",
+      "description": "Obtener access tokens. Sin Bearer previo.\n\nPegar `client_secret` en variables de colección.",
       "item": [
         {
           "name": "Obtener token — producción",
@@ -53,8 +53,18 @@
               "raw": "{\n  \"grant_type\": \"client_credentials\",\n  \"client_id\": \"{{client_id}}\",\n  \"client_secret\": \"{{client_secret}}\",\n  \"data_mode\": \"prod\"\n}"
             },
             "url": "{{baseUrl}}/auth/token",
-            "description": "Devuelve access_token para usar en /api/v1/..."
-          }
+            "description": "Intercambia client_id + client_secret por Bearer de **producción**.\n\n### Request ejemplo\n```json\n{\n  \"grant_type\": \"client_credentials\",\n  \"client_id\": \"zoom-circa\",\n  \"client_secret\": \"***\",\n  \"data_mode\": \"prod\"\n}\n```"
+          },
+          "response": [
+            {
+              "name": "200 — token prod",
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"access_token\": \"<api_token_prod>\",\n  \"token_type\": \"Bearer\",\n  \"data_mode\": \"prod\",\n  \"expires_in\": null,\n  \"distribuidor_id\": \"d1a2b3c4-0001-4000-8000-000000000002\",\n  \"distribuidor\": \"ZOOM CORP\"\n}"
+            }
+          ]
         },
         {
           "name": "Obtener token — pruebas",
@@ -84,21 +94,31 @@
               "raw": "{\n  \"grant_type\": \"client_credentials\",\n  \"client_id\": \"{{client_id}}\",\n  \"client_secret\": \"{{client_secret}}\",\n  \"data_mode\": \"test\"\n}"
             },
             "url": "{{baseUrl}}/auth/token",
-            "description": "Devuelve access_token para usar en /api/v1/test/..."
-          }
+            "description": "Igual que prod pero `data_mode: \"test\"` → token para `/api/v1/test/...`"
+          },
+          "response": [
+            {
+              "name": "200 — token test",
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"access_token\": \"<api_token_test>\",\n  \"token_type\": \"Bearer\",\n  \"data_mode\": \"test\",\n  \"expires_in\": null,\n  \"distribuidor_id\": \"d1a2b3c4-0001-4000-8000-000000000002\",\n  \"distribuidor\": \"ZOOM CORP\"\n}"
+            }
+          ]
         }
       ]
     },
     {
       "name": "01 · Producción",
-      "description": "Datos reales (es_test=false). Auth: {{access_token_prod}}",
+      "description": "Datos reales (`es_test=false`). Auth: Bearer `{{access_token_prod}}`",
       "auth": {
         "type": "bearer",
         "bearer": [{ "key": "token", "value": "{{access_token_prod}}", "type": "string" }]
       },
       "item": [
         {
-          "name": "Health",
+          "name": "Health (SVC-00)",
           "event": [
             {
               "listen": "test",
@@ -113,14 +133,26 @@
           "request": {
             "auth": { "type": "noauth" },
             "method": "GET",
-            "url": "{{baseUrl}}/health"
-          }
+            "url": "{{baseUrl}}/health",
+            "description": "Sin token."
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"status\": \"ok\",\n  \"service\": \"circa-integration-api\",\n  \"version\": \"1.0.0\",\n  \"data_mode\": \"prod\"\n}"
+            }
+          ]
         },
         {
           "name": "Bodegas",
+          "description": "SVC-01 consulta · SVC-02 precarga con fotos · SVC-03 patch",
           "item": [
             {
-              "name": "Upsert bodega",
+              "name": "SVC-02 Precargar bodega (+ fotos)",
               "event": [
                 {
                   "listen": "test",
@@ -129,6 +161,11 @@
                       "if (pm.response.code === 200) {",
                       "  var d = pm.response.json();",
                       "  if (d.id) pm.collectionVariables.set('bodega_id', d.id);",
+                      "  pm.test('fotos y situacion', function () {",
+                      "    pm.expect(d.tiene_foto_dueno).to.eql(true);",
+                      "    pm.expect(d.tiene_foto_bodega).to.eql(true);",
+                      "    pm.expect(d.situacion).to.eql('en_evaluacion');",
+                      "  });",
                       "}"
                     ]
                   }
@@ -136,47 +173,156 @@
               ],
               "request": {
                 "method": "POST",
-                "header": [{ "key": "Content-Type", "value": "application/json" }],
                 "body": {
-                  "mode": "raw",
-                  "raw": "{\n  \"external_id\": \"SOCIO-CLI-001\",\n  \"telefono_whatsapp\": \"987654321\",\n  \"dni_representante\": \"42868000\",\n  \"razon_social\": \"BODEGA DEMO SOCIO\",\n  \"nombre_comercial\": \"Bodega Demo\",\n  \"solo_dni_sin_ruc\": true\n}"
+                  "mode": "formdata",
+                  "formdata": [
+                    { "key": "telefono_whatsapp", "value": "987654321", "type": "text", "description": "Obligatorio" },
+                    { "key": "dni_representante", "value": "42868000", "type": "text", "description": "DNI u RUC (al menos uno)" },
+                    { "key": "razon_social", "value": "BODEGA DEMO SOCIO", "type": "text" },
+                    { "key": "nombre_comercial", "value": "Bodega Demo", "type": "text" },
+                    { "key": "direccion_fiscal", "value": "Av. Ejemplo 123", "type": "text" },
+                    { "key": "distrito", "value": "Comas", "type": "text" },
+                    { "key": "solo_dni_sin_ruc", "value": "true", "type": "text" },
+                    { "key": "foto_dueno", "type": "file", "src": [], "description": "Obligatorio — seleccionar JPG/PNG del dueño" },
+                    { "key": "foto_bodega", "type": "file", "src": [], "description": "Obligatorio — seleccionar JPG/PNG de la fachada" }
+                  ]
                 },
-                "url": "{{baseUrl}}/bodegas"
-              }
+                "url": "{{baseUrl}}/bodegas",
+                "description": "## SVC-02 — Precargar / enviar a evaluación\n\n`Content-Type: multipart/form-data`\n\n**Obligatorios:** `telefono_whatsapp`, DNI o RUC, `foto_dueno`, `foto_bodega` (≤8 MB, JPEG/PNG/WebP).\n\nEn Postman: Body → form-data → en `foto_*` elegir archivo local.\n\nGuarda el `id` de la respuesta como `circa_bodega_id`."
+              },
+              "response": [
+                {
+                  "name": "200 — creada en_evaluacion",
+                  "originalRequest": {
+                    "method": "POST",
+                    "header": [],
+                    "body": {
+                      "mode": "formdata",
+                      "formdata": [
+                        { "key": "telefono_whatsapp", "value": "987654321", "type": "text" },
+                        { "key": "dni_representante", "value": "42868000", "type": "text" },
+                        { "key": "razon_social", "value": "BODEGA DEMO SOCIO", "type": "text" },
+                        { "key": "foto_dueno", "type": "file", "src": [] },
+                        { "key": "foto_bodega", "type": "file", "src": [] }
+                      ]
+                    },
+                    "url": "{{baseUrl}}/bodegas"
+                  },
+                  "status": "OK",
+                  "code": 200,
+                  "_postman_previewlanguage": "json",
+                  "header": [{ "key": "Content-Type", "value": "application/json" }],
+                  "body": "{\n  \"id\": \"a1b2c3d4-0001-4000-8000-000000000099\",\n  \"external_id\": null,\n  \"telefono_whatsapp\": \"+51987654321\",\n  \"dni_representante\": \"42868000\",\n  \"ruc\": null,\n  \"razon_social\": \"BODEGA DEMO SOCIO\",\n  \"nombre_comercial\": \"Bodega Demo\",\n  \"estado\": \"inactivo\",\n  \"onboarding_fase\": \"precargada\",\n  \"kyc_nivel\": \"ninguno\",\n  \"linea_aprobada\": 200.0,\n  \"linea_disponible\": 0.0,\n  \"situacion\": \"en_evaluacion\",\n  \"tiene_foto_dueno\": true,\n  \"tiene_foto_bodega\": true,\n  \"es_test\": false,\n  \"created\": true\n}"
+                },
+                {
+                  "name": "400 — falta foto",
+                  "status": "Bad Request",
+                  "code": 400,
+                  "_postman_previewlanguage": "json",
+                  "header": [{ "key": "Content-Type", "value": "application/json" }],
+                  "body": "{\n  \"detail\": [\n    {\n      \"type\": \"missing\",\n      \"loc\": [\"body\", \"foto_dueno\"],\n      \"msg\": \"Field required\"\n    }\n  ]\n}"
+                }
+              ]
             },
             {
-              "name": "Listar / buscar bodegas (SVC-01)",
+              "name": "SVC-01 Listar / buscar bodegas",
               "request": {
                 "method": "GET",
-                "url": "{{baseUrl}}/bodegas?q=&limit=20"
-              }
+                "url": "{{baseUrl}}/bodegas?q=42868000&limit=20",
+                "description": "## SVC-01 — Consultar afiliación y línea\n\nQuery `q` = DNI, RUC, teléfono o nombre.\n\n**Decidir con `items[i].situacion`** (por bodega). La `situacion` raíz es atajo del primer item."
+              },
+              "response": [
+                {
+                  "name": "200 — no_registrada",
+                  "status": "OK",
+                  "code": 200,
+                  "_postman_previewlanguage": "json",
+                  "header": [{ "key": "Content-Type", "value": "application/json" }],
+                  "body": "{\n  \"total\": 0,\n  \"items\": [],\n  \"situacion\": \"no_registrada\"\n}"
+                },
+                {
+                  "name": "200 — en_evaluacion",
+                  "status": "OK",
+                  "code": 200,
+                  "_postman_previewlanguage": "json",
+                  "header": [{ "key": "Content-Type", "value": "application/json" }],
+                  "body": "{\n  \"total\": 1,\n  \"situacion\": \"en_evaluacion\",\n  \"items\": [\n    {\n      \"id\": \"a1b2c3d4-0001-4000-8000-000000000099\",\n      \"telefono_whatsapp\": \"+51987654321\",\n      \"dni_representante\": \"42868000\",\n      \"razon_social\": \"BODEGA DEMO SOCIO\",\n      \"estado\": \"inactivo\",\n      \"onboarding_fase\": \"precargada\",\n      \"linea_aprobada\": 200.0,\n      \"linea_disponible\": 0.0,\n      \"situacion\": \"en_evaluacion\",\n      \"tiene_foto_dueno\": true,\n      \"tiene_foto_bodega\": true,\n      \"es_test\": false,\n      \"created\": false\n    }\n  ]\n}"
+                },
+                {
+                  "name": "200 — con_linea",
+                  "status": "OK",
+                  "code": 200,
+                  "_postman_previewlanguage": "json",
+                  "header": [{ "key": "Content-Type", "value": "application/json" }],
+                  "body": "{\n  \"total\": 1,\n  \"situacion\": \"con_linea\",\n  \"items\": [\n    {\n      \"id\": \"a1b2c3d4-0001-4000-8000-000000000011\",\n      \"telefono_whatsapp\": \"+51987654321\",\n      \"dni_representante\": \"07631909\",\n      \"razon_social\": \"BODEGA ACTIVA\",\n      \"estado\": \"activo\",\n      \"linea_aprobada\": 500.0,\n      \"linea_disponible\": 350.0,\n      \"situacion\": \"con_linea\",\n      \"tiene_foto_dueno\": true,\n      \"tiene_foto_bodega\": true,\n      \"es_test\": false,\n      \"created\": false\n    }\n  ]\n}"
+                },
+                {
+                  "name": "200 — no_disponible",
+                  "status": "OK",
+                  "code": 200,
+                  "_postman_previewlanguage": "json",
+                  "header": [{ "key": "Content-Type", "value": "application/json" }],
+                  "body": "{\n  \"total\": 1,\n  \"situacion\": \"no_disponible\",\n  \"items\": [\n    {\n      \"id\": \"a1b2c3d4-0001-4000-8000-000000000012\",\n      \"estado\": \"activo\",\n      \"linea_aprobada\": 500.0,\n      \"linea_disponible\": 0.0,\n      \"situacion\": \"no_disponible\",\n      \"es_test\": false,\n      \"created\": false\n    }\n  ]\n}"
+                }
+              ]
             },
             {
-              "name": "Obtener bodega (SVC-01b)",
+              "name": "SVC-01b Obtener bodega",
               "request": {
                 "method": "GET",
-                "url": "{{baseUrl}}/bodegas/{{bodega_id}}"
-              }
+                "url": "{{baseUrl}}/bodegas/{{bodega_id}}",
+                "description": "Refresco de una bodega por UUID Circa.\n\nUsar tras SVC-02 para ver si pasó de `en_evaluacion` a `con_linea`."
+              },
+              "response": [
+                {
+                  "name": "200 — bodega",
+                  "status": "OK",
+                  "code": 200,
+                  "_postman_previewlanguage": "json",
+                  "header": [{ "key": "Content-Type", "value": "application/json" }],
+                  "body": "{\n  \"id\": \"a1b2c3d4-0001-4000-8000-000000000099\",\n  \"telefono_whatsapp\": \"+51987654321\",\n  \"dni_representante\": \"42868000\",\n  \"razon_social\": \"BODEGA DEMO SOCIO\",\n  \"estado\": \"inactivo\",\n  \"onboarding_fase\": \"precargada\",\n  \"linea_aprobada\": 200.0,\n  \"linea_disponible\": 0.0,\n  \"situacion\": \"en_evaluacion\",\n  \"tiene_foto_dueno\": true,\n  \"tiene_foto_bodega\": true,\n  \"es_test\": false,\n  \"created\": false\n}"
+                },
+                {
+                  "name": "404 — no existe",
+                  "status": "Not Found",
+                  "code": 404,
+                  "_postman_previewlanguage": "json",
+                  "header": [{ "key": "Content-Type", "value": "application/json" }],
+                  "body": "{\n  \"detail\": \"Bodega no encontrada\"\n}"
+                }
+              ]
             },
             {
-              "name": "Patch bodega",
+              "name": "SVC-03 Patch bodega",
               "request": {
                 "method": "PATCH",
                 "header": [{ "key": "Content-Type", "value": "application/json" }],
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"nombre_comercial\": \"Bodega Demo Actualizada\",\n  \"distrito\": \"Surquillo\"\n}"
+                  "raw": "{\n  \"nombre_comercial\": \"Bodega Demo Actualizada\",\n  \"distrito\": \"Surquillo\",\n  \"direccion_fiscal\": \"Av. Nueva 456\"\n}"
                 },
-                "url": "{{baseUrl}}/bodegas/{{bodega_id}}"
-              }
+                "url": "{{baseUrl}}/bodegas/{{bodega_id}}",
+                "description": "Corregir datos (JSON). No envía fotos."
+              },
+              "response": [
+                {
+                  "name": "200 — actualizada",
+                  "status": "OK",
+                  "code": 200,
+                  "_postman_previewlanguage": "json",
+                  "header": [{ "key": "Content-Type", "value": "application/json" }],
+                  "body": "{\n  \"id\": \"a1b2c3d4-0001-4000-8000-000000000099\",\n  \"nombre_comercial\": \"Bodega Demo Actualizada\",\n  \"distrito\": \"Surquillo\",\n  \"situacion\": \"en_evaluacion\",\n  \"created\": false\n}"
+                }
+              ]
             }
           ]
         },
         {
-          "name": "Preventas",
+          "name": "Preventas / Pedidos",
+          "description": "SVC-04 crear · SVC-05 consultar · SVC-07 estados. Requiere `situacion=con_linea`.",
           "item": [
             {
-              "name": "Crear preventa",
+              "name": "SVC-04 Crear preventa",
               "event": [
                 {
                   "listen": "test",
@@ -195,46 +341,53 @@
                 "header": [{ "key": "Content-Type", "value": "application/json" }],
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"external_id\": \"SOCIO-PV-001\",\n  \"bodega_id\": \"{{bodega_id}}\",\n  \"vendedor_codigo\": \"VW01\",\n  \"items\": [\n    {\n      \"sku\": \"P0001\",\n      \"nombre\": \"Producto demo\",\n      \"cantidad\": 2,\n      \"precio_unitario\": 15.5\n    }\n  ]\n}"
+                  "raw": "{\n  \"external_id\": \"SOCIO-PV-001\",\n  \"bodega_id\": \"{{bodega_id}}\",\n  \"vendedor_codigo\": \"VW01\",\n  \"monto_a_financiar\": 31.0,\n  \"plazo_dias\": 7,\n  \"items\": [\n    {\n      \"sku\": \"P0001\",\n      \"nombre\": \"Producto demo\",\n      \"cantidad\": 2,\n      \"precio_unitario\": 15.5\n    }\n  ]\n}"
                 },
-                "url": "{{baseUrl}}/preventas"
+                "url": "{{baseUrl}}/preventas",
+                "description": "## SVC-04 — Solicitar financiamiento\n\nObligatorios: `bodega_id` (o alternativa), `items`, **`monto_a_financiar`**, **`plazo_dias`** (7|15|30).\n\n### Request ejemplo\n```json\n{\n  \"bodega_id\": \"<uuid Circa>\",\n  \"monto_a_financiar\": 31.0,\n  \"plazo_dias\": 7,\n  \"vendedor_codigo\": \"VW01\",\n  \"items\": [\n    { \"sku\": \"P0001\", \"nombre\": \"Producto demo\", \"cantidad\": 2, \"precio_unitario\": 15.5 }\n  ]\n}\n```"
+              },
+              "response": [
+                {
+                  "name": "200 — preventa creada",
+                  "status": "OK",
+                  "code": 200,
+                  "_postman_previewlanguage": "json",
+                  "header": [{ "key": "Content-Type", "value": "application/json" }],
+                  "body": "{\n  \"id\": \"p1e2d3i4-0001-4000-8000-000000000001\",\n  \"external_id\": \"SOCIO-PV-001\",\n  \"bodega_id\": \"a1b2c3d4-0001-4000-8000-000000000011\",\n  \"estado\": \"preventa_confirmada\",\n  \"total_pedido\": 31.0,\n  \"monto_financiado\": 31.0,\n  \"plazo_dias\": 7\n}"
+                }
+              ]
+            },
+            {
+              "name": "SVC-05 Obtener preventa",
+              "request": {
+                "method": "GET",
+                "url": "{{baseUrl}}/preventas/{{pedido_id}}",
+                "description": "Polling del resultado de la solicitud."
               }
             },
             {
-              "name": "Listar preventas",
+              "name": "SVC-06 Listar preventas",
               "request": {
                 "method": "GET",
                 "url": "{{baseUrl}}/preventas?limit=20"
               }
             },
             {
-              "name": "Obtener preventa",
-              "request": {
-                "method": "GET",
-                "url": "{{baseUrl}}/preventas/{{pedido_id}}"
-              }
-            }
-          ]
-        },
-        {
-          "name": "Pedidos",
-          "item": [
-            {
-              "name": "Listar pedidos",
+              "name": "SVC-06 Listar pedidos",
               "request": {
                 "method": "GET",
                 "url": "{{baseUrl}}/pedidos?limit=20"
               }
             },
             {
-              "name": "Obtener pedido",
+              "name": "SVC-05 Obtener pedido",
               "request": {
                 "method": "GET",
                 "url": "{{baseUrl}}/pedidos/{{pedido_id}}"
               }
             },
             {
-              "name": "Cambiar estado",
+              "name": "SVC-07 Cambiar estado",
               "request": {
                 "method": "PATCH",
                 "header": [{ "key": "Content-Type", "value": "application/json" }],
@@ -242,17 +395,28 @@
                   "mode": "raw",
                   "raw": "{\n  \"estado\": \"preventa_aceptada\",\n  \"comentario\": \"Aceptada desde sistema del socio\"\n}"
                 },
-                "url": "{{baseUrl}}/pedidos/{{pedido_id}}/estado"
-              }
+                "url": "{{baseUrl}}/pedidos/{{pedido_id}}/estado",
+                "description": "### Request ejemplo\n```json\n{\n  \"estado\": \"preventa_aceptada\",\n  \"comentario\": \"Aceptada desde sistema del socio\"\n}\n```\n\nEstados típicos de despacho: `en_camino`, `entregado`, etc."
+              },
+              "response": [
+                {
+                  "name": "200 — estado actualizado",
+                  "status": "OK",
+                  "code": 200,
+                  "_postman_previewlanguage": "json",
+                  "header": [{ "key": "Content-Type", "value": "application/json" }],
+                  "body": "{\n  \"id\": \"p1e2d3i4-0001-4000-8000-000000000001\",\n  \"estado\": \"preventa_aceptada\",\n  \"es_test\": false\n}"
+                }
+              ]
             }
           ]
         },
         {
-          "name": "SVC-01 Casos",
-          "description": "Matriz §6.4 con datos reales. Completar q_dni_*.",
+          "name": "SVC-01 Casos (ejemplos situacion)",
+          "description": "Matriz de `situacion`. Completar variables `q_dni_*` con DNIs reales del distribuidor.",
           "item": [
             {
-              "name": "TP-01 No encuentra → sin_linea",
+              "name": "TP-01 No encuentra → no_registrada",
               "event": [
                 {
                   "listen": "test",
@@ -260,29 +424,91 @@
                     "exec": [
                       "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
                       "const j = pm.response.json();",
-                      "pm.test('lista vacía', function () { pm.expect(j.total).to.eql(0); pm.expect(j.items).to.eql([]); });"
+                      "pm.test('lista vacía', function () { pm.expect(j.total).to.eql(0); pm.expect(j.items).to.eql([]); });",
+                      "pm.test('situacion no_registrada', function () { pm.expect(j.situacion).to.eql('no_registrada'); });"
                     ]
                   }
                 }
               ],
               "request": {
                 "method": "GET",
-                "url": "{{baseUrl}}/bodegas?q={{q_dni_inexistente}}&limit=20"
-              }
+                "url": "{{baseUrl}}/bodegas?q={{q_dni_inexistente}}&limit=20",
+                "description": "Siguiente paso: **SVC-02**."
+              },
+              "response": [
+                {
+                  "name": "Ejemplo respuesta",
+                  "status": "OK",
+                  "code": 200,
+                  "_postman_previewlanguage": "json",
+                  "header": [{ "key": "Content-Type", "value": "application/json" }],
+                  "body": "{\n  \"total\": 0,\n  \"items\": [],\n  \"situacion\": \"no_registrada\"\n}"
+                }
+              ]
             },
             {
-              "name": "TP-02 Inactiva → sin_linea",
+              "name": "TP-02 Inactiva → en_evaluacion",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                      "const j = pm.response.json();",
+                      "pm.test('situacion en_evaluacion', function () {",
+                      "  pm.expect(j.situacion).to.eql('en_evaluacion');",
+                      "  if (j.items && j.items[0]) pm.expect(j.items[0].situacion).to.eql('en_evaluacion');",
+                      "});"
+                    ]
+                  }
+                }
+              ],
               "request": {
                 "method": "GET",
-                "url": "{{baseUrl}}/bodegas?q={{q_dni_inactiva}}&limit=20"
-              }
+                "url": "{{baseUrl}}/bodegas?q={{q_dni_inactiva}}&limit=20",
+                "description": "Data ya enviada. **No** reenviar SVC-02; reconsultar."
+              },
+              "response": [
+                {
+                  "name": "Ejemplo respuesta",
+                  "status": "OK",
+                  "code": 200,
+                  "_postman_previewlanguage": "json",
+                  "header": [{ "key": "Content-Type", "value": "application/json" }],
+                  "body": "{\n  \"total\": 1,\n  \"situacion\": \"en_evaluacion\",\n  \"items\": [\n    {\n      \"id\": \"…\",\n      \"estado\": \"inactivo\",\n      \"linea_disponible\": 0.0,\n      \"situacion\": \"en_evaluacion\",\n      \"tiene_foto_dueno\": true,\n      \"tiene_foto_bodega\": true\n    }\n  ]\n}"
+                }
+              ]
             },
             {
               "name": "TP-03 Activa sin cupo → no_disponible",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "const j = pm.response.json();",
+                      "pm.test('situacion', function () {",
+                      "  if (j.total > 0) pm.expect(j.situacion).to.eql('no_disponible');",
+                      "});"
+                    ]
+                  }
+                }
+              ],
               "request": {
                 "method": "GET",
-                "url": "{{baseUrl}}/bodegas?q={{q_dni_activa_sin_cupo}}&limit=20"
-              }
+                "url": "{{baseUrl}}/bodegas?q={{q_dni_activa_sin_cupo}}&limit=20",
+                "description": "Activa pero sin cupo. No precargar ni financiar."
+              },
+              "response": [
+                {
+                  "name": "Ejemplo respuesta",
+                  "status": "OK",
+                  "code": 200,
+                  "_postman_previewlanguage": "json",
+                  "header": [{ "key": "Content-Type", "value": "application/json" }],
+                  "body": "{\n  \"total\": 1,\n  \"situacion\": \"no_disponible\",\n  \"items\": [\n    {\n      \"estado\": \"activo\",\n      \"linea_disponible\": 0.0,\n      \"situacion\": \"no_disponible\"\n    }\n  ]\n}"
+                }
+              ]
             },
             {
               "name": "TP-04 Activa con línea → con_linea",
@@ -292,15 +518,29 @@
                   "script": {
                     "exec": [
                       "const j = pm.response.json();",
-                      "if (j.items && j.items[0] && j.items[0].id) pm.collectionVariables.set('bodega_id', j.items[0].id);"
+                      "if (j.items && j.items[0] && j.items[0].id) pm.collectionVariables.set('bodega_id', j.items[0].id);",
+                      "pm.test('situacion', function () {",
+                      "  if (j.total > 0) pm.expect(j.situacion).to.eql('con_linea');",
+                      "});"
                     ]
                   }
                 }
               ],
               "request": {
                 "method": "GET",
-                "url": "{{baseUrl}}/bodegas?q={{q_dni_activa_con_cupo}}&limit=20"
-              }
+                "url": "{{baseUrl}}/bodegas?q={{q_dni_activa_con_cupo}}&limit=20",
+                "description": "Siguiente paso: **SVC-04**."
+              },
+              "response": [
+                {
+                  "name": "Ejemplo respuesta",
+                  "status": "OK",
+                  "code": 200,
+                  "_postman_previewlanguage": "json",
+                  "header": [{ "key": "Content-Type", "value": "application/json" }],
+                  "body": "{\n  \"total\": 1,\n  \"situacion\": \"con_linea\",\n  \"items\": [\n    {\n      \"estado\": \"activo\",\n      \"linea_disponible\": 350.0,\n      \"situacion\": \"con_linea\"\n    }\n  ]\n}"
+                }
+              ]
             },
             {
               "name": "TP-07 Token inválido → 401",
@@ -337,7 +577,8 @@
               ],
               "request": {
                 "method": "GET",
-                "url": "{{baseUrl}}/bodegas/00000000-0000-0000-0000-000000000000"
+                "url": "{{baseUrl}}/bodegas/00000000-0000-0000-0000-000000000000",
+                "description": "En UI del socio equivale a `no_registrada` → ofrecer SVC-02."
               }
             }
           ]
@@ -346,14 +587,14 @@
     },
     {
       "name": "02 · Pruebas",
-      "description": "Datos es_test=true. Auth: {{access_token_test}}. Base: {{baseUrlTest}}",
+      "description": "Datos `es_test=true`. Auth: Bearer `{{access_token_test}}` · Base: `{{baseUrlTest}}`\n\nMismos contratos que producción; ideal para probar SVC-02 con fotos sin tocar data real.",
       "auth": {
         "type": "bearer",
         "bearer": [{ "key": "token", "value": "{{access_token_test}}", "type": "string" }]
       },
       "item": [
         {
-          "name": "Health",
+          "name": "Health (test)",
           "event": [
             {
               "listen": "test",
@@ -369,13 +610,23 @@
             "auth": { "type": "noauth" },
             "method": "GET",
             "url": "{{baseUrlTest}}/health"
-          }
+          },
+          "response": [
+            {
+              "name": "200 OK test",
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"status\": \"ok\",\n  \"service\": \"circa-integration-api\",\n  \"version\": \"1.0.0\",\n  \"data_mode\": \"test\"\n}"
+            }
+          ]
         },
         {
-          "name": "Bodegas",
+          "name": "Bodegas (test)",
           "item": [
             {
-              "name": "Upsert bodega (test)",
+              "name": "SVC-02 Precargar (+ fotos) test",
               "event": [
                 {
                   "listen": "test",
@@ -384,7 +635,12 @@
                       "if (pm.response.code === 200) {",
                       "  var d = pm.response.json();",
                       "  if (d.id) pm.collectionVariables.set('bodega_id_test', d.id);",
-                      "  pm.test('es_test true', function () { pm.expect(d.es_test).to.eql(true); });",
+                      "  pm.test('es_test y fotos', function () {",
+                      "    pm.expect(d.es_test).to.eql(true);",
+                      "    pm.expect(d.tiene_foto_dueno).to.eql(true);",
+                      "    pm.expect(d.tiene_foto_bodega).to.eql(true);",
+                      "    pm.expect(d.situacion).to.eql('en_evaluacion');",
+                      "  });",
                       "}"
                     ]
                   }
@@ -392,30 +648,60 @@
               ],
               "request": {
                 "method": "POST",
-                "header": [{ "key": "Content-Type", "value": "application/json" }],
                 "body": {
-                  "mode": "raw",
-                  "raw": "{\n  \"external_id\": \"TEST-CLI-001\",\n  \"telefono_whatsapp\": \"999000001\",\n  \"dni_representante\": \"00000001\",\n  \"razon_social\": \"BODEGA TEST API\",\n  \"nombre_comercial\": \"Bodega Test\",\n  \"solo_dni_sin_ruc\": true\n}"
+                  "mode": "formdata",
+                  "formdata": [
+                    { "key": "telefono_whatsapp", "value": "999000001", "type": "text" },
+                    { "key": "dni_representante", "value": "00000001", "type": "text" },
+                    { "key": "razon_social", "value": "BODEGA TEST API", "type": "text" },
+                    { "key": "nombre_comercial", "value": "Bodega Test", "type": "text" },
+                    { "key": "distrito", "value": "Miraflores", "type": "text" },
+                    { "key": "solo_dni_sin_ruc", "value": "true", "type": "text" },
+                    { "key": "foto_dueno", "type": "file", "src": [], "description": "Seleccionar archivo" },
+                    { "key": "foto_bodega", "type": "file", "src": [], "description": "Seleccionar archivo" }
+                  ]
                 },
-                "url": "{{baseUrlTest}}/bodegas"
-              }
+                "url": "{{baseUrlTest}}/bodegas",
+                "description": "Igual que prod pero en `/api/v1/test`. Respuesta con `es_test: true`."
+              },
+              "response": [
+                {
+                  "name": "200 — creada test",
+                  "status": "OK",
+                  "code": 200,
+                  "_postman_previewlanguage": "json",
+                  "header": [{ "key": "Content-Type", "value": "application/json" }],
+                  "body": "{\n  \"id\": \"t1e2s3t4-0001-4000-8000-000000000001\",\n  \"telefono_whatsapp\": \"+51999000001\",\n  \"dni_representante\": \"00000001\",\n  \"razon_social\": \"BODEGA TEST API\",\n  \"estado\": \"inactivo\",\n  \"situacion\": \"en_evaluacion\",\n  \"tiene_foto_dueno\": true,\n  \"tiene_foto_bodega\": true,\n  \"es_test\": true,\n  \"created\": true,\n  \"linea_disponible\": 0.0\n}"
+                }
+              ]
             },
             {
-              "name": "Listar / buscar bodegas (SVC-01)",
+              "name": "SVC-01 Listar / buscar",
               "request": {
                 "method": "GET",
-                "url": "{{baseUrlTest}}/bodegas?limit=20"
-              }
+                "url": "{{baseUrlTest}}/bodegas?q=00000001&limit=20",
+                "description": "Buscar en modo test. Ver ejemplos de `situacion` en carpeta Producción."
+              },
+              "response": [
+                {
+                  "name": "200 — ejemplo",
+                  "status": "OK",
+                  "code": 200,
+                  "_postman_previewlanguage": "json",
+                  "header": [{ "key": "Content-Type", "value": "application/json" }],
+                  "body": "{\n  \"total\": 1,\n  \"situacion\": \"en_evaluacion\",\n  \"items\": [\n    {\n      \"id\": \"t1e2s3t4-0001-4000-8000-000000000001\",\n      \"situacion\": \"en_evaluacion\",\n      \"es_test\": true\n    }\n  ]\n}"
+                }
+              ]
             },
             {
-              "name": "Obtener bodega (SVC-01b)",
+              "name": "SVC-01b Obtener bodega",
               "request": {
                 "method": "GET",
                 "url": "{{baseUrlTest}}/bodegas/{{bodega_id_test}}"
               }
             },
             {
-              "name": "Patch bodega",
+              "name": "SVC-03 Patch bodega",
               "request": {
                 "method": "PATCH",
                 "header": [{ "key": "Content-Type", "value": "application/json" }],
@@ -429,10 +715,10 @@
           ]
         },
         {
-          "name": "Preventas",
+          "name": "Preventas / Pedidos (test)",
           "item": [
             {
-              "name": "Crear preventa (test)",
+              "name": "SVC-04 Crear preventa",
               "event": [
                 {
                   "listen": "test",
@@ -451,46 +737,20 @@
                 "header": [{ "key": "Content-Type", "value": "application/json" }],
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"external_id\": \"TEST-PV-001\",\n  \"bodega_id\": \"{{bodega_id_test}}\",\n  \"vendedor_codigo\": \"TEST01\",\n  \"items\": [\n    {\n      \"sku\": \"T0001\",\n      \"nombre\": \"Producto test\",\n      \"cantidad\": 1,\n      \"precio_unitario\": 10\n    }\n  ]\n}"
+                  "raw": "{\n  \"external_id\": \"TEST-PV-001\",\n  \"bodega_id\": \"{{bodega_id_test}}\",\n  \"vendedor_codigo\": \"TEST01\",\n  \"monto_a_financiar\": 10.0,\n  \"plazo_dias\": 15,\n  \"items\": [\n    {\n      \"sku\": \"T0001\",\n      \"nombre\": \"Producto test\",\n      \"cantidad\": 1,\n      \"precio_unitario\": 10\n    }\n  ]\n}"
                 },
                 "url": "{{baseUrlTest}}/preventas"
               }
             },
             {
-              "name": "Listar preventas",
-              "request": {
-                "method": "GET",
-                "url": "{{baseUrlTest}}/preventas?limit=20"
-              }
-            },
-            {
-              "name": "Obtener preventa",
+              "name": "SVC-05 Obtener preventa",
               "request": {
                 "method": "GET",
                 "url": "{{baseUrlTest}}/preventas/{{pedido_id_test}}"
               }
-            }
-          ]
-        },
-        {
-          "name": "Pedidos",
-          "item": [
-            {
-              "name": "Listar pedidos",
-              "request": {
-                "method": "GET",
-                "url": "{{baseUrlTest}}/pedidos?limit=20"
-              }
             },
             {
-              "name": "Obtener pedido",
-              "request": {
-                "method": "GET",
-                "url": "{{baseUrlTest}}/pedidos/{{pedido_id_test}}"
-              }
-            },
-            {
-              "name": "Cambiar estado",
+              "name": "SVC-07 Cambiar estado",
               "request": {
                 "method": "PATCH",
                 "header": [{ "key": "Content-Type", "value": "application/json" }],
@@ -504,15 +764,36 @@
           ]
         },
         {
-          "name": "SVC-01 Casos",
-          "description": "Misma matriz §6.4 sobre bodegas es_test.",
+          "name": "SVC-01 Casos (test)",
           "item": [
             {
-              "name": "TP-01 No encuentra → sin_linea",
+              "name": "TP-01 No encuentra → no_registrada",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                      "const j = pm.response.json();",
+                      "pm.test('situacion', function () { pm.expect(j.situacion).to.eql('no_registrada'); });"
+                    ]
+                  }
+                }
+              ],
               "request": {
                 "method": "GET",
                 "url": "{{baseUrlTest}}/bodegas?q={{q_dni_inexistente}}&limit=20"
-              }
+              },
+              "response": [
+                {
+                  "name": "Ejemplo",
+                  "status": "OK",
+                  "code": 200,
+                  "_postman_previewlanguage": "json",
+                  "header": [{ "key": "Content-Type", "value": "application/json" }],
+                  "body": "{\n  \"total\": 0,\n  \"items\": [],\n  \"situacion\": \"no_registrada\"\n}"
+                }
+              ]
             },
             {
               "name": "TP-07 Token prod en URL test → 403",
@@ -535,7 +816,7 @@
                 },
                 "method": "GET",
                 "url": "{{baseUrlTest}}/bodegas?limit=5",
-                "description": "Token de producción no debe funcionar en /test."
+                "description": "Token de producción no debe funcionar en `/test`."
               }
             }
           ]

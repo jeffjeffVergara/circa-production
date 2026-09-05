@@ -8,6 +8,7 @@ from typing import Any
 
 from fastapi import HTTPException
 
+from app.integration.franja import calcular_situacion
 from app.services import db
 from app.services.bodega_onboarding_snapshot import onboarding_alta_fields
 from app.services.order_status import STATUS_FLOW, normalize_estado
@@ -18,7 +19,7 @@ _BODEGA_SELECT = (
     "id,external_id,telefono_whatsapp,dni_representante,ruc,razon_social,"
     "nombre_comercial,representante_legal,direccion_fiscal,distrito,estado,"
     "onboarding_fase,kyc_nivel,linea_aprobada,linea_disponible,distribuidor_id,"
-    "solo_dni_sin_ruc,es_test,created_at,updated_at"
+    "solo_dni_sin_ruc,es_test,foto_dueno_url,foto_bodega_url,created_at,updated_at"
 )
 
 
@@ -35,7 +36,7 @@ def normalizar_telefono(tel: str) -> str:
 
 
 def _bodega_out(row: dict, *, created: bool = False) -> dict:
-    return {
+    out = {
         "id": row["id"],
         "external_id": row.get("external_id"),
         "telefono_whatsapp": row.get("telefono_whatsapp"),
@@ -48,9 +49,13 @@ def _bodega_out(row: dict, *, created: bool = False) -> dict:
         "kyc_nivel": row.get("kyc_nivel"),
         "linea_aprobada": float(row["linea_aprobada"]) if row.get("linea_aprobada") is not None else None,
         "linea_disponible": float(row["linea_disponible"]) if row.get("linea_disponible") is not None else None,
+        "tiene_foto_dueno": bool((row.get("foto_dueno_url") or "").strip()),
+        "tiene_foto_bodega": bool((row.get("foto_bodega_url") or "").strip()),
         "es_test": bool(row.get("es_test")),
         "created": created,
     }
+    out["situacion"] = calcular_situacion(out)
+    return out
 
 
 def data_mode_label(es_test: bool) -> str:
@@ -159,6 +164,10 @@ def upsert_bodega(dist: dict, body: dict, *, es_test: bool = False) -> dict:
         patch["solo_dni_sin_ruc"] = False
     if external_id:
         patch["external_id"] = external_id
+    if body.get("foto_dueno_url"):
+        patch["foto_dueno_url"] = body["foto_dueno_url"]
+    if body.get("foto_bodega_url"):
+        patch["foto_bodega_url"] = body["foto_bodega_url"]
 
     # No tocar línea disponible en upsert de socio (regla: solo liberar al firmar contrato)
     patch = {k: v for k, v in patch.items() if v is not None}
@@ -243,7 +252,12 @@ def list_bodegas(
             or ql in (r.get("external_id") or "").lower()
             or ql in (r.get("telefono_whatsapp") or "").lower()
         ]
-    return {"total": len(rows), "items": [_bodega_out(r) for r in rows]}
+    items = [_bodega_out(r) for r in rows]
+    if not items:
+        situacion = "no_registrada"
+    else:
+        situacion = items[0].get("situacion") or calcular_situacion(items[0])
+    return {"total": len(items), "items": items, "situacion": situacion}
 
 
 def _resolve_bodega_for_preventa(dist: dict, body: dict, *, es_test: bool = False) -> dict:
@@ -269,11 +283,43 @@ def _resolve_bodega_for_preventa(dist: dict, body: dict, *, es_test: bool = Fals
 
 def create_preventa(dist: dict, body: dict, *, es_test: bool = False) -> dict:
     bodega = _resolve_bodega_for_preventa(dist, body, es_test=es_test)
+
+    estado_b = (bodega.get("estado") or "").strip().lower()
+    try:
+        linea_disp = float(bodega.get("linea_disponible") or 0)
+    except (TypeError, ValueError):
+        linea_disp = 0.0
+    if estado_b != "activo" or linea_disp <= 0:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "La bodega no tiene línea disponible para financiar "
+                f"(situacion esperada: con_linea; estado={bodega.get('estado')!r}, "
+                f"linea_disponible={linea_disp})."
+            ),
+        )
+
+    try:
+        monto_fin = round(float(body["monto_a_financiar"]), 2)
+        plazo = int(body["plazo_dias"])
+    except (KeyError, TypeError, ValueError) as e:
+        raise HTTPException(
+            status_code=400,
+            detail="monto_a_financiar y plazo_dias son obligatorios",
+        ) from e
+    if monto_fin <= 0:
+        raise HTTPException(status_code=400, detail="monto_a_financiar debe ser > 0")
+    if plazo not in (7, 15, 30):
+        raise HTTPException(status_code=400, detail="plazo_dias debe ser 7, 15 o 30")
+
     external_id = (body.get("external_id") or "").strip() or None
     if external_id:
         existing = (
             db.sb.table("pedidos")
-            .select("id,external_id,numero,bodega_id,estado,tipo_operacion,total_pedido,monto_financiado,created_at,items_json")
+            .select(
+                "id,external_id,numero,bodega_id,estado,tipo_operacion,"
+                "total_pedido,monto_financiado,plazo_dias,created_at,items_json"
+            )
             .eq("distribuidor_id", dist["id"])
             .eq("external_id", external_id)
             .limit(1)
@@ -303,6 +349,22 @@ def create_preventa(dist: dict, body: dict, *, es_test: bool = False) -> dict:
             "subtotal": sub,
             "unidad": it.get("unidad") or "UND",
         })
+    total = round(total, 2)
+
+    if monto_fin > total + 0.009:
+        raise HTTPException(
+            status_code=400,
+            detail=f"monto_a_financiar ({monto_fin}) no puede superar el total de ítems ({total})",
+        )
+    if monto_fin > linea_disp + 0.009:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"monto_a_financiar ({monto_fin}) supera linea_disponible ({linea_disp})"
+            ),
+        )
+
+    monto_contado = round(max(0.0, total - monto_fin), 2)
 
     payload = {
         "bodega_id": bodega["id"],
@@ -311,8 +373,11 @@ def create_preventa(dist: dict, body: dict, *, es_test: bool = False) -> dict:
         "tipo_operacion": "preventa",
         "origen": "preventa_socio_api_test" if es_test else "preventa_socio_api",
         "items_json": items,
-        "total_pedido": round(total, 2),
-        "monto_financiado": 0,
+        "total_pedido": total,
+        "monto_productos": total,
+        "monto_financiado": monto_fin,
+        "monto_contado": monto_contado,
+        "plazo_dias": plazo,
         "external_id": external_id,
     }
     if body.get("notas"):
@@ -324,9 +389,8 @@ def create_preventa(dist: dict, body: dict, *, es_test: bool = False) -> dict:
         res = db.sb.table("pedidos").insert(payload).execute()
     except Exception as e:
         # columnas opcionales
-        for opt in ("notas", "vendedor_codigo", "origen", "external_id"):
-            if opt in str(e).lower() or opt in str(e):
-                payload.pop(opt, None)
+        for opt in ("notas", "vendedor_codigo", "origen", "external_id", "monto_productos", "monto_contado"):
+            payload.pop(opt, None)
         try:
             res = db.sb.table("pedidos").insert(payload).execute()
         except Exception as e2:
@@ -356,6 +420,7 @@ def _pedido_out(row: dict) -> dict:
         "tipo_operacion": row.get("tipo_operacion"),
         "total_pedido": float(row["total_pedido"]) if row.get("total_pedido") is not None else None,
         "monto_financiado": float(row["monto_financiado"]) if row.get("monto_financiado") is not None else None,
+        "plazo_dias": int(row["plazo_dias"]) if row.get("plazo_dias") is not None else None,
         "created_at": row.get("created_at"),
         "items": items,
     }
@@ -364,7 +429,7 @@ def _pedido_out(row: dict) -> dict:
 def get_pedido(dist: dict, pedido_id: str, *, es_test: bool = False) -> dict:
     rows = (
         db.sb.table("pedidos")
-        .select("id,external_id,numero,bodega_id,estado,tipo_operacion,total_pedido,monto_financiado,created_at,items_json,distribuidor_id")
+        .select("id,external_id,numero,bodega_id,estado,tipo_operacion,total_pedido,monto_financiado,plazo_dias,created_at,items_json,distribuidor_id")
         .eq("id", pedido_id)
         .eq("distribuidor_id", dist["id"])
         .limit(1)
@@ -406,7 +471,7 @@ def list_pedidos(
 
     q = (
         db.sb.table("pedidos")
-        .select("id,external_id,numero,bodega_id,estado,tipo_operacion,total_pedido,monto_financiado,created_at,items_json")
+        .select("id,external_id,numero,bodega_id,estado,tipo_operacion,total_pedido,monto_financiado,plazo_dias,created_at,items_json")
         .eq("distribuidor_id", dist["id"])
         .in_("bodega_id", allowed_ids)
         .order("created_at", desc=True)
