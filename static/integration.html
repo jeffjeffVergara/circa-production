@@ -55,15 +55,15 @@
     <div class="logo">Circa · PALI S.A.C.</div>
     <h1>API para socios</h1>
     <p class="lead">
-      Documentación abierta para que el sistema del socio distribuidor
-      se conecte a Circa: consulta de línea (<code>situacion</code>),
-      precarga con fotos, preventas con monto y plazo — sin duplicar registros.
+      Integración ZOOM / BsSoft. <strong>Fase actual: solo pruebas</strong>
+      (<code>/api/v1/test</code>). Credenciales y guía en
+      <code>docs/integration/GUIA_ZOOM_PRUEBAS.md</code>.
     </p>
 
     <div class="grid">
       <a class="card" href="/api/v1/docs">
         <strong>Swagger UI</strong>
-        <span>Probar endpoints en el navegador. Auth Bearer incluida.</span>
+        <span>Credenciales test en la descripción. Authorize + tags · test.</span>
       </a>
       <a class="card" href="/api/v1/redoc">
         <strong>ReDoc</strong>
@@ -73,23 +73,22 @@
         <strong>OpenAPI JSON</strong>
         <span>Especificación para importar en Postman, Insomnia o codegen.</span>
       </a>
-      <a class="card" href="/api/v1/health">
-        <strong>Health</strong>
-        <span>Comprobar que la API está arriba.</span>
+      <a class="card" href="/api/v1/test/health">
+        <strong>Health (test)</strong>
+        <span>Comprobar API de pruebas (<code>data_mode=test</code>).</span>
       </a>
     </div>
 
     <div class="code">
-      POST /api/v1/auth/token → access_token<br>
-      Prod: /api/v1 + token prod &nbsp;·&nbsp; Test: /api/v1/test + token test<br>
-      SVC-01 situacion → SVC-02 fotos → SVC-04 monto + plazo_dias
+      client_id: zoom-circa<br>
+      POST /api/v1/auth/token · data_mode=test<br>
+      Base: /api/v1/test &nbsp;·&nbsp; Carpeta Postman: 02 · Pruebas
     </div>
 
     <p class="foot">
-      Colección Postman:
-      <code>postman/Circa_Integration_API_v1.postman_collection.json</code>
-      · Guía: <code>docs/integration/README.md</code>
-      · Anexo: <code>docs/integration/ANEXO_A_servicios_BsSoft.md</code>
+      Guía ZOOM: <code>docs/integration/GUIA_ZOOM_PRUEBAS.md</code>
+      · Postman: <code>postman/Circa_Integration_API_v1.postman_collection.json</code>
+      · README: <code>docs/integration/README.md</code>
     </p>
   </div>
 </body>

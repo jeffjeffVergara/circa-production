@@ -1,12 +1,38 @@
 # Circa · API Socios v1
 
-API pública para que **sistemas de socios distribuidores** (BsSoft / ZOOM u otros) se integren a Circa.
+API pública para socios distribuidores (ZOOM / BsSoft). Circa **expone**; el socio **consume**.
 
-Circa **expone** la API. El socio **consume** la API.
+## Para el equipo ZOOM (empezar aquí)
+
+> **Fase actual: solo pruebas.** No usar `/api/v1` de producción hasta aviso de Circa.
+
+| Recurso | Enlace |
+|---------|--------|
+| **Guía ZOOM (credenciales + ejemplos)** | [GUIA_ZOOM_PRUEBAS.md](./GUIA_ZOOM_PRUEBAS.md) |
+| Base test | `https://circa-production-c517.up.railway.app/api/v1/test` |
+| Swagger | https://circa-production-c517.up.railway.app/api/v1/docs |
+| Postman | carpeta **02 · Pruebas** en la colección |
+
+### Credenciales de prueba
+
+| Campo | Valor |
+|-------|--------|
+| `client_id` | `zoom-circa` |
+| `client_secret` | `VDgiZdWPaEhqghHiyurUQZyQT2wqWYfSz5KTkyfLsWA` |
+| Bearer test | `woeVXt0ZdO4Dx9m4OuwC2oFYzLMgQzdD` |
+
+```bash
+curl -s -X POST "https://circa-production-c517.up.railway.app/api/v1/auth/token" \
+  -H "Content-Type: application/json" \
+  -d '{"grant_type":"client_credentials","client_id":"zoom-circa","client_secret":"VDgiZdWPaEhqghHiyurUQZyQT2wqWYfSz5KTkyfLsWA","data_mode":"test"}'
+```
+
+Detalle de contratos y flujos: ver la [guía ZOOM](./GUIA_ZOOM_PRUEBAS.md).
 
 | Documento | Contenido |
 |-----------|-----------|
-| Este README | Guía rápida + contratos actuales |
+| [GUIA_ZOOM_PRUEBAS.md](./GUIA_ZOOM_PRUEBAS.md) | **Compartir con ZOOM** — test only |
+| Este README | Índice + referencia general |
 | [ANEXO_A_servicios_BsSoft.md](./ANEXO_A_servicios_BsSoft.md) | Catálogo detallado SVC-00…07 |
 | [CASOS_PRUEBA_SVC01.md](./CASOS_PRUEBA_SVC01.md) | Matriz QA de `situacion` |
 | Postman | [`postman/Circa_Integration_API_v1.postman_collection.json`](../../postman/Circa_Integration_API_v1.postman_collection.json) |
@@ -28,10 +54,10 @@ Local: `http://localhost:8000/api/v1/docs`
 
 ## Modos prod / test (un solo ambiente)
 
-| Modo | Base URL | Datos | Token |
-|------|----------|--------|--------|
-| **Producción** | `…/api/v1` | `es_test=false` | `data_mode=prod` |
-| **Pruebas** | `…/api/v1/test` | `es_test=true` | `data_mode=test` |
+| Modo | Base URL | Datos | Token | Fase ZOOM |
+|------|----------|--------|--------|-----------|
+| **Pruebas** | `…/api/v1/test` | `es_test=true` | `data_mode=test` | **Usar ahora** |
+| Producción | `…/api/v1` | `es_test=false` | `data_mode=prod` | Aún no |
 
 El token de prod **no** funciona en `/test` (403) y viceversa.
 
@@ -45,19 +71,18 @@ Content-Type: application/json
 
 {
   "grant_type": "client_credentials",
-  "client_id": "<api_client_id>",
-  "client_secret": "<api_client_secret>",
-  "data_mode": "prod"
+  "client_id": "zoom-circa",
+  "client_secret": "VDgiZdWPaEhqghHiyurUQZyQT2wqWYfSz5KTkyfLsWA",
+  "data_mode": "test"
 }
 ```
 
 ```json
 {
-  "access_token": "...",
+  "access_token": "woeVXt0ZdO4Dx9m4OuwC2oFYzLMgQzdD",
   "token_type": "Bearer",
-  "data_mode": "prod",
+  "data_mode": "test",
   "expires_in": null,
-  "distribuidor_id": "...",
   "distribuidor": "ZOOM CORP"
 }
 ```
@@ -69,8 +94,6 @@ Authorization: Bearer <access_token>
 ```
 
 `expires_in: null` = token de larga duración. Cachearlo; renovar solo ante 401 o rotación Ops.
-
-Credenciales las configura Circa Ops en `distribuidores` (`api_client_id`, `api_client_secret`, `api_token`, `api_token_test`).
 
 ---
 

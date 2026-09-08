@@ -1,16 +1,16 @@
 {
   "info": {
     "name": "Circa Integration API v1",
-    "description": "## API socios → Circa\n\nUn ambiente, dos modos de datos.\n\n| Modo | Base | Token |\n|------|------|-------|\n| Prod | `{{baseUrl}}` | `{{access_token_prod}}` |\n| Test | `{{baseUrlTest}}` | `{{access_token_test}}` |\n\n### Flujo recomendado\n1. **Auth** → obtener token\n2. **SVC-01** → mirar `items[i].situacion`\n3. `no_registrada` → **SVC-02** (multipart + fotos)\n4. `en_evaluacion` → reconsultar SVC-01b\n5. `con_linea` → **SVC-04** → SVC-05 → SVC-07\n\n### `situacion` (por bodega)\n| Valor | Acción |\n|-------|--------|\n| `no_registrada` | Precargar (SVC-02) |\n| `en_evaluacion` | Esperar / reconsultar |\n| `no_disponible` | Sin cupo |\n| `con_linea` | Financiar (SVC-04) |\n\nSwagger: `{{baseUrl}}/docs`",
+    "description": "## Circa × ZOOM — fase **solo pruebas**\n\n**Usar carpeta 02 · Pruebas.** No usar producción hasta aviso de Circa.\n\n| Campo | Valor |\n|-------|--------|\n| Base test | `{{baseUrlTest}}` |\n| client_id | `{{client_id}}` |\n| client_secret | (variable de colección) |\n| Bearer | `{{access_token_test}}` |\n\n### Pasos\n1. **00 · Auth → Obtener token — pruebas** (o usar Bearer ya cargado)\n2. Trabajar en **02 · Pruebas**\n3. Flujo: SVC-01 `situacion` → SVC-02 fotos → SVC-04 monto/plazo\n\n### `situacion`\n| Valor | Acción |\n|-------|--------|\n| `no_registrada` | SVC-02 |\n| `en_evaluacion` | Reconsultar |\n| `no_disponible` | Sin cupo |\n| `con_linea` | SVC-04 |\n\nGuía: `docs/integration/GUIA_ZOOM_PRUEBAS.md`  \nSwagger: https://circa-production-c517.up.railway.app/api/v1/docs",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
     { "key": "baseUrl", "value": "https://circa-production-c517.up.railway.app/api/v1" },
     { "key": "baseUrlTest", "value": "https://circa-production-c517.up.railway.app/api/v1/test" },
     { "key": "client_id", "value": "zoom-circa" },
-    { "key": "client_secret", "value": "PEGAR_API_CLIENT_SECRET" },
+    { "key": "client_secret", "value": "VDgiZdWPaEhqghHiyurUQZyQT2wqWYfSz5KTkyfLsWA" },
     { "key": "access_token_prod", "value": "" },
-    { "key": "access_token_test", "value": "" },
+    { "key": "access_token_test", "value": "woeVXt0ZdO4Dx9m4OuwC2oFYzLMgQzdD" },
     { "key": "bodega_id", "value": "" },
     { "key": "bodega_id_test", "value": "" },
     { "key": "pedido_id", "value": "" },
@@ -23,7 +23,7 @@
   "item": [
     {
       "name": "00 · Auth",
-      "description": "Obtener access tokens. Sin Bearer previo.\n\nPegar `client_secret` en variables de colección.",
+      "description": "ZOOM: usar **Obtener token — pruebas** (`data_mode=test`). Credenciales ya en variables de colección.",
       "item": [
         {
           "name": "Obtener token — producción",
@@ -111,7 +111,7 @@
     },
     {
       "name": "01 · Producción",
-      "description": "Datos reales (`es_test=false`). Auth: Bearer `{{access_token_prod}}`",
+      "description": "⚠️ **No usar en la fase actual con ZOOM.** Datos reales. Reservado hasta habilitación Circa.\n\nAuth: `{{access_token_prod}}` (vacío a propósito).",
       "auth": {
         "type": "bearer",
         "bearer": [{ "key": "token", "value": "{{access_token_prod}}", "type": "string" }]
@@ -587,7 +587,7 @@
     },
     {
       "name": "02 · Pruebas",
-      "description": "Datos `es_test=true`. Auth: Bearer `{{access_token_test}}` · Base: `{{baseUrlTest}}`\n\nMismos contratos que producción; ideal para probar SVC-02 con fotos sin tocar data real.",
+      "description": "## Usar esta carpeta (ZOOM)\n\nBase: `{{baseUrlTest}}` · Bearer: `{{access_token_test}}`\n\n1. Auth → token pruebas (si el Bearer vacío)\n2. Health\n3. Bodegas: SVC-01 → SVC-02 (fotos) → SVC-01b\n4. Preventas: SVC-04 (monto + plazo) cuando `situacion=con_linea`\n\nGuía: `docs/integration/GUIA_ZOOM_PRUEBAS.md`",
       "auth": {
         "type": "bearer",
         "bearer": [{ "key": "token", "value": "{{access_token_test}}", "type": "string" }]

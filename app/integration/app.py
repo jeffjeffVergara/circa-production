@@ -24,41 +24,48 @@ from app.integration import service as svc
 from app.services import prospect_media as media
 
 DESCRIPTION = """
-## API para socios
+## API para socios — fase actual: **solo pruebas (ZOOM)**
 
-API de Circa para que **sistemas de socios distribuidores** se conecten:
-enrolamiento de bodegas, evaluación, preventas y pedidos.
+**No usar producción** hasta aviso de Circa. Solo `/api/v1/test` + `data_mode=test`.
 
-### Modos (mismo ambiente)
+### Credenciales de prueba (ZOOM CORP)
 
-| Modo | Base URL | Datos | Token |
-|------|----------|--------|--------|
-| **Producción** | `/api/v1` | `es_test=false` | `data_mode=prod` |
-| **Pruebas** | `/api/v1/test` | `es_test=true` | `data_mode=test` |
+| Campo | Valor |
+|-------|--------|
+| `client_id` | `zoom-circa` |
+| `client_secret` | `VDgiZdWPaEhqghHiyurUQZyQT2wqWYfSz5KTkyfLsWA` |
+| Bearer test (opcional) | `woeVXt0ZdO4Dx9m4OuwC2oFYzLMgQzdD` |
+| Base | `https://circa-production-c517.up.railway.app/api/v1/test` |
 
 ```http
 POST /api/v1/auth/token
-{ "grant_type": "client_credentials", "client_id": "...", "client_secret": "...", "data_mode": "prod" }
+Content-Type: application/json
+
+{
+  "grant_type": "client_credentials",
+  "client_id": "zoom-circa",
+  "client_secret": "VDgiZdWPaEhqghHiyurUQZyQT2wqWYfSz5KTkyfLsWA",
+  "data_mode": "test"
+}
 ```
 
-Luego: `Authorization: Bearer <access_token>`.  
-Token prod **no** sirve en `/test` y viceversa.
+En Swagger: **Authorize** → pegar el `access_token` (o el Bearer de la tabla).  
+Probar endpoints con tag **· test**.
 
 ### Flujo y `situacion` (por bodega)
 
-1. **SVC-01** `GET /bodegas?q=` → leer `items[i].situacion`
-2. `no_registrada` → **SVC-02** `POST /bodegas` (multipart: datos + `foto_dueno` + `foto_bodega`)
-3. `en_evaluacion` → reconsultar **SVC-01b** (no reenviar precarga)
+1. **SVC-01** `GET …/test/bodegas?q=` → `items[i].situacion`
+2. `no_registrada` → **SVC-02** multipart (`foto_dueno` + `foto_bodega`)
+3. `en_evaluacion` → reconsultar **SVC-01b**
 4. `no_disponible` → sin cupo
-5. `con_linea` → **SVC-04** `POST /preventas` con `monto_a_financiar` + `plazo_dias` (7|15|30)
-6. Polling **SVC-05** · despacho **SVC-07**
+5. `con_linea` → **SVC-04** (`monto_a_financiar` + `plazo_dias` 7\|15\|30)
+6. **SVC-05** poll · **SVC-07** despacho
 
-### Principios
+### Docs
 
-- Precarga **no libera línea** (`linea_disponible=0`, `situacion=en_evaluacion`)
-- El `id` de bodega lo genera Circa; `external_id` del socio es opcional
-- No mezclar IDs entre modos prod/test
-- Guía: `docs/integration/README.md` · Anexo: `docs/integration/ANEXO_A_servicios_BsSoft.md`
+- Guía ZOOM: `docs/integration/GUIA_ZOOM_PRUEBAS.md`
+- README: `docs/integration/README.md`
+- Postman: carpeta **02 · Pruebas**
 
 ### Soporte
 contacto@circa.pe · +51 986 311 567
