@@ -9,6 +9,7 @@ API pública para socios distribuidores (ZOOM / BsSoft). Circa **expone**; el so
 | Recurso | Enlace |
 |---------|--------|
 | **Guía ZOOM (credenciales + ejemplos)** | [GUIA_ZOOM_PRUEBAS.md](./GUIA_ZOOM_PRUEBAS.md) |
+| **Flujo Auth → SVC-01 → 02 → 04** | [DOCUMENTO_SERVICIOS_CORE.md](./DOCUMENTO_SERVICIOS_CORE.md) |
 | Base test | `https://circa-production-c517.up.railway.app/api/v1/test` |
 | Swagger | https://circa-production-c517.up.railway.app/api/v1/docs |
 | Postman | carpeta **02 · Pruebas** en la colección |
@@ -31,7 +32,8 @@ Detalle de contratos y flujos: ver la [guía ZOOM](./GUIA_ZOOM_PRUEBAS.md).
 
 | Documento | Contenido |
 |-----------|-----------|
-| [GUIA_ZOOM_PRUEBAS.md](./GUIA_ZOOM_PRUEBAS.md) | **Compartir con ZOOM** — test only |
+| [DOCUMENTO_SERVICIOS_CORE.md](./DOCUMENTO_SERVICIOS_CORE.md) | **Auth + SVC-01 + SVC-02 + SVC-04** (flujo completo) |
+| [GUIA_ZOOM_PRUEBAS.md](./GUIA_ZOOM_PRUEBAS.md) | **Compartir con ZOOM** — test only + credenciales |
 | Este README | Índice + referencia general |
 | [ANEXO_A_servicios_BsSoft.md](./ANEXO_A_servicios_BsSoft.md) | Catálogo detallado SVC-00…07 |
 | [CASOS_PRUEBA_SVC01.md](./CASOS_PRUEBA_SVC01.md) | Matriz QA de `situacion` |

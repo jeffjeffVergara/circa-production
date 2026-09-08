@@ -215,6 +215,7 @@ Abrir https://circa-production-c517.up.railway.app/api/v1/docs
 
 | Doc | Uso |
 |-----|-----|
+| [DOCUMENTO_SERVICIOS_CORE.md](./DOCUMENTO_SERVICIOS_CORE.md) | **Auth + SVC-01 + SVC-02 + SVC-04** (relación y contratos) |
 | [README.md](./README.md) | Guía general API socios |
 | [ANEXO_A_servicios_BsSoft.md](./ANEXO_A_servicios_BsSoft.md) | Contrato detallado SVC-00…07 |
 | [CASOS_PRUEBA_SVC01.md](./CASOS_PRUEBA_SVC01.md) | Matriz QA de `situacion` + datos de prueba |
