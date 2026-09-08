@@ -16,9 +16,9 @@
     { "key": "pedido_id", "value": "" },
     { "key": "pedido_id_test", "value": "" },
     { "key": "q_dni_inexistente", "value": "00000000" },
-    { "key": "q_dni_inactiva", "value": "PEGAR_DNI_INACTIVA" },
+    { "key": "q_dni_inactiva", "value": "08608042" },
     { "key": "q_dni_activa_sin_cupo", "value": "PEGAR_DNI_ACTIVA_SIN_CUPO" },
-    { "key": "q_dni_activa_con_cupo", "value": "PEGAR_DNI_ACTIVA_CON_CUPO" }
+    { "key": "q_dni_activa_con_cupo", "value": "46843088" }
   ],
   "item": [
     {

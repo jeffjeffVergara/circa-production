@@ -26,15 +26,25 @@ En código Circa: `app.integration.franja.calcular_situacion` / `interpretar_fra
 
 ---
 
-## Datos de prueba sugeridos (sembrar en BD o usar existentes)
+## Datos de prueba (ZOOM · `es_test=true`)
 
-| Alias | Condición | Ejemplo de `q` |
-|-------|-----------|----------------|
-| A | No existe | DNI `00000000` |
-| B | `inactivo`, `linea_disponible=0` | DNI de bodega precargada |
-| C | `activo`, `linea_disponible=0` | Bodega activa sin cupo |
-| D | `activo`, `linea_disponible>0` | Bodega activa con cupo |
-| E | UUID inventado | SVC-01b |
+Usar como `q` en `GET /api/v1/test/bodegas?q=...` (Bearer test).
+
+| Alias | Condición / `situacion` | Valor de `q` |
+|-------|-------------------------|--------------|
+| A | `no_registrada` | `00000000` |
+| B | `en_evaluacion` (inactiva) | `08608042` |
+| B2 | `en_evaluacion` (por RUC) | `10991291415` |
+| D | `con_linea` | `46843088` |
+| D2 | `con_linea` | `73217300` |
+| D3 | `con_linea` | `46097938` |
+| D4 | `con_linea` | `06806355` |
+| Tel | Match por teléfono | `912114088` |
+| E | SVC-01b 404 | UUID `00000000-0000-0000-0000-000000000000` |
+
+También se puede buscar por razón social parcial, p.ej. `JONATHAN TEST`.
+
+Detalle y credenciales: [`GUIA_ZOOM_PRUEBAS.md`](./GUIA_ZOOM_PRUEBAS.md).
 
 ---
 

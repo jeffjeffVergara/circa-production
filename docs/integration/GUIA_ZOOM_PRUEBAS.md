@@ -104,7 +104,29 @@ Auth (data_mode=test)
 
 ---
 
-## 5. Ejemplos mínimos
+## 5. Datos de prueba (modo `/api/v1/test`)
+
+Usar en **SVC-01** como query `q`. Todos pertenecen al distribuidor ZOOM CORP con `es_test=true`.
+
+| `q` (sugerido) | `situacion` esperada | Notas |
+|----------------|----------------------|--------|
+| `00000000` | `no_registrada` | DNI inventado — no existe |
+| `08608042` | `en_evaluacion` | Inactiva, sin cupo |
+| `00141018` | `en_evaluacion` | Inactiva (también RUC `10991291415`) |
+| `46843088` | `con_linea` | Activa, cupo ~500 |
+| `73217300` | `con_linea` | Activa, cupo ~500 |
+| `46097938` | `con_linea` | Activa, cupo ~100 |
+| `06806355` | `con_linea` | Activa, cupo ~500 |
+| `912114088` | (match por tel.) | Parcial de `+51912114088` → bodega en evaluación |
+| `10991291415` | `en_evaluacion` | Búsqueda por RUC |
+
+`q` también acepta razón social (parcial), p.ej. `JONATHAN TEST`.
+
+> Si necesitan un caso **`no_disponible`** (activa sin cupo), avisar a Circa Ops para sembrar una bodega test con `linea_disponible=0`.
+
+---
+
+## 6. Ejemplos mínimos
 
 ### SVC-01 — consultar
 
@@ -112,8 +134,17 @@ Auth (data_mode=test)
 export BASE="https://circa-production-c517.up.railway.app/api/v1/test"
 export TOKEN="woeVXt0ZdO4Dx9m4OuwC2oFYzLMgQzdD"
 
+# no_registrada
 curl -s -H "Authorization: Bearer $TOKEN" \
   "$BASE/bodegas?q=00000000&limit=20"
+
+# en_evaluacion
+curl -s -H "Authorization: Bearer $TOKEN" \
+  "$BASE/bodegas?q=08608042&limit=20"
+
+# con_linea
+curl -s -H "Authorization: Bearer $TOKEN" \
+  "$BASE/bodegas?q=46843088&limit=20"
 ```
 
 Ejemplo vacío:
@@ -160,10 +191,10 @@ Respuesta típica: `situacion=en_evaluacion`, `linea_disponible=0`, `tiene_foto_
 
 ---
 
-## 6. Postman
+## 7. Postman
 
 1. Importar: `postman/Circa_Integration_API_v1.postman_collection.json`
-2. Variables ya vienen con `client_id` / `client_secret` / `access_token_test`
+2. Variables ya vienen con `client_id` / `client_secret` / `access_token_test` y DNIs de prueba (`q_dni_*`)
 3. Usar solo la carpeta **02 · Pruebas**
 4. Primero: **00 · Auth → Obtener token — pruebas** (o usar el Bearer ya cargado)
 
@@ -171,7 +202,7 @@ La carpeta **01 · Producción** está documentada pero **no debe usarse** en es
 
 ---
 
-## 7. Swagger
+## 8. Swagger
 
 Abrir https://circa-production-c517.up.railway.app/api/v1/docs  
 
@@ -180,17 +211,17 @@ Abrir https://circa-production-c517.up.railway.app/api/v1/docs
 
 ---
 
-## 8. Documentación adicional
+## 9. Documentación adicional
 
 | Doc | Uso |
 |-----|-----|
 | [README.md](./README.md) | Guía general API socios |
 | [ANEXO_A_servicios_BsSoft.md](./ANEXO_A_servicios_BsSoft.md) | Contrato detallado SVC-00…07 |
-| [CASOS_PRUEBA_SVC01.md](./CASOS_PRUEBA_SVC01.md) | Matriz QA de `situacion` |
+| [CASOS_PRUEBA_SVC01.md](./CASOS_PRUEBA_SVC01.md) | Matriz QA de `situacion` + datos de prueba |
 
 ---
 
-## 9. Soporte
+## 10. Soporte
 
 contacto@circa.pe · +51 986 311 567  
 

@@ -52,6 +52,17 @@ Content-Type: application/json
 En Swagger: **Authorize** → pegar el `access_token` (o el Bearer de la tabla).  
 Probar endpoints con tag **· test**.
 
+### Datos de prueba (SVC-01 `q`)
+
+| `q` | `situacion` |
+|-----|-------------|
+| `00000000` | `no_registrada` |
+| `08608042` | `en_evaluacion` |
+| `46843088` | `con_linea` |
+| `73217300` | `con_linea` |
+
+Más filas: `docs/integration/GUIA_ZOOM_PRUEBAS.md` §5.
+
 ### Flujo y `situacion` (por bodega)
 
 1. **SVC-01** `GET …/test/bodegas?q=` → `items[i].situacion`
