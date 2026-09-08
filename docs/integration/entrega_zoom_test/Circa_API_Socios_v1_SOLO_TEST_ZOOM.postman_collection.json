@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Circa API Socios v1 — SOLO TEST (ZOOM)",
-    "description": "## Circa × ZOOM — solo ambiente de pruebas\n\n**No incluye producción.**\n\n| Campo | Valor |\n|-------|--------|\n| Base | `https://circa-production-c517.up.railway.app/api/v1/test` |\n| client_id | `zoom-circa` |\n| Auth | `https://circa-production-c517.up.railway.app/api/v1/auth/token` |\n\n### Pasos\n1. Auth → Obtener token — pruebas\n2. SVC-01 → mirar `situacion`\n3. `no_registrada` → SVC-02 (fotos)\n4. `con_linea` → SVC-04 (monto + plazo)\n\nSwagger: https://circa-production-c517.up.railway.app/api/v1/docs\n",
+    "description": "## Circa × ZOOM — solo ambiente de pruebas\n\n**No incluye producción.**\n\n### Documentación online Circa\n| Recurso | URL |\n|---------|-----|\n| Swagger UI | https://circa-production-c517.up.railway.app/api/v1/docs |\n| ReDoc | https://circa-production-c517.up.railway.app/api/v1/redoc |\n| OpenAPI JSON | https://circa-production-c517.up.railway.app/api/v1/openapi.json |\n| Landing | https://circa-production-c517.up.railway.app/static/integration.html |\n| Base test | https://circa-production-c517.up.railway.app/api/v1/test |\n| Auth | https://circa-production-c517.up.railway.app/api/v1/auth/token |\n\n### Credenciales (variables de colección)\n| Campo | Variable |\n|-------|----------|\n| Base | `{{baseUrl}}` |\n| client_id | `{{client_id}}` |\n| client_secret | `{{client_secret}}` |\n| Bearer | `{{access_token}}` |\n\n### Pasos\n1. Auth → Obtener token — pruebas\n2. SVC-01 → mirar `situacion`\n3. `no_registrada` → SVC-02 (fotos)\n4. `con_linea` → SVC-04 (monto + plazo)\n",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
