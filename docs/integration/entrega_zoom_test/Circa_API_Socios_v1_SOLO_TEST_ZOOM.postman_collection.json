@@ -1,0 +1,427 @@
+{
+  "info": {
+    "name": "Circa API Socios v1 — SOLO TEST (ZOOM)",
+    "description": "## Circa × ZOOM — solo ambiente de pruebas\n\n**No incluye producción.**\n\n| Campo | Valor |\n|-------|--------|\n| Base | `https://circa-production-c517.up.railway.app/api/v1/test` |\n| client_id | `zoom-circa` |\n| Auth | `https://circa-production-c517.up.railway.app/api/v1/auth/token` |\n\n### Pasos\n1. Auth → Obtener token — pruebas\n2. SVC-01 → mirar `situacion`\n3. `no_registrada` → SVC-02 (fotos)\n4. `con_linea` → SVC-04 (monto + plazo)\n\nSwagger: https://circa-production-c517.up.railway.app/api/v1/docs\n",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "https://circa-production-c517.up.railway.app/api/v1/test"
+    },
+    {
+      "key": "client_id",
+      "value": "zoom-circa"
+    },
+    {
+      "key": "client_secret",
+      "value": "VDgiZdWPaEhqghHiyurUQZyQT2wqWYfSz5KTkyfLsWA"
+    },
+    {
+      "key": "access_token",
+      "value": "woeVXt0ZdO4Dx9m4OuwC2oFYzLMgQzdD"
+    },
+    {
+      "key": "bodega_id",
+      "value": ""
+    },
+    {
+      "key": "pedido_id",
+      "value": ""
+    },
+    {
+      "key": "q_dni_inexistente",
+      "value": "00000000"
+    },
+    {
+      "key": "q_dni_inactiva",
+      "value": "08608042"
+    },
+    {
+      "key": "q_dni_activa_con_cupo",
+      "value": "46843088"
+    }
+  ],
+  "item": [
+    {
+      "name": "00 · Auth (test)",
+      "description": "Solo data_mode=test. Credenciales ZOOM de prueba precargadas.",
+      "item": [
+        {
+          "name": "Obtener token — pruebas (data_mode=test)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "const j = pm.response.json();",
+                  "pm.test('token test', function () {",
+                  "  pm.expect(j.token_type).to.eql('Bearer');",
+                  "  pm.expect(j.data_mode).to.eql('test');",
+                  "  pm.expect(j.access_token).to.be.a('string').and.not.empty;",
+                  "});",
+                  "if (j.access_token) pm.collectionVariables.set('access_token', j.access_token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"grant_type\": \"client_credentials\",\n  \"client_id\": \"{{client_id}}\",\n  \"client_secret\": \"{{client_secret}}\",\n  \"data_mode\": \"test\"\n}"
+            },
+            "url": "{{baseUrl}}/auth/token",
+            "description": "Igual que prod pero `data_mode: \"test\"` → token para `/api/v1/test/...`"
+          },
+          "response": [
+            {
+              "name": "200 — token test",
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"access_token\": \"<api_token_test>\",\n  \"token_type\": \"Bearer\",\n  \"data_mode\": \"test\",\n  \"expires_in\": null,\n  \"distribuidor_id\": \"d1a2b3c4-0001-4000-8000-000000000002\",\n  \"distribuidor\": \"ZOOM CORP\"\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "01 · Servicios de prueba",
+      "description": "Todos los requests usan {{baseUrl}} = /api/v1/test.\nBearer: {{access_token}}.\nFlujo: SVC-01 situacion → SVC-02 fotos → SVC-04 monto/plazo.",
+      "auth": {
+        "type": "bearer",
+        "bearer": [
+          {
+            "key": "token",
+            "value": "{{access_token}}",
+            "type": "string"
+          }
+        ]
+      },
+      "item": [
+        {
+          "name": "Health (test)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('data_mode test', function () { pm.expect(pm.response.json().data_mode).to.eql('test'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "url": "{{baseUrl}}/health"
+          },
+          "response": [
+            {
+              "name": "200 OK test",
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"status\": \"ok\",\n  \"service\": \"circa-integration-api\",\n  \"version\": \"1.0.0\",\n  \"data_mode\": \"test\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Bodegas (test)",
+          "item": [
+            {
+              "name": "SVC-02 Precargar (+ fotos) test",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "if (pm.response.code === 200) {",
+                      "  var d = pm.response.json();",
+                      "  if (d.id) pm.collectionVariables.set('bodega_id', d.id);",
+                      "  pm.test('es_test y fotos', function () {",
+                      "    pm.expect(d.es_test).to.eql(true);",
+                      "    pm.expect(d.tiene_foto_dueno).to.eql(true);",
+                      "    pm.expect(d.tiene_foto_bodega).to.eql(true);",
+                      "    pm.expect(d.situacion).to.eql('en_evaluacion');",
+                      "  });",
+                      "}"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "telefono_whatsapp",
+                      "value": "999000001",
+                      "type": "text"
+                    },
+                    {
+                      "key": "dni_representante",
+                      "value": "00000001",
+                      "type": "text"
+                    },
+                    {
+                      "key": "razon_social",
+                      "value": "BODEGA TEST API",
+                      "type": "text"
+                    },
+                    {
+                      "key": "nombre_comercial",
+                      "value": "Bodega Test",
+                      "type": "text"
+                    },
+                    {
+                      "key": "distrito",
+                      "value": "Miraflores",
+                      "type": "text"
+                    },
+                    {
+                      "key": "solo_dni_sin_ruc",
+                      "value": "true",
+                      "type": "text"
+                    },
+                    {
+                      "key": "foto_dueno",
+                      "type": "file",
+                      "src": [],
+                      "description": "Seleccionar archivo"
+                    },
+                    {
+                      "key": "foto_bodega",
+                      "type": "file",
+                      "src": [],
+                      "description": "Seleccionar archivo"
+                    }
+                  ]
+                },
+                "url": "{{baseUrl}}/bodegas",
+                "description": "Igual que prod pero en `/api/v1/test`. Respuesta con `es_test: true`."
+              },
+              "response": [
+                {
+                  "name": "200 — creada test",
+                  "status": "OK",
+                  "code": 200,
+                  "_postman_previewlanguage": "json",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/json"
+                    }
+                  ],
+                  "body": "{\n  \"id\": \"t1e2s3t4-0001-4000-8000-000000000001\",\n  \"telefono_whatsapp\": \"+51999000001\",\n  \"dni_representante\": \"00000001\",\n  \"razon_social\": \"BODEGA TEST API\",\n  \"estado\": \"inactivo\",\n  \"situacion\": \"en_evaluacion\",\n  \"tiene_foto_dueno\": true,\n  \"tiene_foto_bodega\": true,\n  \"es_test\": true,\n  \"created\": true,\n  \"linea_disponible\": 0.0\n}"
+                }
+              ]
+            },
+            {
+              "name": "SVC-01 Listar / buscar",
+              "request": {
+                "method": "GET",
+                "url": "{{baseUrl}}/bodegas?q=00000001&limit=20",
+                "description": "Buscar en modo test. Ver ejemplos de `situacion` en carpeta Producción."
+              },
+              "response": [
+                {
+                  "name": "200 — ejemplo",
+                  "status": "OK",
+                  "code": 200,
+                  "_postman_previewlanguage": "json",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/json"
+                    }
+                  ],
+                  "body": "{\n  \"total\": 1,\n  \"situacion\": \"en_evaluacion\",\n  \"items\": [\n    {\n      \"id\": \"t1e2s3t4-0001-4000-8000-000000000001\",\n      \"situacion\": \"en_evaluacion\",\n      \"es_test\": true\n    }\n  ]\n}"
+                }
+              ]
+            },
+            {
+              "name": "SVC-01b Obtener bodega",
+              "request": {
+                "method": "GET",
+                "url": "{{baseUrl}}/bodegas/{{bodega_id}}"
+              }
+            },
+            {
+              "name": "SVC-03 Patch bodega",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"nombre_comercial\": \"Bodega Test Actualizada\",\n  \"distrito\": \"Miraflores\"\n}"
+                },
+                "url": "{{baseUrl}}/bodegas/{{bodega_id}}"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Preventas / Pedidos (test)",
+          "item": [
+            {
+              "name": "SVC-04 Crear preventa",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "if (pm.response.code === 200) {",
+                      "  var d = pm.response.json();",
+                      "  if (d.id) pm.collectionVariables.set('pedido_id', d.id);",
+                      "}"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"external_id\": \"TEST-PV-001\",\n  \"bodega_id\": \"{{bodega_id}}\",\n  \"vendedor_codigo\": \"TEST01\",\n  \"monto_a_financiar\": 10.0,\n  \"plazo_dias\": 15,\n  \"items\": [\n    {\n      \"sku\": \"T0001\",\n      \"nombre\": \"Producto test\",\n      \"cantidad\": 1,\n      \"precio_unitario\": 10\n    }\n  ]\n}"
+                },
+                "url": "{{baseUrl}}/preventas"
+              }
+            },
+            {
+              "name": "SVC-05 Obtener preventa",
+              "request": {
+                "method": "GET",
+                "url": "{{baseUrl}}/preventas/{{pedido_id}}"
+              }
+            },
+            {
+              "name": "SVC-07 Cambiar estado",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"estado\": \"preventa_aceptada\",\n  \"comentario\": \"Aceptada en modo test\"\n}"
+                },
+                "url": "{{baseUrl}}/pedidos/{{pedido_id}}/estado"
+              }
+            }
+          ]
+        },
+        {
+          "name": "SVC-01 Casos (test)",
+          "item": [
+            {
+              "name": "TP-01 No encuentra → no_registrada",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                      "const j = pm.response.json();",
+                      "pm.test('situacion', function () { pm.expect(j.situacion).to.eql('no_registrada'); });"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "url": "{{baseUrl}}/bodegas?q={{q_dni_inexistente}}&limit=20"
+              },
+              "response": [
+                {
+                  "name": "Ejemplo",
+                  "status": "OK",
+                  "code": 200,
+                  "_postman_previewlanguage": "json",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/json"
+                    }
+                  ],
+                  "body": "{\n  \"total\": 0,\n  \"items\": [],\n  \"situacion\": \"no_registrada\"\n}"
+                }
+              ]
+            },
+            {
+              "name": "TP-07 Token prod en URL test → 403",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test('HTTP 403 si se usó token prod', function () {",
+                      "  pm.expect([401,403]).to.include(pm.response.code);",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{access_token_prod}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "method": "GET",
+                "url": "{{baseUrl}}/bodegas?limit=5",
+                "description": "Token de producción no debe funcionar en `/test`."
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

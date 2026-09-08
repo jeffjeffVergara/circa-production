@@ -1,0 +1,22 @@
+Circa × ZOOM — Entrega ambiente TEST
+=====================================
+
+Ubicación en tu Mac:
+  /Users/jefferson/Cursor-projects/circa/circa-production/docs/integration/entrega_zoom_test
+
+Archivos:
+  1) Circa_ZOOM_API_Socios_SOLO_TEST.docx
+     → Documento Word para compartir (solo links y credenciales de test)
+
+  2) Circa_API_Socios_v1_SOLO_TEST_ZOOM.postman_collection.json
+     → Importar en Postman (Import → File)
+     → Solo Auth test + servicios /api/v1/test
+     → Variables precargadas (client_id, client_secret, access_token)
+
+Credenciales test:
+  client_id:     zoom-circa
+  client_secret: VDgiZdWPaEhqghHiyurUQZyQT2wqWYfSz5KTkyfLsWA
+  Bearer:        woeVXt0ZdO4Dx9m4OuwC2oFYzLMgQzdD
+  Base:          https://circa-production-c517.up.railway.app/api/v1/test
+
+NO usar producción en esta fase.
