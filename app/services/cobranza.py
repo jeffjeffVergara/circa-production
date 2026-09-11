@@ -270,6 +270,7 @@ async def get_pending_payments(bodega_id: str) -> list[dict]:
 # El modo lo controla la variable de entorno NUBEFACT_MODO (demo | produccion);
 # si no esta definida, se asume "demo".
 
+import asyncio
 import os
 from datetime import timezone
 
@@ -350,7 +351,7 @@ def _siguiente_numero(serie: str, proveedor: str) -> int:
         db.sb.table("comprobantes_circa")
         .select("correlativo")
         .eq("serie", serie)
-        .eq("proveedor", proveedor)
+        .in_("proveedor", [proveedor, f"{proveedor}_manual"])
         .execute()
         .data
     ) or []
@@ -523,8 +524,40 @@ async def emitir_comprobante_circa(pedido: dict) -> None:
             ],
         }
 
-        # Emitir en NubeFact.
-        data = await _nubefact_emitir(payload)
+        # Emitir en NubeFact, con reintentos:
+        # - errores de conexion (ConnectionTerminated, timeouts): 2 reintentos
+        #   con pausa, mismo numero.
+        # - error 23 (numero ya existe en NubeFact): el contador local quedo
+        #   atras (p. ej. una emision manual); avanzar al siguiente numero y
+        #   reintentar, hasta 10 numeros.
+        data = None
+        intentos_conexion = 0
+        saltos_numero = 0
+        while data is None:
+            try:
+                payload["numero"] = numero
+                data = await _nubefact_emitir(payload)
+            except RuntimeError as e_emit:
+                msg_emit = str(e_emit).lower()
+                if "error 23" in msg_emit and saltos_numero < 10:
+                    saltos_numero += 1
+                    numero += 1
+                    logger.warning(
+                        f"NubeFact error 23 en {serie}-{numero - 1}; "
+                        f"reintentando con {serie}-{numero}"
+                    )
+                    continue
+                raise
+            except Exception as e_conn:
+                if intentos_conexion < 2:
+                    intentos_conexion += 1
+                    logger.warning(
+                        f"Error de conexion con NubeFact "
+                        f"(intento {intentos_conexion}/2): {e_conn}"
+                    )
+                    await asyncio.sleep(2 * intentos_conexion)
+                    continue
+                raise
 
         # Interpretar la respuesta.
         enlace = (data.get("enlace") or "").strip()
@@ -637,12 +670,12 @@ async def emitir_comprobante_circa(pedido: dict) -> None:
                 "error_mensaje": msg[:500],
                 "created_at": ahora,
             }).execute()
-            # Si NubeFact dice que el documento ya existe, no reintentar en bucle.
-            if ya_existe and pedido_id:
-                db.sb.table("pedidos").update({
-                    "facturado": True,
-                    "fecha_facturado": ahora,
-                }).eq("id", pedido_id).execute()
+            # Nota: antes el error 23 marcaba el pedido facturado=True para
+            # evitar bucles, dejando pedidos "facturados" sin comprobante real
+            # (CRC-158/182/208, 11-sep-2026). Con el auto-resync del numero en
+            # la emision, el error 23 se recupera solo y el pedido queda
+            # facturado=False para poder reintentar desde el panel.
+            _ = ya_existe  # conservado para logging/depuracion
         except Exception as e2:
             logger.error(
                 f"Tambien fallo registrar el error del comprobante: {e2}"

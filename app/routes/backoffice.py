@@ -784,6 +784,59 @@ async def aceptar_preventa(
     return res
 
 
+@router.post("/cobranza/{pedido_id}/emitir-comprobante")
+async def emitir_comprobante_pedido(pedido_id: str, user: dict = Depends(get_backoffice_writer)):
+    """
+    Re-emite el comprobante Circa de un pedido pagado que no tiene
+    comprobante exitoso (emisiones que fallaron por conexion o error 23).
+    """
+    ped_rows = (
+        db.sb.table("pedidos").select("*").eq("id", pedido_id).limit(1).execute().data
+    )
+    if not ped_rows:
+        raise HTTPException(status_code=404, detail="Pedido no encontrado")
+    pedido = ped_rows[0]
+    if pedido.get("estado") != "pagado":
+        raise HTTPException(status_code=400, detail="El pedido no esta pagado")
+
+    exitosos = (
+        db.sb.table("comprobantes_circa")
+        .select("id,serie,correlativo")
+        .eq("pedido_id", pedido_id)
+        .in_("sunat_estado", ["aceptado", "enviado"])
+        .execute()
+        .data
+    ) or []
+    if exitosos:
+        c = exitosos[0]
+        raise HTTPException(
+            status_code=400,
+            detail=f"Ya tiene comprobante {c.get('serie')}-{c.get('correlativo')}",
+        )
+
+    # Limpiar filas de intentos fallidos y el flag facturado, y re-emitir.
+    db.sb.table("comprobantes_circa").delete().eq("pedido_id", pedido_id).eq(
+        "sunat_estado", "error"
+    ).execute()
+    db.sb.table("pedidos").update({"facturado": False}).eq("id", pedido_id).execute()
+    pedido["facturado"] = False
+
+    from app.services import cobranza as _cobranza
+    await _cobranza.emitir_comprobante_circa(pedido)
+
+    nuevos = (
+        db.sb.table("comprobantes_circa")
+        .select("serie,correlativo,sunat_estado,error_mensaje")
+        .eq("pedido_id", pedido_id)
+        .order("created_at", desc=True)
+        .limit(1)
+        .execute()
+        .data
+    ) or []
+    log_action(user=user, action="emitir_comprobante", entity_type="pedido", entity_id=pedido_id, pedido_id=pedido_id)
+    return {"ok": bool(nuevos and nuevos[0].get("sunat_estado") != "error"), "comprobante": (nuevos[0] if nuevos else None)}
+
+
 @router.post("/cobranza/{pedido_id}/verificar-pago")
 async def verificar_pago(pedido_id: str, payload: dict, user: dict = Depends(get_backoffice_writer)):
     result = await dist.admin_verificar_pago(pedido_id, payload, admin=True)
