@@ -1,11 +1,26 @@
 """Supabase client wrapper for all DB operations."""
 import json
 import logging
-from supabase import create_client
-from app.config import SUPABASE_URL, SUPABASE_KEY, now_peru
 from datetime import datetime, timedelta, date
 
-sb = create_client(SUPABASE_URL, SUPABASE_KEY)
+import httpx
+from supabase import create_client
+from supabase.lib.client_options import SyncClientOptions
+
+from app.config import SUPABASE_URL, SUPABASE_KEY, now_peru
+
+# HTTP/1.1 only: HTTP/2 keep-alive to Supabase/PostgREST intermittently raises
+# httpx.RemoteProtocolError (ConnectionTerminated), which surfaced as 500s on
+# preventa/crear and backoffice bodegas-ops. See Railway logs 2026-09-11.
+_http = httpx.Client(
+    http2=False,
+    timeout=httpx.Timeout(120.0, connect=10.0),
+)
+sb = create_client(
+    SUPABASE_URL,
+    SUPABASE_KEY,
+    options=SyncClientOptions(httpx_client=_http),
+)
 logger_db = logging.getLogger("circa.db")
 
 # ── SESIONES ──────────────────────────────────

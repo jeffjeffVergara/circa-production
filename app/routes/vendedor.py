@@ -1098,9 +1098,19 @@ $("btnCrear").addEventListener("click",function(){
       fecha:preview.fecha
     })
   })
-   .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j}})})
+   .then(function(r){
+     return r.text().then(function(t){
+       var j=null;
+       try{j=t?JSON.parse(t):null;}catch(_e){}
+       return {ok:r.ok,status:r.status,j:j,raw:t};
+     });
+   })
    .then(function(res){
-     if(!res.ok){throw new Error((res.j&&res.j.detail)||"No se pudo crear")}
+     if(!res.ok){
+       var d=res.j&&res.j.detail;
+       if(typeof d==="object") d=JSON.stringify(d);
+       throw new Error(d||("Error del servidor ("+res.status+"). Reintenta."));
+     }
      window.location.href=res.j.share_url;
    })
    .catch(function(e){self.disabled=false;self.textContent="Crear preventa";$("errCrear").textContent=e.message;$("errCrear").classList.remove("hidden")});
