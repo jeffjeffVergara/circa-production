@@ -898,15 +898,36 @@ async def admin_cobranzas(
     dist_ids = list(set(p.get("distribuidor_id", "") for p in pedidos if p.get("distribuidor_id")))
     dist_map = _sb_map_by_ids("distribuidores", "id,nombre_comercial,ruc", dist_ids)
 
-    # Vendedor/supervisor por bodega (rol ABN activo en bodega_vendedores)
+    # Vendedor/supervisor por bodega (mapeo activo en bodega_vendedores)
+    # ⚠️ NO traer la tabla completa: PostgREST corta en 1000 filas (db-max-rows,
+    #    tope del SERVIDOR: "limit" no lo sube) y hay ~4600 mapeos activos.
+    #    Se filtra por las bodegas que ya están en pantalla, en chunks de 200
+    #    para que ningún request pueda volver a acercarse al tope.
+    # ⚠️ Tampoco filtrar por rol='ABN': dejaba fuera a MERCADOS (324 bodegas) y
+    #    CONFITERIA (14), que salían sin vendedor. Cada bodega tiene un único
+    #    mapeo activo, así que sin el filtro no hay ambigüedad.
     vend_map = {}
+    # Chunks de 60 (no 200): un in.(...) con 200 UUIDs genera una URL que puede
+    # exceder el limite de longitud de PostgREST y hacer fallar el request; ese
+    # fallo dejaba SIN vendedor a toda la pagina. Ademas, si un chunk falla se
+    # continua con los demas en vez de descartar el mapa completo.
+    _bvs = []
+    for _i in range(0, len(bodega_ids), 60):
+        _chunk = bodega_ids[_i:_i + 60]
+        if not _chunk:
+            continue
+        try:
+            _bvs += _sb_get("bodega_vendedores", {
+                "select": "bodega_id,vendedor_id,supervisor,rol,activo",
+                "activo": "eq.true",
+                "bodega_id": f"in.({','.join(_chunk)})",
+            })
+        except Exception as _e_chunk:
+            logging.getLogger("circa").warning(
+                "admin_cobranzas: chunk vendedores fallo (%d ids): %s",
+                len(_chunk), _e_chunk)
+            continue
     try:
-        _bvs = _sb_get("bodega_vendedores", {
-            "select": "bodega_id,vendedor_id,supervisor,rol,activo",
-            "activo": "eq.true",
-            "rol": "eq.ABN",
-            "limit": "2000",
-        })
         _vids = list(set(x.get("vendedor_id") for x in _bvs if x.get("vendedor_id")))
         _vmap = _sb_map_by_ids("vendedores", "id,codigo", _vids)
         for x in _bvs:
@@ -916,8 +937,8 @@ async def admin_cobranzas(
                     "codigo": (_vmap.get(x.get("vendedor_id"), {}) or {}).get("codigo") or "",
                     "supervisor": x.get("supervisor") or "",
                 }
-    except Exception:
-        vend_map = {}
+    except Exception as _e_map:
+        logging.getLogger("circa").warning("admin_cobranzas: armado vend_map fallo: %s", _e_map)
     
     from app.services.fees import total_pagar_desde_pedido, resolver_fecha_vencimiento_pedido
 
