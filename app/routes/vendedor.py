@@ -707,6 +707,20 @@ async def preventa_crear(
     vendedor = _get_vendedor_by_token(token)
     if not vendedor or not vendedor.get("activo"):
         raise HTTPException(status_code=403, detail="Vendedor no valido")
+    try:
+        return await _preventa_crear_impl(token, request, vendedor)
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al crear la preventa: {type(e).__name__}: {e}",
+        )
+
+
+async def _preventa_crear_impl(token: str, request: Request, vendedor: dict):
     payload = await request.json()
     bodega_id = (payload or {}).get("bodega_id")
     items = (payload or {}).get("items") or []
@@ -1092,7 +1106,7 @@ $("btnCrear").addEventListener("click",function(){
   fetch("/v/"+TOKEN+"/preventa/crear",{
     method:"POST",headers:{"Content-Type":"application/json"},
     body:JSON.stringify({
-      bodega_id:chosenId, items:(preview.items||preview.items_json||[]).map(function(x){return {sku_distribuidor:x.sku_distribuidor||x.sku||"",catalogo_id:x.catalogo_id,cantidad:x.cantidad,unidad:x.pack_size||x.unidad||"",precio_unitario:x.precio||x.precio_unitario||0,subtotal:x.subtotal||0,descripcion:x.nombre||x.descripcion||""};}),
+      bodega_id:chosenId, items:(preview.items||preview.items_json||[]).map(function(x){return {sku_distribuidor:x.sku_distribuidor||x.sku||"",catalogo_id:x.catalogo_id,cantidad:x.cantidad,unidad:x.unidad||"",precio_unitario:x.precio||x.precio_unitario||0,subtotal:x.subtotal||0,descripcion:x.nombre||x.descripcion||""};}),
       total_pedido:preview.total_pedido,
       descuento_prorrateado:preview.descuento_prorrateado,
       fecha:preview.fecha
