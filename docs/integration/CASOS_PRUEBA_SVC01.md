@@ -40,9 +40,10 @@ Usar como `q` en `GET /api/v1/test/bodegas?q=...` (Bearer test).
 | D3 | `con_linea` | `46097938` |
 | D4 | `con_linea` | `06806355` |
 | Tel | Match por teléfono | `912114088` |
+| Nom | Match por razón social / nombre | `JONATHAN TEST` |
 | E | SVC-01b 404 | UUID `00000000-0000-0000-0000-000000000000` |
 
-También se puede buscar por razón social parcial, p.ej. `JONATHAN TEST`.
+También se puede buscar por razón social o nombre comercial parcial (ver **TP-11**).
 
 Detalle y credenciales: [`GUIA_ZOOM_PRUEBAS.md`](./GUIA_ZOOM_PRUEBAS.md).
 
@@ -167,6 +168,25 @@ Buscar un término ambiguo (`q=BODEGA`) si hay más de un match.
 | `total` | `> 1` |
 | Acción | Elegir por DNI exacto; usar `items[i].situacion` |
 
+### TP-11 — Match por razón social / nombre comercial
+
+`q` acepta texto parcial (case-insensitive) sobre `razon_social` y `nombre_comercial`.
+
+```bash
+curl -s -H "Authorization: Bearer $TOKEN" \
+  "$BASE/bodegas?q=JONATHAN%20TEST&limit=20"
+```
+
+| Esperado | Valor |
+|----------|--------|
+| HTTP | `200` |
+| `total` | `≥ 1` |
+| Match | `items[*].razon_social` o `nombre_comercial` contiene el texto de `q` |
+| `situacion` (raíz) | La de `items[0]` (p. ej. `con_linea` o `en_evaluacion` según la bodega) |
+| Acción | Si hay varias, preferir DNI/RUC exacto; no asumir que el primero es la correcta |
+
+Variante rápida: `q=JONATHAN` (parcial) debe devolver el mismo conjunto o un subconjunto coherente.
+
 ---
 
 ## Checklist rápido QA
@@ -177,6 +197,7 @@ Buscar un término ambiguo (`q=BODEGA`) si hay más de un match.
 - [ ] TP-04 activa con cupo → Caso B
 - [ ] TP-07 401
 - [ ] TP-08 404 en SVC-01b
+- [ ] TP-11 match por nombre / razón social
 - [ ] `created` siempre `false` en GET
 - [ ] Timeout no pinta franja
 

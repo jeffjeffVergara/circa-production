@@ -248,6 +248,44 @@ def test_list_bodegas_busca_por_external_id_y_telefono(mock_db):
     by_tel = list_bodegas(DIST, q="51911111111")
     assert by_tel["total"] == 1
 
+
+@patch("app.integration.service.db")
+def test_tp11_list_bodegas_match_por_razon_social_o_nombre(mock_db):
+    """TP-11: q parcial case-insensitive sobre razon_social / nombre_comercial."""
+    rows = [
+        _bodega(
+            id="b-jon",
+            dni="46843088",
+            razon_social="JONATHAN TEST SAC",
+            estado="activo",
+            linea_disponible=500,
+        ),
+        _bodega(
+            id="b-otra",
+            dni="99999999",
+            razon_social="OTRA BODEGA",
+            estado="activo",
+            linea_disponible=100,
+        ),
+    ]
+    rows[0]["nombre_comercial"] = "Jonathan Test"
+    rows[1]["nombre_comercial"] = "Otra"
+    mock_db.sb.table.return_value = _mock_table(rows)
+
+    by_full = list_bodegas(DIST, q="JONATHAN TEST")
+    assert by_full["total"] == 1
+    assert by_full["items"][0]["id"] == "b-jon"
+    assert by_full["situacion"] == "con_linea"
+
+    by_partial = list_bodegas(DIST, q="jonathan")
+    assert by_partial["total"] == 1
+    assert by_partial["items"][0]["razon_social"] == "JONATHAN TEST SAC"
+
+    by_nombre = list_bodegas(DIST, q="Jonathan Test")
+    assert by_nombre["total"] == 1
+    assert by_nombre["items"][0]["nombre_comercial"] == "Jonathan Test"
+
+
 @patch("app.integration.service.db")
 def test_list_bodegas_pasa_filtro_es_test(mock_db):
     mock_db.sb.table.return_value = _mock_table([])
