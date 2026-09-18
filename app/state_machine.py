@@ -121,6 +121,25 @@ def normalize(text: str) -> str:
     return "".join(c for c in nfkd if not unicodedata.combining(c))
 
 
+# Aceptacion de linea / contrato. Antes era match exacto contra ("ACEPTO","SI","1"),
+# asi que "Si acepto", "Acepto." o "ACEPTAR" se rechazaban y la bodeguera se caia
+# del onboarding (caso POLO BARROSO 12-sep: 6 rechazos seguidos).
+_NIEGA_ACEPTACION = re.compile(r"\bNO\b|\bNUNCA\b|\bTODAVIA\b|\bAUN\b|\bDESPUES\b|\bLUEGO\b|RECHAZ")
+_ACEPTA_CORTO = frozenset({"SI", "1", "OK", "DALE", "YA", "CLARO", "CONFIRMO", "DE ACUERDO"})
+
+
+def acepta_contrato(body_n: str) -> bool:
+    """True solo si el texto es una aceptacion corta e inequivoca.
+    body_n ya viene de normalize() (mayusculas, sin tildes)."""
+    t = re.sub(r"[^A-Z0-9 ]+", " ", body_n or "")   # puntos, comas, emojis -> espacio
+    t = re.sub(r"\s+", " ", t).strip()
+    if not t or len(t) > 40:                        # un parrafo no es una firma
+        return False
+    if _NIEGA_ACEPTACION.search(t):                 # "NO ACEPTO", "aun no", "despues"
+        return False
+    return t in _ACEPTA_CORTO or "ACEPT" in t
+
+
 # Palabras clave que en cualquier fase derivan a la misma respuesta que "Contactar a Circa".
 _TEXTO_PIDE_CONTACTO_CIRCA = frozenset({
     "AYUDA",
@@ -1049,7 +1068,7 @@ def handle_message(telefono: str, body: str, media_url: str = None) -> list:
 
     # ═══ ACEPTAR LÍNEA ═══
     if fase == "reg_linea_acepta":
-        if body_n in ("SI", "ACEPTO", "ACEPTO_LINEA", "ACEPTO LINEA", "1"):
+        if body_n in ("ACEPTO_LINEA",) or acepta_contrato(body_n):
             bodega = db.sb.table("bodegas").select("linea_aprobada").eq("id", datos["bodega_id"]).single().execute().data
             datos["contrato_shown"] = True
             db.upsert_session(telefono, "reg_contrato", datos, datos["bodega_id"])
@@ -1061,7 +1080,7 @@ def handle_message(telefono: str, body: str, media_url: str = None) -> list:
 
     # ═══ CONTRATO ═══
     if fase == "reg_contrato":
-        if body_n in ("ACEPTO", "SI", "1") or (body_n in ("SI", "VER", "CONTINUAR") and not datos.get("contrato_shown")):
+        if acepta_contrato(body_n) or (body_n in ("VER", "CONTINUAR") and not datos.get("contrato_shown")):
             if not datos.get("contrato_shown"):
                 bodega = db.sb.table("bodegas").select("linea_aprobada").eq("id", datos["bodega_id"]).single().execute().data
                 db.upsert_session(telefono, "reg_contrato", {**datos, "contrato_shown": True}, datos["bodega_id"])

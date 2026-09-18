@@ -22,6 +22,7 @@ import re
 from datetime import datetime
 
 from app.services import db
+from app.state_machine import acepta_contrato
 from app.services.distribuidor_routing import ZOOM_DISTRIBUIDOR_ID
 from app.services.express_onboarding_gate import (
     normalize_phone_e164,
@@ -272,7 +273,7 @@ def handle(
     # ── aceptar línea (igual que clásico) ──
     if fase == "express_linea":
         bodega_id = datos.get("bodega_id") or bodega["id"]
-        if body_n in ("SI", "ACEPTO", "ACEPTO_LINEA", "ACEPTO LINEA", "1", "CONTINUAR"):
+        if body_n in ("ACEPTO_LINEA", "CONTINUAR") or acepta_contrato(body_n):
             datos["bodega_id"] = bodega_id
             datos["contrato_shown"] = True
             db.upsert_session(telefono, "express_tyc", datos, bodega_id)
@@ -286,7 +287,7 @@ def handle(
     # ── términos y condiciones (sin PIN) ──
     if fase == "express_tyc":
         bodega_id = datos.get("bodega_id") or bodega["id"]
-        if body_n in ("ACEPTO", "SI", "1"):
+        if acepta_contrato(body_n):
             if not datos.get("contrato_shown"):
                 datos["contrato_shown"] = True
                 db.upsert_session(telefono, "express_tyc", datos, bodega_id)
