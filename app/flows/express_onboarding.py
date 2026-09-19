@@ -3,7 +3,7 @@ Express Onboarding (piloto) — módulo aparte del onboarding clásico.
 
 Flujo:
   express_welcome → express_foto (1 foto: DNI *o* selfie)
-  → express_linea → express_tyc → activo sin PIN → menu
+  → express_linea → express_tyc → crear PIN (reg_pin) → menu
 
 Quién entra (gate):
   - bodega.es_test = true, o
@@ -284,7 +284,7 @@ def handle(
             return ["Entendido. Cuando quieras activar tu línea, escríbenos."]
         return ["Escribe *SI* para aceptar la línea o *NO* para rechazar."]
 
-    # ── términos y condiciones (sin PIN) ──
+    # ── términos y condiciones → crear PIN (no activar sin clave) ──
     if fase == "express_tyc":
         bodega_id = datos.get("bodega_id") or bodega["id"]
         if acepta_contrato(body_n):
@@ -296,26 +296,13 @@ def handle(
             contract_data = f"{bodega_id}|{telefono}|express|{datetime.utcnow().isoformat()}"
             contract_hash = hashlib.sha256(contract_data.encode()).hexdigest()
             db.sign_contract(bodega_id, contract_hash)
-            # Activa sin crear clave
-            db.update_bodega(bodega_id, {
-                "estado": "activo",
-                "onboarding_fase": "express_completo",
-                "pin_hash": None,
-                "pin_intentos": 0,
-                "pin_bloqueado_hasta": None,
-            })
-            bodega_u = (
-                db.sb.table("bodegas")
-                .select("linea_disponible")
-                .eq("id", bodega_id)
-                .limit(1)
-                .execute()
-                .data
-                or []
-            )
-            linea = float((bodega_u[0].get("linea_disponible") if bodega_u else None) or bodega.get("linea_aprobada") or 0)
-            db.upsert_session(telefono, "menu", {}, bodega_id)
-            return [{"signal": "CUENTA_ACTIVA", "linea": linea}]
+            datos_pin = {"bodega_id": bodega_id}
+            db.upsert_session(telefono, "reg_pin", datos_pin, bodega_id)
+            try:
+                db.update_bodega(bodega_id, {"onboarding_fase": "express_pin"})
+            except Exception as e:
+                logger.warning("express update onboarding_fase pin: %s", e)
+            return [{"signal": "PIN_ASK", "mode": "create", "bodega_id": bodega_id}]
 
         if datos.get("contrato_shown"):
             return ["Escribe *ACEPTO* para aceptar los términos y condiciones."]

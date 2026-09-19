@@ -6,7 +6,7 @@
 | **Gate** | Allowlist de teléfonos; onboarding clásico intacto |
 | **Env** | `EXPRESS_ONBOARDING_ENABLED`, `EXPRESS_ONBOARDING_PHONES` |
 
-## Qué es
+# Qué es
 
 Flujo corto de activación para el piloto:
 
@@ -14,9 +14,10 @@ Flujo corto de activación para el piloto:
 2. **Una sola foto** (DNI *o* selfie, no ambas)  
 3. Aceptación de línea (igual que hoy)  
 4. Términos y condiciones  
-5. Cuenta **activa sin crear PIN**
+5. Crear PIN → cuenta activa
 
-Cubre: creación de cero, precarga y post-afiliar vendedor (mismo gate al escribir por WhatsApp).
+> **Estado (2026-09):** apagado por defecto (`EXPRESS_ONBOARDING_ENABLED` default `false`).  
+> Activar sin PIN dejaba bodegas test en bucle al pagar/financiar. Si se reactiva, Express **pide PIN** tras T&C.
 
 ## Quién entra a Express
 
@@ -35,7 +36,7 @@ El resto sigue el onboarding clásico (`reg_*` / `prospecto`).
 
 ## Fases de sesión
 
-`express_cold` → `express_welcome` → `express_foto` → `express_linea` → `express_tyc` → `menu`
+`express_cold` → `express_welcome` → `express_foto` → `express_linea` → `express_tyc` → `reg_pin` → `menu`
 
 ## Apagar / cambiar lista
 
@@ -44,3 +45,5 @@ EXPRESS_ONBOARDING_ENABLED=false
 # o
 EXPRESS_ONBOARDING_PHONES=+51942616682,+51993557282
 ```
+
+Con el master en `false`, las sesiones que hayan quedado en `express_*` **salen** del flujo Express (ya no se queda sticky).

@@ -25,10 +25,29 @@ def test_default_allowlist_when_enabled(monkeypatch):
     assert not gate.is_express_allowlist_phone("999999999")
 
 
+def test_disabled_by_default(monkeypatch):
+    monkeypatch.delenv("EXPRESS_ONBOARDING_ENABLED", raising=False)
+    assert gate.express_onboarding_enabled() is False
+    assert not gate.should_use_express_onboarding(
+        "+51942616682", {"estado": "inactivo", "es_test": True}, None
+    )
+    # Sesiones express_* no quedan atrapadas si el master está off
+    assert not gate.should_use_express_onboarding(
+        "+51942616682",
+        {"estado": "activo", "es_test": True},
+        {"fase": "express_foto"},
+    )
+
+
 def test_disabled_master_switch(monkeypatch):
     monkeypatch.setenv("EXPRESS_ONBOARDING_ENABLED", "false")
     assert not gate.is_express_allowlist_phone("942616682")
     assert not gate.qualifies_for_express("942616682", {"es_test": True})
+    assert not gate.should_use_express_onboarding(
+        "942616682",
+        {"estado": "inactivo", "es_test": True},
+        {"fase": "express_welcome"},
+    )
 
 
 def test_custom_allowlist(monkeypatch):

@@ -42,8 +42,8 @@ def normalize_phone_e164(telefono: str | None) -> str:
 
 
 def express_onboarding_enabled() -> bool:
-    """Master switch. Default true so the pilot works once deployed."""
-    return _env_flag("EXPRESS_ONBOARDING_ENABLED", default=True)
+    """Master switch. Default false: activar sin PIN dejaba bodegas test en bucle al pagar."""
+    return _env_flag("EXPRESS_ONBOARDING_ENABLED", default=False)
 
 
 def express_pilot_phones() -> set[str]:
@@ -89,10 +89,14 @@ def should_use_express_onboarding(
     session: dict | None,
 ) -> bool:
     """
-    - Ya en fase express_* → seguir
+    - Master off → nunca Express (tampoco si la sesión quedó en express_*)
+    - Ya en fase express_* y master on → seguir
     - Bodega activa → menú (no Express)
     - Allowlist o es_test, sin bodega / inactiva → Express
     """
+    if not express_onboarding_enabled():
+        return False
+
     fase = (session or {}).get("fase") or ""
     if fase.startswith("express_"):
         return True
