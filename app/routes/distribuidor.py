@@ -966,6 +966,15 @@ async def admin_cobranzas(
     except Exception:
         recordatorios_map = {}
 
+    # ── Abonos (pagos parciales) en una sola consulta, para no ir pedido por pedido ──
+    abonos_map = {}
+    try:
+        _abs = _sb_get("abonos", {"select": "pedido_id,monto,fecha_pago", "anulado": "eq.false", "limit": "5000"})
+        for _a in _abs or []:
+            abonos_map.setdefault(_a["pedido_id"], []).append(_a)
+    except Exception:
+        abonos_map = {}
+
     for p in pedidos:
         if float(p.get("monto_financiado") or 0) <= 0:
             continue
@@ -995,7 +1004,7 @@ async def admin_cobranzas(
         if status_cobranza == "pagado":
             dias_restantes = None
         
-        tp = total_pagar_desde_pedido(p, hoy=hoy)
+        tp = total_pagar_desde_pedido(p, hoy=hoy, abonos=abonos_map.get(p.get("id"), []))
         item = {
             "pedido_id": p["id"],
             "numero": p.get("numero", ""),
@@ -1012,6 +1021,9 @@ async def admin_cobranzas(
             "mora_dias": tp.get("mora_dias", 0),
             "credito_fijo": tp["credito_fijo"],
             "total_pagar": tp["total_pagar"],
+            "abonado_total": tp.get("abonado_total", 0),
+            "n_abonos": tp.get("n_abonos", 0),
+            "pago_parcial": bool(tp.get("pago_parcial")),
             "plazo_dias": plazo,
             "fecha_entregado": fecha_entregado,
             "fecha_vencimiento": venc.isoformat() if venc else None,

@@ -890,6 +890,127 @@ async def subir_sustento_pago_cliente(pedido_id: str, file: UploadFile = File(..
     )
 
 
+# ── Pagos parciales (abonos) ─────────────────────────────────────────────
+# Decisión Paola 21/09/2026: comisión proporcional por tramo (ver fees.py) y la
+# línea se libera recién al cancelar el pedido completo. Varios sustentos por abono.
+
+_METODOS_ABONO = ("yape", "plin", "transferencia", "efectivo")
+
+
+def _subir_archivo_sustento(storage_path: str, file_bytes: bytes, content_type: str) -> str:
+    try:
+        r = httpx.post(
+            f"{dist.SUPABASE_URL}/storage/v1/object/sustentos/{storage_path}",
+            headers={"apikey": dist.SUPABASE_KEY, "Authorization": f"Bearer {dist.SUPABASE_KEY}",
+                     "Content-Type": content_type or "application/octet-stream", "x-upsert": "true"},
+            content=file_bytes, timeout=30,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"No se pudo subir a Storage: {e}")
+    if r.status_code >= 300:
+        raise HTTPException(status_code=502, detail=f"Storage respondió {r.status_code}")
+    return f"{dist.SUPABASE_URL}/storage/v1/object/public/sustentos/{storage_path}"
+
+
+async def _subir_sustentos_abono(pedido_id: str, abono_id: str, files: list, desde: int = 0) -> list[str]:
+    urls = []
+    for i, f in enumerate(files or []):
+        if not f or not getattr(f, "filename", None):
+            continue
+        content = await f.read()
+        if not content:
+            continue
+        if len(content) > 15 * 1024 * 1024:
+            raise HTTPException(status_code=400, detail=f"{f.filename}: archivo muy grande (máx 15MB)")
+        ext = f.filename.rsplit(".", 1)[-1].lower() if "." in f.filename else "jpg"
+        path = f"pagos_cliente/abonos/{pedido_id}/{abono_id}_{desde + i + 1}.{ext}"
+        urls.append(_subir_archivo_sustento(path, content, f.content_type))
+    return urls
+
+
+@router.get("/cobranza/{pedido_id}/abonos")
+async def listar_abonos(pedido_id: str, user: dict = Depends(get_backoffice_user)):
+    rows = (db.sb.table("abonos").select("*").eq("pedido_id", pedido_id)
+            .eq("anulado", False).order("fecha_pago").execute().data or [])
+    ped = _sb_get("pedidos", {"select": "*", "id": f"eq.{pedido_id}"})
+    tp = total_pagar_desde_pedido(ped[0], abonos=rows) if ped else {}
+    return {"ok": True, "abonos": rows, "saldo": tp.get("total_pagar"),
+            "abonado_total": tp.get("abonado_total", 0), "fee_vigente": tp.get("fee_vigente")}
+
+
+@router.post("/cobranza/{pedido_id}/abonos")
+async def registrar_abono(
+    pedido_id: str,
+    monto: float = Form(...),
+    metodo: str = Form("yape"),
+    nro_operacion: str = Form(""),
+    fecha_pago: Optional[str] = Form(None),
+    notas: str = Form(""),
+    files: list[UploadFile] = File(default=[]),
+    user: dict = Depends(get_backoffice_writer),
+):
+    """Registra un pago parcial con uno o más sustentos. Si deja el saldo en 0, cierra el pedido."""
+    rows = _sb_get("pedidos", {"select": "*", "id": f"eq.{pedido_id}"})
+    if not rows:
+        raise HTTPException(status_code=404, detail="Pedido no encontrado")
+    ped = rows[0]
+    if (ped.get("estado") or "").lower() in ("pagado", "pagado_cash"):
+        raise HTTPException(status_code=400, detail="El pedido ya está pagado.")
+    if float(ped.get("monto_financiado") or 0) <= 0:
+        raise HTTPException(status_code=400, detail="El pedido no tiene monto financiado.")
+    monto = round(float(monto or 0), 2)
+    if monto <= 0:
+        raise HTTPException(status_code=400, detail="El monto debe ser mayor a 0.")
+    metodo = (metodo or "yape").lower().strip()
+    if metodo not in _METODOS_ABONO:
+        raise HTTPException(status_code=400, detail=f"Método inválido. Usa: {', '.join(_METODOS_ABONO)}")
+
+    saldo_antes = float(total_pagar_desde_pedido(ped).get("total_pagar") or 0)
+    if monto > saldo_antes + 0.01:
+        raise HTTPException(status_code=400, detail=f"El abono (S/{monto:.2f}) supera el saldo (S/{saldo_antes:.2f}).")
+
+    abono_id = str(uuid.uuid4())
+    urls = await _subir_sustentos_abono(pedido_id, abono_id, files)
+    fila = {
+        "id": abono_id, "pedido_id": pedido_id, "monto": monto, "metodo": metodo,
+        "nro_operacion": (nro_operacion or "").strip() or None,
+        "sustentos": urls, "notas": (notas or "").strip() or None,
+        "registrado_por": (user or {}).get("email") or (user or {}).get("username"),
+    }
+    if fecha_pago:
+        fila["fecha_pago"] = fecha_pago
+    db.sb.table("abonos").insert(fila).execute()
+
+    tp = total_pagar_desde_pedido(ped)  # relee abonos
+    saldo = float(tp.get("total_pagar") or 0)
+    log_action(user=user, action="registrar_abono", entity_type="pedido", entity_id=pedido_id,
+               pedido_id=pedido_id, comment=f"S/{monto:.2f} · saldo S/{saldo:.2f} · {len(urls)} sustento(s)")
+
+    cerrado = None
+    if saldo <= 0.01:
+        cerrado = await dist.admin_verificar_pago(
+            pedido_id, {"metodo": metodo, "nro_operacion": fila.get("nro_operacion") or ""}, admin=True)
+    return {"ok": True, "abono_id": abono_id, "sustentos": urls, "saldo": saldo,
+            "abonado_total": tp.get("abonado_total"), "fee_vigente": tp.get("fee_vigente"),
+            "pedido_cerrado": bool(cerrado)}
+
+
+@router.post("/cobranza/abonos/{abono_id}/sustentos")
+async def agregar_sustentos_abono(abono_id: str, files: list[UploadFile] = File(...),
+                                  user: dict = Depends(get_backoffice_writer)):
+    """Agrega más archivos de sustento a un abono ya registrado."""
+    rows = db.sb.table("abonos").select("id, pedido_id, sustentos").eq("id", abono_id).limit(1).execute().data
+    if not rows:
+        raise HTTPException(status_code=404, detail="Abono no encontrado")
+    ab = rows[0]
+    previos = ab.get("sustentos") or []
+    urls = await _subir_sustentos_abono(ab["pedido_id"], abono_id, files, desde=len(previos))
+    db.sb.table("abonos").update({"sustentos": previos + urls}).eq("id", abono_id).execute()
+    log_action(user=user, action="agregar_sustento_abono", entity_type="pedido",
+               entity_id=ab["pedido_id"], pedido_id=ab["pedido_id"], comment=f"{len(urls)} archivo(s)")
+    return {"ok": True, "sustentos": previos + urls}
+
+
 @router.post("/pedido/{pedido_id}/pago-distribuidor/sustento")
 async def subir_sustento_pago_distribuidor(pedido_id: str, file: UploadFile = File(...),
                                             user: dict = Depends(get_backoffice_writer)):

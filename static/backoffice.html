@@ -1445,6 +1445,80 @@ function subirSustentoPagoDistribuidor(pid, inputEl){
   _subirSustentoPago('/api/backoffice/pedido/'+pid+'/pago-distribuidor/sustento', inputEl, 'Sustento guardado', loadPagos);
 }
 
+// ── Pagos parciales (abonos) ─────────────────────────────
+function _abModal(html){
+  var old = document.getElementById('abModal'); if(old) old.remove();
+  var m = document.createElement('div'); m.id='abModal';
+  m.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
+  m.innerHTML='<div style="background:var(--card,#1a1d24);border:1px solid var(--border,#333);border-radius:12px;max-width:520px;width:100%;max-height:90vh;overflow:auto;padding:20px">'+html+'</div>';
+  m.addEventListener('click', function(e){ if(e.target===m) m.remove(); });
+  document.body.appendChild(m); return m;
+}
+function openAbono(pid, numero, saldo){
+  if(isReadOnly()) return readOnlyBlocked();
+  var hoy = new Date(); var iso = new Date(hoy.getTime()-hoy.getTimezoneOffset()*60000).toISOString().slice(0,10);
+  _abModal(
+    '<h3 style="margin:0 0 4px">💰 Pago parcial '+(numero||'')+'</h3>'+
+    '<div style="color:var(--muted);font-size:12px;margin-bottom:14px">Saldo actual: <b>S/'+Number(saldo).toFixed(2)+'</b>. La línea se libera recién al cancelar todo.</div>'+
+    '<label style="font-size:12px">Monto abonado (S/)</label><input id="abMonto" type="number" step="0.01" min="0.01" max="'+saldo+'" class="input" style="width:100%;margin:4px 0 10px">'+
+    '<label style="font-size:12px">Método</label><select id="abMetodo" class="input" style="width:100%;margin:4px 0 10px"><option>yape</option><option>plin</option><option>transferencia</option><option>efectivo</option></select>'+
+    '<label style="font-size:12px">N° de operación</label><input id="abOp" class="input" style="width:100%;margin:4px 0 10px">'+
+    '<label style="font-size:12px">Fecha del pago</label><input id="abFecha" type="date" value="'+iso+'" class="input" style="width:100%;margin:4px 0 10px">'+
+    '<label style="font-size:12px">Sustentos (puedes elegir varios)</label><input id="abFiles" type="file" multiple accept="image/*,application/pdf" style="width:100%;margin:4px 0 10px">'+
+    '<label style="font-size:12px">Notas</label><input id="abNotas" class="input" style="width:100%;margin:4px 0 14px">'+
+    '<div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn btn-outline btn-small" onclick="document.getElementById(\'abModal\').remove()">Cancelar</button>'+
+    '<button id="abBtn" class="btn btn-green btn-small" onclick="guardarAbono(\''+pid+'\')">Registrar abono</button></div>');
+}
+function guardarAbono(pid){
+  var monto = parseFloat(document.getElementById('abMonto').value);
+  if(!(monto>0)){ showToast('Ingresa el monto','error'); return; }
+  var fd = new FormData();
+  fd.append('monto', monto);
+  fd.append('metodo', document.getElementById('abMetodo').value);
+  fd.append('nro_operacion', document.getElementById('abOp').value);
+  var f = document.getElementById('abFecha').value; if(f) fd.append('fecha_pago', f+'T12:00:00-05:00');
+  fd.append('notas', document.getElementById('abNotas').value);
+  var files = document.getElementById('abFiles').files;
+  for(var i=0;i<files.length;i++){
+    if(files[i].size > 15*1024*1024){ showToast(files[i].name+': muy grande (máx 15MB)','error'); return; }
+    fd.append('files', files[i]);
+  }
+  var btn = document.getElementById('abBtn'); btn.disabled = true; btn.textContent = 'Guardando…';
+  fetch('/api/backoffice/cobranza/'+pid+'/abonos', {method:'POST', headers: authHeaders(), body: fd})
+    .then(function(r){ return r.json().then(function(d){ return {ok:r.ok, d:d}; }); })
+    .then(function(res){
+      if(res.ok && res.d && res.d.ok){
+        showToast(res.d.pedido_cerrado ? 'Abono registrado. Saldo en 0: pedido pagado y línea liberada.' : ('Abono registrado. Saldo: S/'+Number(res.d.saldo).toFixed(2)), 'success');
+        document.getElementById('abModal').remove(); loadCobranzas();
+      } else { showToast('No se pudo registrar: '+((res.d && res.d.detail) || 'error'), 'error'); btn.disabled=false; btn.textContent='Registrar abono'; }
+    })
+    .catch(function(e){ showToast('Error: '+e.message,'error'); btn.disabled=false; btn.textContent='Registrar abono'; });
+}
+function verAbonos(pid, numero){
+  api('/api/backoffice/cobranza/'+pid+'/abonos').then(function(d){
+    var rows = (d.abonos||[]).map(function(a){
+      var sus = (a.sustentos||[]).map(function(u,i){ return '<a href="'+u+'" target="_blank" rel="noopener">Archivo '+(i+1)+'</a>'; }).join(' · ') || '<span style="color:var(--muted)">sin sustento</span>';
+      var add = isReadOnly() ? '' : ' <label class="btn btn-outline btn-small" style="cursor:pointer;margin:0">+ Sustento<input type="file" multiple accept="image/*,application/pdf" style="display:none" onchange="agregarSustentoAbono(\''+a.id+'\',\''+pid+'\',\''+(numero||'')+'\',this)"></label>';
+      return '<tr><td>'+fmtFechaCorta(a.fecha_pago)+'</td><td class="mono">S/'+Number(a.monto).toFixed(2)+'</td><td>'+(a.metodo||'')+(a.nro_operacion?('<div style="font-size:10px;color:var(--muted)">'+a.nro_operacion+'</div>'):'')+'</td><td style="font-size:12px">'+sus+add+'</td></tr>';
+    }).join('');
+    _abModal('<h3 style="margin:0 0 4px">Abonos '+(numero||'')+'</h3>'+
+      '<div style="color:var(--muted);font-size:12px;margin-bottom:12px">Abonado: <b>S/'+Number(d.abonado_total||0).toFixed(2)+'</b> · Saldo hoy: <b>S/'+Number(d.saldo||0).toFixed(2)+'</b></div>'+
+      '<table style="width:100%;font-size:13px"><thead><tr><th>Fecha</th><th>Monto</th><th>Método</th><th>Sustentos</th></tr></thead><tbody>'+(rows||'<tr><td colspan="4" class="empty">Sin abonos</td></tr>')+'</tbody></table>'+
+      '<div style="text-align:right;margin-top:14px"><button class="btn btn-outline btn-small" onclick="document.getElementById(\'abModal\').remove()">Cerrar</button></div>');
+  });
+}
+function agregarSustentoAbono(abonoId, pid, numero, inputEl){
+  if(isReadOnly()) return readOnlyBlocked();
+  var fd = new FormData(); var fs = inputEl.files;
+  for(var i=0;i<fs.length;i++){ fd.append('files', fs[i]); }
+  if(!fs.length) return;
+  showToast('Subiendo sustento…','info');
+  fetch('/api/backoffice/cobranza/abonos/'+abonoId+'/sustentos', {method:'POST', headers: authHeaders(), body: fd})
+    .then(function(r){ return r.json(); })
+    .then(function(d){ if(d && d.ok){ showToast('Sustento agregado','success'); verAbonos(pid, numero); } else { showToast('No se pudo subir: '+((d&&d.detail)||'error'),'error'); } })
+    .catch(function(e){ showToast('Error: '+e.message,'error'); });
+}
+
 function loadPagos(){
   var fd = document.getElementById('pagosFechaDesde').value;
   var fh = document.getElementById('pagosFechaHasta').value;
@@ -1543,7 +1617,7 @@ function loadCobranzas(){
       var actions = (c.status_cobranza==='pagado'
         ? '<span style="color:var(--purple);font-size:11px">✓ Pagado</span>'
         : (isReadOnly() ? '<span style="color:var(--muted);font-size:11px">—</span>'
-          : '<button type="button" class="btn btn-green btn-small" onclick="openVerificarPago(\''+c.pedido_id+'\')">💵 Verificar pago</button> <button type="button" class="btn btn-outline btn-small" onclick="enviarRecordatorio(\''+c.pedido_id+'\')">📨 Recordatorio</button>'))
+          : '<button type="button" class="btn btn-green btn-small" onclick="openVerificarPago(\''+c.pedido_id+'\')">💵 Verificar pago</button> <button type="button" class="btn btn-outline btn-small bo-write" onclick="openAbono(\''+c.pedido_id+'\',\''+(c.numero||'')+'\','+c.total_pagar+')">💰 Pago parcial</button> <button type="button" class="btn btn-outline btn-small" onclick="enviarRecordatorio(\''+c.pedido_id+'\')">📨 Recordatorio</button>'))
         + ' ' + sustCli;
       var ultRec = c.ultimo_recordatorio
         ? '<div style="font-size:10px;color:var(--muted);margin-top:6px">📨 Último: '+fmtFechaCorta(c.ultimo_recordatorio.fecha)+' · '+String(c.ultimo_recordatorio.dia||'').replace('dia','día ')+'</div>'
@@ -1558,7 +1632,7 @@ function loadCobranzas(){
         '<td data-label="Entregado">'+entr+'</td>'+
         '<td data-label="Vence">'+venc+'</td>'+
         '<td data-label="Días">'+diasText+'</td>'+
-        '<td data-label="Monto" class="mono">S/'+c.total_pagar.toFixed(2)+'</td>'+
+        '<td data-label="Monto" class="mono">S/'+c.total_pagar.toFixed(2)+(c.abonado_total>0?('<div style="font-size:10px;color:var(--yellow);margin-top:3px;cursor:pointer" onclick="verAbonos(\''+c.pedido_id+'\',\''+(c.numero||'')+'\')">Pago parcial · abonado S/'+Number(c.abonado_total).toFixed(2)+' ('+(c.n_abonos||0)+') · ver</div>'):'')+'</td>'+
         '<td data-label="Estado"><span class="badge badge-'+c.status_cobranza+'">'+c.status_cobranza.replace('_',' ')+'</span></td>'+
         '<td data-label="Acciones" class="cob-col-actions">'+actions+ultRec+'</td></tr>';
     }).join('') : '<tr><td colspan="10" class="empty">Sin cobranzas</td></tr>';

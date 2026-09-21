@@ -354,10 +354,27 @@ def resolver_fecha_vencimiento_pedido(pedido: dict, hoy: date | None = None) -> 
     return base + timedelta(days=plazo)
 
 
-def total_pagar_desde_pedido(pedido: dict, monto_pagado: float = 0, hoy: date | None = None) -> dict:
-    """Total vigente para cobranza (fee true-up + mora híbrida si aplica)."""
+def total_pagar_desde_pedido(
+    pedido: dict,
+    monto_pagado: float = 0,
+    hoy: date | None = None,
+    abonos: list[dict] | None = None,
+) -> dict:
+    """Total vigente para cobranza (fee true-up + mora híbrida si aplica).
+
+    Si el pedido tiene abonos (pagos parciales), el saldo sale de
+    calcular_total_con_abonos. `abonos=None` los busca en la base por pedido.id.
+    """
     mf = float(pedido.get("monto_financiado") or 0)
     fee = float(pedido.get("fee_monto") or 0)
+    if mf > 0 and not monto_pagado:
+        if abonos is None and pedido.get("id"):
+            abonos = _abonos_de_pedido(pedido["id"])
+        if abonos:
+            return calcular_total_con_abonos(
+                mf, fee, int(pedido.get("plazo_dias") or 7),
+                resolver_fecha_entrega_pedido(pedido), abonos, hoy,
+            )
     if mf <= 0 and fee <= 0:
         tc = float(pedido.get("monto_total_credito") or pedido.get("total") or 0)
         if tc > 0:
@@ -388,6 +405,126 @@ def total_pagar_desde_pedido(pedido: dict, monto_pagado: float = 0, hoy: date | 
         fecha_entregado=fe,
         plazo_dias=plazo,
     )
+
+
+# ── Pagos parciales (abonos) ───────────────────────────────────
+# Decisión Paola 21/09/2026: comisión PROPORCIONAL POR TRAMO.
+# Cada sol de capital paga la tasa del tramo vigente el día en que se devuelve.
+# Un abono de M el día d con tasa r(d) devuelve M/(1+r) de capital y M - M/(1+r)
+# de comisión. El capital que sigue pendiente paga la tasa del tramo de hoy.
+# Así pagar antes nunca cuesta más que no adelantar nada.
+# La línea NO se libera por abonos: solo al cancelar el pedido completo.
+
+
+def _fecha_peru(value) -> Optional[date]:
+    """Fecha calendario en Perú de un timestamp (str/datetime) o date."""
+    if not value:
+        return None
+    if isinstance(value, date) and not isinstance(value, datetime):
+        return value
+    try:
+        dt = value if isinstance(value, datetime) else datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        return None
+    if dt.tzinfo is None:
+        return dt.date()
+    return dt.astimezone(TZ_PERU).date()
+
+
+def _tasa_tramo(plazo_origen: int, fecha_entregado, fecha_eval: date) -> Decimal:
+    dias = dias_desde_entrega(fecha_entregado, fecha_eval)
+    plazo_v = plazo_vigente_con_escalon(plazo_origen, dias, fecha_eval)
+    return PAYMENT_PLANS[plazo_v].fee_percentage
+
+
+def calcular_total_con_abonos(
+    monto_financiado: float,
+    fee_congelado: float,
+    plazo_dias: int | None,
+    fecha_entregado,
+    abonos: list[dict],
+    hoy: date | None = None,
+) -> dict:
+    """Saldo vigente de un pedido con abonos (pago parcial proporcional por tramo)."""
+    hoy = hoy or hoy_peru()
+    plazo_o = int(plazo_dias or 7)
+    if plazo_o not in PAYMENT_PLANS:
+        plazo_o = 7
+
+    capital = _d(monto_financiado)
+    fee_pagado = Decimal("0")
+    abonado = Decimal("0")
+    orden = sorted(abonos or [], key=lambda a: str(a.get("fecha_pago") or ""))
+    for a in orden:
+        monto = _d(a.get("monto") or 0)
+        if monto <= 0:
+            continue
+        abonado += monto
+        if capital <= 0:
+            continue
+        f = _fecha_peru(a.get("fecha_pago")) or hoy
+        r = _tasa_tramo(plazo_o, fecha_entregado, f)
+        adeudado = capital * (Decimal("1") + r)
+        if monto >= adeudado:
+            fee_pagado += capital * r
+            capital = Decimal("0")
+        else:
+            cap_devuelto = monto / (Decimal("1") + r)
+            fee_pagado += monto - cap_devuelto
+            capital -= cap_devuelto
+
+    r_hoy = _tasa_tramo(plazo_o, fecha_entregado, hoy)
+    fee_pendiente = capital * r_hoy
+    fee_total = fee_pagado + fee_pendiente
+    # Piso: nunca menos que la comisión pactada al confirmar (incluye mínimo S/1).
+    piso = _d(fee_congelado or 0)
+    if capital > 0 and fee_total < piso:
+        fee_pendiente += piso - fee_total
+        fee_total = piso
+    saldo = capital + fee_pendiente
+
+    dias_ent = dias_desde_entrega(fecha_entregado, hoy)
+    mora = 0.0
+    mora_dias = 0
+    if capital > 0 and dias_ent is not None and dias_ent > DIAS_INCUMPLIMIENTO:
+        mora_dias = dias_ent - DIAS_INCUMPLIMIENTO
+        mora = calcular_mora(_money(saldo), mora_dias)
+
+    plazo_v = plazo_vigente_con_escalon(plazo_o, dias_ent, hoy)
+    congelado = _money(piso)
+    fee_v = _money(fee_total)
+    return {
+        "credito_fijo": _money(_d(monto_financiado) + piso),
+        "fee_congelado": congelado,
+        "fee_vigente": fee_v,
+        "fee_delta": _money(_d(fee_v) - piso),
+        "fee_tasa_vigente": float(r_hoy),
+        "plazo_origen": plazo_o,
+        "plazo_vigente": plazo_v,
+        "escalonado": plazo_v > plazo_o,
+        "dias_desde_entrega": dias_ent,
+        "saldo_adeudado": _money(saldo),
+        "mora_monto": mora,
+        "mora_dias": mora_dias,
+        "total_pagar": _money(saldo + _d(mora)),
+        "abonado_total": _money(abonado),
+        "capital_pendiente": _money(capital),
+        "n_abonos": len([a for a in orden if _d(a.get("monto") or 0) > 0]),
+        "pago_parcial": abonado > 0 and capital > 0,
+    }
+
+
+def _abonos_de_pedido(pedido_id: str) -> list[dict]:
+    """Abonos vigentes del pedido. Si la tabla no responde, se asume sin abonos."""
+    try:
+        from app.services import db
+        return (
+            db.sb.table("abonos").select("monto, fecha_pago")
+            .eq("pedido_id", pedido_id).eq("anulado", False)
+            .execute().data or []
+        )
+    except Exception:
+        return []
 
 
 # ── API compatible (delega al motor por plan) ─────────────────
