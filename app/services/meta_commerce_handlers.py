@@ -508,7 +508,8 @@ async def handle_menu_buttons(btn: str, ctx: MetaWaContext, msg: dict, meta_clie
                 })
                 nombre = bodega_ac.get("nombre_comercial") or bodega_ac.get("razon_social", "Bodega")
                 await meta_client.send_contract_document(ctx.telefono, contract_path, nombre)
-                db.sign_contract(bod_id, contract_hash)
+                # Archivar exactamente el mismo PDF que recibió la bodega.
+                db.sign_contract(bod_id, contract_hash, pdf_path=contract_path)
                 import os
                 try:
                     os.remove(contract_path)

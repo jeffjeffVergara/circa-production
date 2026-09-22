@@ -222,6 +222,10 @@ ACEPTACIONES = [
 ]
 
 
+# Versión del texto que genera este módulo (tramos por día de pago, vigente 28-ago-2026)
+CONTRATO_VERSION = "v4.0_2026-08-28"
+
+
 def generate_contract(bodega_data: dict, output_dir: str = "/tmp") -> str:
     """
     Genera el contrato PDF con datos del bodeguero.
