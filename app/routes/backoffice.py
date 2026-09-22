@@ -68,7 +68,7 @@ class ReauthMixin(BaseModel):
 
 
 @router.post("/auth/login")
-async def login(body: LoginRequest):
+def login(body: LoginRequest):
     user = authenticate(body.email, body.password)
     if not user:
         raise HTTPException(status_code=401, detail="Credenciales inválidas")
@@ -82,12 +82,12 @@ async def login(body: LoginRequest):
 
 
 @router.get("/auth/me")
-async def me(user: dict = Depends(get_backoffice_user)):
+def me(user: dict = Depends(get_backoffice_user)):
     return {"user": user}
 
 
 @router.get("/auth/setup-status")
-async def auth_setup_status():
+def auth_setup_status():
     """Diagnóstico: ¿el servidor tiene cuentas viewer en variables de entorno?"""
     accounts = backoffice_viewer_accounts()
     return {
@@ -105,7 +105,7 @@ async def auth_setup_status():
 
 
 @router.get("/support-bridge")
-async def support_bridge(
+def support_bridge(
     user: dict = Depends(get_backoffice_user),
     creds: HTTPAuthorizationCredentials | None = Depends(_bearer),
 ):
@@ -120,33 +120,33 @@ async def support_bridge(
 
 
 @router.get("/resumen")
-async def resumen(test: Optional[str] = None, user: dict = Depends(get_backoffice_user)):
-    return await dist.admin_resumen(test=test, admin=True)
+def resumen(test: Optional[str] = None, user: dict = Depends(get_backoffice_user)):
+    return dist.admin_resumen(test=test, admin=True)
 
 
 @router.get("/analytics-resumen")
-async def analytics_resumen(test: Optional[str] = None, user: dict = Depends(get_backoffice_user)):
-    return await dist.admin_analytics_resumen(test=test, admin=True)
+def analytics_resumen(test: Optional[str] = None, user: dict = Depends(get_backoffice_user)):
+    return dist.admin_analytics_resumen(test=test, admin=True)
 
 
 @router.get("/alerts/sobregiro")
-async def alerts_sobregiro(test: Optional[str] = None, user: dict = Depends(get_backoffice_user)):
-    return await dist.admin_alerts_sobregiro(test=test, admin=True)
+def alerts_sobregiro(test: Optional[str] = None, user: dict = Depends(get_backoffice_user)):
+    return dist.admin_alerts_sobregiro(test=test, admin=True)
 
 
 @router.get("/bodegas")
-async def list_bodegas(
+def list_bodegas(
     test: Optional[str] = None,
     estado: Optional[str] = None,
     search: Optional[str] = None,
     user: dict = Depends(get_backoffice_user),
 ):
-    return await dist.admin_list_bodegas(test=test, estado=estado, search=search, admin=True)
+    return dist.admin_list_bodegas(test=test, estado=estado, search=search, admin=True)
 
 
 @router.get("/bodega/{bodega_id}")
-async def bodega_detalle(bodega_id: str, user: dict = Depends(get_backoffice_user)):
-    return await dist.admin_bodega_detalle(bodega_id, admin=True)
+def bodega_detalle(bodega_id: str, user: dict = Depends(get_backoffice_user)):
+    return dist.admin_bodega_detalle(bodega_id, admin=True)
 
 
 def _build_deuda_perfil(pedidos: list[dict]) -> dict:
@@ -232,12 +232,12 @@ def _build_deuda_perfil(pedidos: list[dict]) -> dict:
 
 
 @router.get("/bodega/{bodega_id}/perfil")
-async def bodega_perfil(bodega_id: str, user: dict = Depends(get_backoffice_user)):
+def bodega_perfil(bodega_id: str, user: dict = Depends(get_backoffice_user)):
     """Perfil completo de bodega con features analíticas y score."""
     from app.services.analytics import get_bodega_features
     from app.services.bodega_score import compute_bodega_score
 
-    detalle = await dist.admin_bodega_detalle(bodega_id, admin=True)
+    detalle = dist.admin_bodega_detalle(bodega_id, admin=True)
     _enrich_pedidos_flujo(detalle.get("pedidos") or [])
     features = get_bodega_features(bodega_id)
     score = compute_bodega_score(
@@ -256,7 +256,7 @@ async def bodega_perfil(bodega_id: str, user: dict = Depends(get_backoffice_user
 
 
 @router.get("/pedidos")
-async def list_pedidos(
+def list_pedidos(
     bodega: Optional[str] = None,
     distribuidor: Optional[str] = None,
     estado: Optional[str] = None,
@@ -264,7 +264,7 @@ async def list_pedidos(
     test: Optional[str] = None,
     user: dict = Depends(get_backoffice_user),
 ):
-    data = await dist.admin_list_pedidos(
+    data = dist.admin_list_pedidos(
         bodega=bodega, distribuidor=distribuidor, estado=estado, tipo=tipo, test=test, admin=True,
     )
     _enrich_pedidos_flujo(data.get("pedidos") or [])
@@ -272,7 +272,7 @@ async def list_pedidos(
 
 
 @router.get("/pedido/{pedido_id}/flujo")
-async def pedido_flujo(pedido_id: str, user: dict = Depends(get_backoffice_user)):
+def pedido_flujo(pedido_id: str, user: dict = Depends(get_backoffice_user)):
     """Pipeline BPMN del pedido (paso actual, restantes, fases)."""
     rows = _sb_get("pedidos", {"select": "*", "id": f"eq.{pedido_id}"})
     if not rows:
@@ -281,7 +281,7 @@ async def pedido_flujo(pedido_id: str, user: dict = Depends(get_backoffice_user)
 
 
 @router.get("/cobranzas")
-async def cobranzas(
+def cobranzas(
     bodega: Optional[str] = None,
     distribuidor: Optional[str] = None,
     estado: Optional[str] = None,
@@ -290,7 +290,7 @@ async def cobranzas(
     test: Optional[str] = None,
     user: dict = Depends(get_backoffice_user),
 ):
-    return await dist.admin_cobranzas(
+    return dist.admin_cobranzas(
         bodega=bodega,
         distribuidor=distribuidor,
         estado=estado,
@@ -302,19 +302,19 @@ async def cobranzas(
 
 
 @router.get("/export-pagos-distribuidor")
-async def export_pagos(
+def export_pagos(
     fecha_desde: Optional[str] = None,
     fecha_hasta: Optional[str] = None,
     test: Optional[str] = None,
     user: dict = Depends(get_backoffice_user),
 ):
-    return await dist.admin_export_pagos(
+    return dist.admin_export_pagos(
         fecha_desde=fecha_desde, fecha_hasta=fecha_hasta, test=test, admin=True,
     )
 
 
 @router.get("/audit")
-async def audit_log(limit: int = 50, user: dict = Depends(get_backoffice_user)):
+def audit_log(limit: int = 50, user: dict = Depends(get_backoffice_user)):
     try:
         rows = (
             db.sb.table("backoffice_audit_log")
@@ -501,7 +501,7 @@ def _insert_bodega_record(
 
 
 @router.post("/bodegas")
-async def create_bodega(body: BodegaCreate, user: dict = Depends(get_backoffice_writer)):
+def create_bodega(body: BodegaCreate, user: dict = Depends(get_backoffice_writer)):
     verify_reauth_password(body.password)
     tel = _normalizar_telefono(body.telefono_whatsapp)
     ruc = body.ruc.strip()
@@ -538,7 +538,7 @@ async def create_bodega(body: BodegaCreate, user: dict = Depends(get_backoffice_
 
 
 @router.patch("/bodega/{bodega_id}")
-async def update_bodega(bodega_id: str, body: BodegaUpdate, user: dict = Depends(get_backoffice_writer)):
+def update_bodega(bodega_id: str, body: BodegaUpdate, user: dict = Depends(get_backoffice_writer)):
     verify_reauth_password(body.password)
     rows = _sb_get("bodegas", {"select": "*", "id": f"eq.{bodega_id}"})
     if not rows:
@@ -564,7 +564,7 @@ async def update_bodega(bodega_id: str, body: BodegaUpdate, user: dict = Depends
 
 
 @router.post("/bodega/{bodega_id}/sesion/reset")
-async def reset_sesion(bodega_id: str, body: SessionReset, user: dict = Depends(get_backoffice_writer)):
+def reset_sesion(bodega_id: str, body: SessionReset, user: dict = Depends(get_backoffice_writer)):
     verify_reauth_password(body.password)
     rows = _sb_get("bodegas", {"select": "id,telefono_whatsapp", "id": f"eq.{bodega_id}"})
     if not rows:
@@ -605,7 +605,7 @@ class BackofficePinSet(ReauthMixin):
 
 
 @router.post("/bodega/{bodega_id}/pin/set")
-async def pin_set(bodega_id: str, body: BackofficePinSet, user: dict = Depends(get_backoffice_writer)):
+def pin_set(bodega_id: str, body: BackofficePinSet, user: dict = Depends(get_backoffice_writer)):
     verify_reauth_password(body.password)
     payload = dist.AdminPinSet(
         comentario=body.comentario,
@@ -613,16 +613,16 @@ async def pin_set(bodega_id: str, body: BackofficePinSet, user: dict = Depends(g
         pin=body.pin,
         pin_confirm=body.pin_confirm,
     )
-    result = await dist.admin_set_pin(bodega_id, payload, admin=True)
+    result = dist.admin_set_pin(bodega_id, payload, admin=True)
     log_action(user=user, action="pin_set", entity_type="bodega", entity_id=bodega_id, comment=body.comentario, bodega_id=bodega_id)
     return result
 
 
 @router.post("/bodega/{bodega_id}/pin/reset")
-async def pin_reset(bodega_id: str, body: ReauthMixin, user: dict = Depends(get_backoffice_writer)):
+def pin_reset(bodega_id: str, body: ReauthMixin, user: dict = Depends(get_backoffice_writer)):
     verify_reauth_password(body.password)
     payload = dist.AdminPinAction(comentario=body.comentario, autorizacion=dist.ADMIN_TOKEN)
-    result = await dist.admin_reset_pin(bodega_id, payload, admin=True)
+    result = dist.admin_reset_pin(bodega_id, payload, admin=True)
     log_action(user=user, action="pin_reset", entity_type="bodega", entity_id=bodega_id, comment=body.comentario, bodega_id=bodega_id)
     return result
 
@@ -633,7 +633,7 @@ class PedidoEstadoUpdate(ReauthMixin):
 
 
 @router.post("/pedido/{pedido_id}/estado")
-async def update_pedido_estado(
+def update_pedido_estado(
     pedido_id: str, body: PedidoEstadoUpdate, user: dict = Depends(get_backoffice_writer),
 ):
     verify_reauth_password(body.password)
@@ -681,7 +681,7 @@ async def update_pedido_estado(
 
 
 @router.post("/pedido/{pedido_id}/cancelar")
-async def cancelar_pedido(pedido_id: str, body: ReauthMixin, user: dict = Depends(get_backoffice_writer)):
+def cancelar_pedido(pedido_id: str, body: ReauthMixin, user: dict = Depends(get_backoffice_writer)):
     verify_reauth_password(body.password)
     rows = _sb_get("pedidos", {"select": "*", "id": f"eq.{pedido_id}"})
     if not rows:
@@ -762,12 +762,12 @@ class AceptarPreventaBody(BaseModel):
 
 
 @router.post("/preventa/{pedido_id}/aceptar")
-async def aceptar_preventa(
+def aceptar_preventa(
     pedido_id: str,
     body: AceptarPreventaBody = AceptarPreventaBody(),
     user: dict = Depends(get_backoffice_writer),
 ):
-    res = await dist.admin_aceptar_preventa(
+    res = dist.admin_aceptar_preventa(
         pedido_id,
         monto_financiado=body.monto_financiado,
         plazo_dias=body.plazo_dias,
@@ -929,7 +929,7 @@ async def _subir_sustentos_abono(pedido_id: str, abono_id: str, files: list, des
 
 
 @router.get("/cobranza/{pedido_id}/abonos")
-async def listar_abonos(pedido_id: str, user: dict = Depends(get_backoffice_user)):
+def listar_abonos(pedido_id: str, user: dict = Depends(get_backoffice_user)):
     rows = (db.sb.table("abonos").select("*").eq("pedido_id", pedido_id)
             .eq("anulado", False).order("fecha_pago").execute().data or [])
     ped = _sb_get("pedidos", {"select": "*", "id": f"eq.{pedido_id}"})
@@ -1118,7 +1118,7 @@ def _cartera_resumen(rows: list[dict]) -> dict[str, dict[str, int]]:
 
 
 @router.get("/carteras/filtros")
-async def carteras_filtros(user: dict = Depends(get_backoffice_user)):
+def carteras_filtros(user: dict = Depends(get_backoffice_user)):
     """Valores distintos para filtros de la pestaña Carteras."""
     rows = _sb_get("bodega_vendedores", {
         "select": "supervisor,grupo,rol,vendedor_id,vendedores(codigo,nombre)",
@@ -1156,7 +1156,7 @@ async def carteras_filtros(user: dict = Depends(get_backoffice_user)):
 
 
 @router.get("/carteras")
-async def list_carteras(
+def list_carteras(
     user: dict = Depends(get_backoffice_user),
     vendedor_id: Optional[str] = None,
     supervisor: Optional[str] = None,
@@ -1232,7 +1232,7 @@ async def list_carteras(
 
 
 @router.patch("/carteras/{cartera_id}")
-async def update_cartera(
+def update_cartera(
     cartera_id: str,
     body: CarteraUpdate,
     user: dict = Depends(get_backoffice_writer),
@@ -1271,7 +1271,7 @@ async def update_cartera(
 
 
 @router.get("/vendedores")
-async def list_vendedores(user: dict = Depends(get_backoffice_user)):
+def list_vendedores(user: dict = Depends(get_backoffice_user)):
     rows = _sb_get("vendedores", {
         "select": "id,codigo,nombre,telefono_whatsapp,distribuidor_id,activo,es_admin,ultimo_acceso,access_token",
         "order": "nombre.asc",
@@ -1285,7 +1285,7 @@ async def list_vendedores(user: dict = Depends(get_backoffice_user)):
 
 
 @router.post("/vendedores")
-async def create_vendedor(body: VendedorCreate, user: dict = Depends(get_backoffice_writer)):
+def create_vendedor(body: VendedorCreate, user: dict = Depends(get_backoffice_writer)):
     verify_reauth_password(body.password)
     dist_id = body.distribuidor_id or DIMAX_DISTRIBUIDOR_ID
     token = secrets.token_urlsafe(24)[:32]
@@ -1314,7 +1314,7 @@ async def create_vendedor(body: VendedorCreate, user: dict = Depends(get_backoff
 
 
 @router.patch("/vendedor/{vendedor_id}")
-async def update_vendedor(
+def update_vendedor(
     vendedor_id: str, body: VendedorUpdate, user: dict = Depends(get_backoffice_writer),
 ):
     verify_reauth_password(body.password)
@@ -1329,7 +1329,7 @@ async def update_vendedor(
 
 
 @router.get("/vendedor/{vendedor_id}/preventas")
-async def vendedor_preventas(vendedor_id: str, user: dict = Depends(get_backoffice_user)):
+def vendedor_preventas(vendedor_id: str, user: dict = Depends(get_backoffice_user)):
     pedidos = _sb_get("pedidos", {
         "select": "id,numero,estado,link_token,bodega_id,monto_productos,created_at",
         "vendedor_id": f"eq.{vendedor_id}",
@@ -1346,7 +1346,7 @@ async def vendedor_preventas(vendedor_id: str, user: dict = Depends(get_backoffi
 
 
 @router.get("/vendedor/{vendedor_id}/cartera")
-async def vendedor_cartera(vendedor_id: str, user: dict = Depends(get_backoffice_user)):
+def vendedor_cartera(vendedor_id: str, user: dict = Depends(get_backoffice_user)):
     rows = _sb_get("bodega_vendedores", {
         "select": "bodega_id,activo,bodegas(id,nombre_comercial,ruc,telefono_whatsapp,estado)",
         "vendedor_id": f"eq.{vendedor_id}",
@@ -1356,7 +1356,7 @@ async def vendedor_cartera(vendedor_id: str, user: dict = Depends(get_backoffice
 
 
 @router.post("/vendedor/{vendedor_id}/cartera")
-async def assign_cartera(
+def assign_cartera(
     vendedor_id: str, body: CarteraAssign, user: dict = Depends(get_backoffice_writer),
 ):
     verify_reauth_password(body.password)
@@ -1396,7 +1396,7 @@ async def assign_cartera(
 
 
 @router.get("/distribuidores")
-async def list_distribuidores(user: dict = Depends(get_backoffice_user)):
+def list_distribuidores(user: dict = Depends(get_backoffice_user)):
     rows = _sb_get("distribuidores", {"select": "id,nombre_comercial,ruc,estado", "limit": "50"})
     return {"distribuidores": rows}
 
@@ -1404,7 +1404,7 @@ async def list_distribuidores(user: dict = Depends(get_backoffice_user)):
 # ── Importación Excel ─────────────────────────────────────────────
 
 @router.get("/import/plantilla/bodegas")
-async def plantilla_bodegas(user: dict = Depends(get_backoffice_user)):
+def plantilla_bodegas(user: dict = Depends(get_backoffice_user)):
     data = xls.build_template_xlsx(xls.BODEGAS_HEADERS, xls.BODEGAS_EJEMPLO)
     return Response(
         content=data,
@@ -1414,7 +1414,7 @@ async def plantilla_bodegas(user: dict = Depends(get_backoffice_user)):
 
 
 @router.get("/import/plantilla/pedidos")
-async def plantilla_pedidos(user: dict = Depends(get_backoffice_user)):
+def plantilla_pedidos(user: dict = Depends(get_backoffice_user)):
     data = xls.build_template_xlsx(xls.PEDIDOS_HEADERS, xls.PEDIDOS_EJEMPLO)
     return Response(
         content=data,
@@ -1438,7 +1438,7 @@ async def preview_bodegas_excel(
 
 
 @router.post("/import/bodegas/revalidate")
-async def revalidate_bodegas_rows(
+def revalidate_bodegas_rows(
     body: BodegasRevalidateRows,
     user: dict = Depends(get_backoffice_user),
 ):
@@ -1467,7 +1467,7 @@ async def revalidate_bodegas_rows(
 
 
 @router.post("/import/bodegas/confirm")
-async def confirm_bodegas_import(
+def confirm_bodegas_import(
     body: BodegasImportConfirm,
     user: dict = Depends(get_backoffice_writer),
 ):
@@ -1572,7 +1572,7 @@ async def preview_dimax_bodega_excel(
 
 
 @router.post("/import/dimax-bodega/revalidate")
-async def revalidate_dimax_bodega_preview(
+def revalidate_dimax_bodega_preview(
     body: DimaxBodegaRevalidate,
     user: dict = Depends(get_backoffice_user),
 ):
@@ -1605,7 +1605,7 @@ async def revalidate_dimax_bodega_preview(
 
 
 @router.post("/import/dimax-bodega/confirm")
-async def confirm_dimax_bodega_excel(
+def confirm_dimax_bodega_excel(
     body: DimaxBodegaConfirm,
     user: dict = Depends(get_backoffice_writer),
 ):
@@ -1735,7 +1735,7 @@ async def preview_preventa_excel(
 
 
 @router.post("/import/preventa/revalidate")
-async def revalidate_preventa_import(
+def revalidate_preventa_import(
     body: PreventaRevalidate,
     user: dict = Depends(get_backoffice_user),
 ):
@@ -1761,7 +1761,7 @@ async def revalidate_preventa_import(
 
 
 @router.post("/import/preventa/confirm")
-async def confirm_preventa_import(
+def confirm_preventa_import(
     body: PreventaImportConfirm,
     user: dict = Depends(get_backoffice_writer),
 ):
@@ -1832,7 +1832,7 @@ async def confirm_preventa_import(
     }
 
 @router.get("/scoring")
-async def scoring_preview(
+def scoring_preview(
     test: Optional[str] = None,
     user: dict = Depends(get_backoffice_user),
 ):
@@ -1843,7 +1843,7 @@ async def scoring_preview(
 
 
 @router.post("/scoring/ejecutar")
-async def scoring_ejecutar(
+def scoring_ejecutar(
     test: Optional[str] = None,
     user: dict = Depends(get_backoffice_writer),
 ):
@@ -1905,7 +1905,7 @@ async def credit_model_process(
 
 
 @router.post("/credit-model/patch-linea")
-async def credit_model_patch_linea(
+def credit_model_patch_linea(
     body: CreditModelPatchLineaBody,
     user: dict = Depends(get_backoffice_user),
 ):
@@ -1924,7 +1924,7 @@ async def credit_model_patch_linea(
 
 
 @router.post("/credit-model/load")
-async def credit_model_load(
+def credit_model_load(
     body: CreditModelLoadRequest,
     user: dict = Depends(get_backoffice_writer),
 ):
@@ -1987,14 +1987,14 @@ class BatchScheduleBody(BaseModel):
 
 
 @router.get("/batch/schedules")
-async def batch_schedules_list(user: dict = Depends(get_backoffice_user)):
+def batch_schedules_list(user: dict = Depends(get_backoffice_user)):
     from app.services.batch_jobs.schedules import FREQ_LABELS, list_schedules
 
     return {"schedules": list_schedules(), "frecuencias": FREQ_LABELS}
 
 
 @router.post("/batch/schedules")
-async def batch_schedule_create(
+def batch_schedule_create(
     body: BatchScheduleBody,
     user: dict = Depends(get_backoffice_writer),
 ):
@@ -2018,7 +2018,7 @@ async def batch_schedule_create(
 
 
 @router.patch("/batch/schedules/{schedule_id}")
-async def batch_schedule_update(
+def batch_schedule_update(
     schedule_id: str,
     body: BatchScheduleBody,
     user: dict = Depends(get_backoffice_writer),
@@ -2035,7 +2035,7 @@ async def batch_schedule_update(
 
 
 @router.delete("/batch/schedules/{schedule_id}")
-async def batch_schedule_delete(
+def batch_schedule_delete(
     schedule_id: str,
     user: dict = Depends(get_backoffice_writer),
 ):
@@ -2070,14 +2070,14 @@ async def batch_schedules_tick(
 
 
 @router.get("/batch/jobs")
-async def batch_jobs_list(user: dict = Depends(get_backoffice_user)):
+def batch_jobs_list(user: dict = Depends(get_backoffice_user)):
     from app.services.batch_jobs.runner import list_jobs_with_status
 
     return {"jobs": list_jobs_with_status()}
 
 
 @router.get("/batch/runs")
-async def batch_runs_list(
+def batch_runs_list(
     job_id: Optional[str] = None,
     limit: int = 40,
     user: dict = Depends(get_backoffice_user),
@@ -2149,7 +2149,7 @@ async def batch_job_preview_post(
 
 
 @router.post("/batch/{job_id}/parse-csv")
-async def batch_job_parse_csv(
+def batch_job_parse_csv(
     job_id: str,
     body: BatchParseCsvBody,
     user: dict = Depends(get_backoffice_user),
@@ -2165,7 +2165,7 @@ async def batch_job_parse_csv(
 
 
 @router.get("/batch/{job_id}/csv-ejemplo")
-async def batch_job_csv_ejemplo(
+def batch_job_csv_ejemplo(
     job_id: str,
     user: dict = Depends(get_backoffice_user),
 ):
@@ -2253,7 +2253,7 @@ class ObservabilityAnalyzeBody(BaseModel):
 
 
 @router.get("/observability/search")
-async def observability_search(
+def observability_search(
     q: str,
     limit: int = 20,
     user: dict = Depends(get_backoffice_user),
@@ -2264,7 +2264,7 @@ async def observability_search(
 
 
 @router.get("/observability/timeline")
-async def observability_timeline(
+def observability_timeline(
     bodega_id: str,
     user: dict = Depends(get_backoffice_user),
 ):
@@ -2277,7 +2277,7 @@ async def observability_timeline(
 
 
 @router.post("/observability/analyze")
-async def observability_analyze(
+def observability_analyze(
     body: ObservabilityAnalyzeBody,
     user: dict = Depends(get_backoffice_user),
 ):
@@ -2304,7 +2304,7 @@ async def observability_analyze(
 
 
 @router.get("/control-panel/lookup")
-async def control_panel_lookup(
+def control_panel_lookup(
     q: str,
     limit: int = 15,
     user: dict = Depends(get_backoffice_user),
@@ -2315,7 +2315,7 @@ async def control_panel_lookup(
 
 
 @router.post("/control-panel/bodega/{bodega_id}/pin/unlock")
-async def control_panel_unlock_pin(
+def control_panel_unlock_pin(
     bodega_id: str,
     body: ReauthMixin,
     user: dict = Depends(get_backoffice_writer),
@@ -2360,7 +2360,7 @@ async def backoffice_cobranza_reporte_diario(user: dict = Depends(get_backoffice
 
 
 @router.get("/bodegas/reporte-listas")
-async def backoffice_bodegas_reporte_listas(user: dict = Depends(get_backoffice_user)):
+def backoffice_bodegas_reporte_listas(user: dict = Depends(get_backoffice_user)):
     from starlette.responses import HTMLResponse
     from app.jobs.reporte_bodegas import get_enroladas_listas, render_listas_html
     from app.services.db import sb as supabase
@@ -2370,7 +2370,7 @@ async def backoffice_bodegas_reporte_listas(user: dict = Depends(get_backoffice_
 
 
 @router.get("/bodegas/reporte-sin-enrolar")
-async def backoffice_bodegas_reporte_sin_enrolar(user: dict = Depends(get_backoffice_user)):
+def backoffice_bodegas_reporte_sin_enrolar(user: dict = Depends(get_backoffice_user)):
     from starlette.responses import HTMLResponse
     from app.jobs.reporte_bodegas import get_sin_enrolar, render_sin_enrolar_html
     from app.services.db import sb as supabase

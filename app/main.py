@@ -68,6 +68,9 @@ async def _circa_lifespan(app: FastAPI):
 
 app = FastAPI(title="Circa MVP", version="2.3.0", lifespan=_circa_lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+# Comprime respuestas grandes (backoffice.html pesa ~330 KB; baja a ~60 KB).
+from fastapi.middleware.gzip import GZipMiddleware
+app.add_middleware(GZipMiddleware, minimum_size=1024)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 app.include_router(distribuidor_router)
 app.include_router(support_inbox_router)
@@ -255,7 +258,22 @@ async def twilio_webhook(
 
 @app.get("/api/health")
 async def health():
-    return {"status": "ok", "service": "circa-mvp", "version": "2.3.0"}
+    """Incluye el commit desplegado para poder verificar un deploy sin adivinar."""
+    commit = (
+        os.getenv("RAILWAY_GIT_COMMIT_SHA")
+        or os.getenv("SOURCE_COMMIT")
+        or os.getenv("GIT_COMMIT")
+        or ""
+    )
+    return {
+        "status": "ok",
+        "service": "circa-mvp",
+        "version": "2.3.0",
+        "commit": commit[:7],
+        "commit_full": commit,
+        "branch": os.getenv("RAILWAY_GIT_BRANCH", ""),
+        "deployed_at": os.getenv("RAILWAY_DEPLOYMENT_CREATED_AT", ""),
+    }
 
 @app.get("/privacy")
 async def privacy():

@@ -12,12 +12,22 @@ router = APIRouter(prefix="/api/distribuidor", tags=["distribuidor"])
 SUPABASE_URL = os.getenv("SUPABASE_URL", "https://rhxqcoijzgqlecpdfhde.supabase.co")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_KEY", os.getenv("SUPABASE_KEY", ""))
 
+# Cliente HTTP reutilizado: mantiene la conexion abierta contra Supabase.
+# Antes cada llamada abria una conexion TLS nueva (~100-200 ms extra por llamada,
+# y una pantalla del backoffice hace 15-25 llamadas).
+_SB_CLIENT = httpx.Client(
+    timeout=15,
+    limits=httpx.Limits(max_keepalive_connections=20, max_connections=40,
+                        keepalive_expiry=60.0),
+)
+
+
 def _sb_headers():
     return {"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}",
             "Content-Type": "application/json", "Prefer": "return=representation"}
 
 def _sb_get(path, params=None):
-    r = httpx.get(f"{SUPABASE_URL}/rest/v1/{path}", headers=_sb_headers(), params=params or {}, timeout=15)
+    r = _SB_CLIENT.get(f"{SUPABASE_URL}/rest/v1/{path}", headers=_sb_headers(), params=params or {})
     if r.status_code >= 400:
         import logging
         logging.getLogger("circa").error(f"Supabase error {r.status_code}: {r.text}")
@@ -25,12 +35,12 @@ def _sb_get(path, params=None):
     return r.json()
 
 def _sb_patch(path, data, params=None):
-    r = httpx.patch(f"{SUPABASE_URL}/rest/v1/{path}", headers=_sb_headers(), json=data, params=params or {}, timeout=15)
+    r = _SB_CLIENT.patch(f"{SUPABASE_URL}/rest/v1/{path}", headers=_sb_headers(), json=data, params=params or {})
     r.raise_for_status()
     return r.json()
 
 def _sb_rpc(fn, payload=None):
-    r = httpx.post(f"{SUPABASE_URL}/rest/v1/rpc/{fn}", headers=_sb_headers(), json=payload or {}, timeout=15)
+    r = _SB_CLIENT.post(f"{SUPABASE_URL}/rest/v1/rpc/{fn}", headers=_sb_headers(), json=payload or {})
     r.raise_for_status()
     return r.json()
 
@@ -44,7 +54,7 @@ def _sb_map_by_ids(table: str, select: str, ids: list[str], id_col: str = "id") 
     return {row[id_col]: row for row in rows}
 
 
-async def verify_distribuidor(x_api_token: str = Header(..., alias="X-API-Token")):
+def verify_distribuidor(x_api_token: str = Header(..., alias="X-API-Token")):
     rows = _sb_get("distribuidores", {"select": "*", "api_token": f"eq.{x_api_token}"})
     if not rows:
         raise HTTPException(status_code=401, detail="Token invalido")
@@ -205,7 +215,7 @@ class StatusUpdate(BaseModel):
     nuevo_estado: str
 
 @router.get("/pedidos")
-async def list_pedidos(estado: Optional[str] = None, incluir_test: bool = False, dist: dict = Depends(verify_distribuidor)):
+def list_pedidos(estado: Optional[str] = None, incluir_test: bool = False, dist: dict = Depends(verify_distribuidor)):
     params = {"select":"*","distribuidor_id":f"eq.{dist['id']}","order":"created_at.desc"}
     if estado: params["estado"] = f"eq.{estado}"
     pedidos = _sb_get("pedidos", params)
@@ -225,13 +235,13 @@ async def list_pedidos(estado: Optional[str] = None, incluir_test: bool = False,
     return {"pedidos": pedidos, "distribuidor": dist["nombre_comercial"]}
 
 @router.get("/pedidos/{pedido_id}")
-async def get_pedido(pedido_id: str, dist: dict = Depends(verify_distribuidor)):
+def get_pedido(pedido_id: str, dist: dict = Depends(verify_distribuidor)):
     rows = _sb_get("pedidos", {"select":"*","id":f"eq.{pedido_id}","distribuidor_id":f"eq.{dist['id']}"})
     if not rows: raise HTTPException(status_code=404, detail="Pedido no encontrado")
     return rows[0]
 
 @router.post("/pedidos/{pedido_id}/status")
-async def update_status(pedido_id: str, body: StatusUpdate, dist: dict = Depends(verify_distribuidor)):
+def update_status(pedido_id: str, body: StatusUpdate, dist: dict = Depends(verify_distribuidor)):
     rows = _sb_get("pedidos", {"select":"*","id":f"eq.{pedido_id}","distribuidor_id":f"eq.{dist['id']}"})
     if not rows: raise HTTPException(status_code=404, detail="Pedido no encontrado")
     pedido = rows[0]
@@ -322,7 +332,7 @@ async def update_status(pedido_id: str, body: StatusUpdate, dist: dict = Depends
     return {"ok":True,"pedido_id":pedido_id,"estado_anterior":current,"estado_nuevo":nuevo,"notificado":bool(tel)}
 
 @router.post("/pedidos/{pedido_id}/facturar")
-async def preparar_factura(pedido_id: str, dist: dict = Depends(verify_distribuidor)):
+def preparar_factura(pedido_id: str, dist: dict = Depends(verify_distribuidor)):
     rows = _sb_get("pedidos", {"select":"*","id":f"eq.{pedido_id}","distribuidor_id":f"eq.{dist['id']}"})
     if not rows: raise HTTPException(status_code=404, detail="Pedido no encontrado")
     pedido = rows[0]
@@ -353,7 +363,7 @@ async def preparar_factura(pedido_id: str, dist: dict = Depends(verify_distribui
     return {"factura": factura}
 
 @router.get("/conciliacion")
-async def conciliacion(fecha: Optional[str] = None, dist: dict = Depends(verify_distribuidor)):
+def conciliacion(fecha: Optional[str] = None, dist: dict = Depends(verify_distribuidor)):
     """Daily reconciliation: how much Circa owes the distributor."""
     params = {"select":"*","distribuidor_id":f"eq.{dist['id']}","estado":"in.(confirmado,recibido,en_preparacion,despachado,en_camino,entregado)"}
     pedidos = _sb_get("pedidos", params)
@@ -395,14 +405,14 @@ async def conciliacion(fecha: Optional[str] = None, dist: dict = Depends(verify_
 
 
 @router.post("/pedidos/{pedido_id}/sustento")
-async def upload_sustento(pedido_id: str, file: UploadFile = File(...), dist: dict = Depends(verify_distribuidor)):
+def upload_sustento(pedido_id: str, file: UploadFile = File(...), dist: dict = Depends(verify_distribuidor)):
     """Upload delivery proof (signed guide, invoice, photo)."""
     rows = _sb_get("pedidos", {"select":"id,estado","id":f"eq.{pedido_id}","distribuidor_id":f"eq.{dist['id']}"})
     if not rows:
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
     if rows[0]["estado"] not in ("despachado","en_camino","entregado"):
         raise HTTPException(status_code=400, detail="Solo se puede subir sustento para pedidos despachados o entregados")
-    content = await file.read()
+    content = file.file.read()
     import base64
     ext = file.filename.split(".")[-1] if "." in file.filename else "jpg"
     # Upload to Supabase Storage
@@ -506,7 +516,7 @@ def _days_ago_iso(days: int) -> str:
     return (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
 
 @router.get("/admin/pedidos")
-async def admin_list_pedidos(
+def admin_list_pedidos(
     bodega: Optional[str] = None,
     distribuidor: Optional[str] = None,
     estado: Optional[str] = None,
@@ -573,7 +583,7 @@ async def admin_list_pedidos(
 
 
 @router.post("/admin/preventa/{pedido_id}/aceptar")
-async def admin_aceptar_preventa(
+def admin_aceptar_preventa(
     pedido_id: str,
     monto_financiado: float | None = None,
     plazo_dias: int = 7,
@@ -722,7 +732,7 @@ async def admin_aceptar_preventa(
     return resultado
 
 @router.get("/admin/resumen")
-async def admin_resumen(
+def admin_resumen(
     test: Optional[str] = None,
     admin: bool = Depends(verify_admin),
 ):
@@ -759,7 +769,7 @@ async def admin_resumen(
 
 
 @router.get("/admin/analytics-resumen")
-async def admin_analytics_resumen(
+def admin_analytics_resumen(
     test: Optional[str] = None,
     admin: bool = Depends(verify_admin),
 ):
@@ -859,7 +869,7 @@ def _busqueda_tolerante(query, target):
 
 
 @router.get("/admin/cobranzas")
-async def admin_cobranzas(
+def admin_cobranzas(
     distribuidor: Optional[str] = None,
     bodega: Optional[str] = None,
     estado: Optional[str] = None,
@@ -868,113 +878,56 @@ async def admin_cobranzas(
     test: Optional[str] = None,
     admin: bool = Depends(verify_admin),
 ):
-    """List all orders with delivery status + payment tracking. Filtra por test/real."""
+    """Cobranzas del backoffice desde la vista v_cobranzas (una sola consulta).
+
+    Antes esto hacia 15-25 llamadas encadenadas a Supabase (pedidos, bodegas,
+    distribuidores, vendedores en bloques de 60, 2000 mensajes, abonos) y se
+    recalculaba entero con cada tecla del buscador. La vista trae todo junto:
+    bodega, distribuidor, vendedor/supervisor, abonos y ultimo recordatorio.
+    El fee/mora se sigue calculando en Python (fees.py es la fuente de verdad).
+    """
     from datetime import datetime, timedelta
-    
-    params = {
-        "select": "*",
-        "estado": "in.(entregado,pago_reportado,pagado)",
-        "order": "created_at.desc",
-        "limit": "500"
-    }
-    pedidos = _sb_get("pedidos", params)
-    # NUEVO: filtrar por test/real
-    ids_filter = _bodega_ids_por_test(test)
-    if ids_filter is not None:
-        pedidos = [p for p in pedidos if p.get("bodega_id") in ids_filter]
-    
-    # Bodegas
-    bodega_ids = list(set(p.get("bodega_id", "") for p in pedidos if p.get("bodega_id")))
-    bodegas_map = _sb_map_by_ids(
-        "bodegas",
-        "id,nombre_comercial,razon_social,dni_representante,telefono_whatsapp,ruc,direccion_fiscal",
-        bodega_ids,
-    )
 
-    dist_ids = list(set(p.get("distribuidor_id", "") for p in pedidos if p.get("distribuidor_id")))
-    dist_map = _sb_map_by_ids("distribuidores", "id,nombre_comercial,ruc", dist_ids)
+    params = {"select": "*", "order": "created_at.desc", "limit": "1000"}
+    if test == "real":
+        params["es_test"] = "is.false"
+    elif test == "test":
+        params["es_test"] = "is.true"
+    if bodega:
+        # Filtro de texto del lado del servidor (la vista trae la columna `busqueda`).
+        params["busqueda"] = f"ilike.*{bodega.strip().lower()}*"
+    filas = _sb_get("v_cobranzas", params)
 
-    # Vendedor/supervisor por bodega (mapeo activo en bodega_vendedores)
-    # ⚠️ NO traer la tabla completa: PostgREST corta en 1000 filas (db-max-rows,
-    #    tope del SERVIDOR: "limit" no lo sube) y hay ~4600 mapeos activos.
-    #    Se filtra por las bodegas que ya están en pantalla, en chunks de 200
-    #    para que ningún request pueda volver a acercarse al tope.
-    # ⚠️ Tampoco filtrar por rol='ABN': dejaba fuera a MERCADOS (324 bodegas) y
-    #    CONFITERIA (14), que salían sin vendedor. Cada bodega tiene un único
-    #    mapeo activo, así que sin el filtro no hay ambigüedad.
-    vend_map = {}
-    # Chunks de 60 (no 200): un in.(...) con 200 UUIDs genera una URL que puede
-    # exceder el limite de longitud de PostgREST y hacer fallar el request; ese
-    # fallo dejaba SIN vendedor a toda la pagina. Ademas, si un chunk falla se
-    # continua con los demas en vez de descartar el mapa completo.
-    _bvs = []
-    for _i in range(0, len(bodega_ids), 60):
-        _chunk = bodega_ids[_i:_i + 60]
-        if not _chunk:
-            continue
-        try:
-            _bvs += _sb_get("bodega_vendedores", {
-                "select": "bodega_id,vendedor_id,supervisor,rol,activo",
-                "activo": "eq.true",
-                "bodega_id": f"in.({','.join(_chunk)})",
-            })
-        except Exception as _e_chunk:
-            logging.getLogger("circa").warning(
-                "admin_cobranzas: chunk vendedores fallo (%d ids): %s",
-                len(_chunk), _e_chunk)
-            continue
-    try:
-        _vids = list(set(x.get("vendedor_id") for x in _bvs if x.get("vendedor_id")))
-        _vmap = _sb_map_by_ids("vendedores", "id,codigo", _vids)
-        for x in _bvs:
-            _bid = x.get("bodega_id")
-            if _bid and _bid not in vend_map:
-                vend_map[_bid] = {
-                    "codigo": (_vmap.get(x.get("vendedor_id"), {}) or {}).get("codigo") or "",
-                    "supervisor": x.get("supervisor") or "",
-                }
-    except Exception as _e_map:
-        logging.getLogger("circa").warning("admin_cobranzas: armado vend_map fallo: %s", _e_map)
-    
     from app.services.fees import total_pagar_desde_pedido, resolver_fecha_vencimiento_pedido
 
     hoy = datetime.utcnow().date()
     resultado = []
 
-    # ── Ultimo recordatorio de cobranza enviado, por pedido (tabla messages) ──
-    recordatorios_map = {}
-    try:
-        _msgs = _sb_get("messages", {
-            "select": "template_name,metadata,created_at",
-            "message_type": "eq.cobranza_recordatorio",
-            "order": "created_at.desc",
-            "limit": "2000",
-        })
-        for _m in _msgs:
-            _meta = _m.get("metadata") or {}
-            _pid = _meta.get("pedido_id")
-            if _pid and _pid not in recordatorios_map:
-                recordatorios_map[_pid] = {
-                    "fecha": _m.get("created_at"),
-                    "plantilla": _m.get("template_name"),
-                    "dia": _meta.get("dia"),
-                }
-    except Exception:
-        recordatorios_map = {}
-
-    # ── Abonos (pagos parciales) en una sola consulta, para no ir pedido por pedido ──
-    abonos_map = {}
-    try:
-        _abs = _sb_get("abonos", {"select": "pedido_id,monto,fecha_pago", "anulado": "eq.false", "limit": "5000"})
-        for _a in _abs or []:
-            abonos_map.setdefault(_a["pedido_id"], []).append(_a)
-    except Exception:
-        abonos_map = {}
-
-    for p in pedidos:
-        if float(p.get("monto_financiado") or 0) <= 0:
-            continue
-
+    for f in filas:
+        # Dict con la forma que espera fees.py
+        p = {
+            "id": f["pedido_id"],
+            "numero": f.get("numero"),
+            "estado": f.get("estado"),
+            "monto_financiado": f.get("monto_financiado"),
+            "monto_total_credito": f.get("monto_total_credito"),
+            "fee_monto": f.get("fee_monto"),
+            "fee_tasa": f.get("fee_tasa"),
+            "fee_regimen": f.get("fee_regimen"),
+            "plazo_dias": f.get("plazo_dias"),
+            "fecha_entregado": f.get("fecha_entregado"),
+            "confirmado_at": f.get("confirmado_at"),
+            "created_at": f.get("created_at"),
+            "fecha_vencimiento": f.get("fecha_vencimiento"),
+            "fecha_pagado": f.get("fecha_pagado"),
+        }
+        abonos_pedido = []
+        if float(f.get("abonado_total") or 0) > 0:
+            abonos_pedido = _sb_get("abonos", {
+                "select": "monto,fecha_pago",
+                "pedido_id": f"eq.{f['pedido_id']}",
+                "anulado": "eq.false",
+            })
         plazo = p.get("plazo_dias") or 0
         fecha_entregado = p.get("fecha_entregado") or p.get("created_at")
         venc = resolver_fecha_vencimiento_pedido(p, hoy)
@@ -1000,13 +953,28 @@ async def admin_cobranzas(
         if status_cobranza == "pagado":
             dias_restantes = None
         
-        tp = total_pagar_desde_pedido(p, hoy=hoy, abonos=abonos_map.get(p.get("id"), []))
+        tp = total_pagar_desde_pedido(p, hoy=hoy, abonos=abonos_pedido)
         item = {
             "pedido_id": p["id"],
             "numero": p.get("numero", ""),
-            "bodega": bodegas_map.get(p.get("bodega_id"), {}),
-            "distribuidor": dist_map.get(p.get("distribuidor_id"), {}),
-            "vendedor": vend_map.get(p.get("bodega_id"), {}),
+            "bodega": {
+                "id": f.get("bodega_id"),
+                "nombre_comercial": f.get("bodega_nombre_comercial"),
+                "razon_social": f.get("bodega_razon_social"),
+                "dni_representante": f.get("bodega_dni"),
+                "telefono_whatsapp": f.get("bodega_telefono"),
+                "ruc": f.get("bodega_ruc"),
+                "direccion_fiscal": f.get("bodega_direccion"),
+            },
+            "distribuidor": {
+                "id": f.get("distribuidor_id"),
+                "nombre_comercial": f.get("dist_nombre"),
+                "ruc": f.get("dist_ruc"),
+            },
+            "vendedor": {
+                "codigo": f.get("vendedor_codigo") or "",
+                "supervisor": f.get("vendedor_supervisor") or "",
+            },
             "monto_financiado": float(p.get("monto_financiado") or 0),
             "fee": float(tp.get("fee_vigente") or p.get("fee_monto") or 0),
             "fee_congelado": float(tp.get("fee_congelado") or p.get("fee_monto") or 0),
@@ -1028,26 +996,19 @@ async def admin_cobranzas(
             "estado": p.get("estado"),
             "fecha_pagado": p.get("fecha_pagado"),
             "fee_regimen": p.get("fee_regimen"),
-            "pago_cliente_sustento_url": p.get("pago_cliente_sustento_url"),
-            "pago_cliente_sustento_subido_at": p.get("pago_cliente_sustento_subido_at"),
-            "ultimo_recordatorio": recordatorios_map.get(p["id"]),
+            "pago_cliente_sustento_url": f.get("pago_cliente_sustento_url"),
+            "pago_cliente_sustento_subido_at": f.get("pago_cliente_sustento_subido_at"),
+            "ultimo_recordatorio": ({
+                "fecha": f.get("recordatorio_fecha"),
+                "plantilla": f.get("recordatorio_plantilla"),
+                "dia": f.get("recordatorio_dia"),
+            } if f.get("recordatorio_fecha") else None),
         }
         
         # Filters
         if distribuidor:
             dl = distribuidor.lower()
             if dl not in (item["distribuidor"].get("nombre_comercial","") or "").lower():
-                continue
-        if bodega:
-            _b = item["bodega"]
-            _target = " ".join([
-                _b.get("nombre_comercial") or "",
-                _b.get("razon_social") or "",
-                _b.get("ruc") or "",
-                _b.get("telefono_whatsapp") or "",
-                item.get("numero") or "",
-            ])
-            if not _busqueda_tolerante(bodega, _target):
                 continue
         if estado and estado != "todos":
             if estado != status_cobranza:
@@ -1205,7 +1166,7 @@ async def admin_verificar_pago(pedido_id: str, payload: dict, admin: bool = Depe
 
 
 @router.get("/admin/export-pagos-distribuidor")
-async def admin_export_pagos(
+def admin_export_pagos(
     fecha_desde: Optional[str] = None,
     fecha_hasta: Optional[str] = None,
     test: Optional[str] = None,
@@ -1259,7 +1220,7 @@ async def admin_export_pagos(
 # ============================================================
 
 @router.get("/admin/alerts/sobregiro")
-async def admin_alerts_sobregiro(
+def admin_alerts_sobregiro(
     test: Optional[str] = None,
     admin: bool = Depends(verify_admin),
 ):
@@ -1292,7 +1253,7 @@ async def admin_alerts_sobregiro(
 
 
 @router.get("/admin/bodegas")
-async def admin_list_bodegas(
+def admin_list_bodegas(
     test: Optional[str] = None,
     estado: Optional[str] = None,
     search: Optional[str] = None,
@@ -1380,7 +1341,7 @@ async def admin_list_bodegas(
 
 
 @router.get("/admin/bodega/{bodega_id}")
-async def admin_bodega_detalle(
+def admin_bodega_detalle(
     bodega_id: str,
     admin: bool = Depends(verify_admin),
 ):
@@ -1483,7 +1444,7 @@ async def admin_bodega_detalle(
 
 
 @router.post("/admin/bodega/{bodega_id}/pin/reset")
-async def admin_reset_pin(
+def admin_reset_pin(
     bodega_id: str,
     payload: AdminPinAction,
     admin: bool = Depends(verify_admin),
@@ -1539,7 +1500,7 @@ async def admin_reset_pin(
 
 
 @router.post("/admin/bodega/{bodega_id}/pin/set")
-async def admin_set_pin(
+def admin_set_pin(
     bodega_id: str,
     payload: AdminPinSet,
     admin: bool = Depends(verify_admin),

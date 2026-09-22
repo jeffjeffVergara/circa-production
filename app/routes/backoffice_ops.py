@@ -22,7 +22,7 @@ VALID_ESTADOS = ["entregado", "pagado", "recibido", "preventa_aceptada",
                  "confirmado", "en_preparacion", "despachado", "en_camino"]
 
 
-async def bodegas_ops_handler(
+def bodegas_ops_handler(
     test: Optional[str] = "real",
     search: Optional[str] = None,
     estado: Optional[str] = None,
@@ -205,7 +205,7 @@ def _kpis_vacios():
             "usando_linea": 0, "linea_sin_uso": 0, "sin_pedido": 0, "en_mora": 0, "monto_mora": 0}
 
 
-async def marcar_pago_distribuidor_handler(
+def marcar_pago_distribuidor_handler(
     pedido_id: str,
     user: dict = Depends(get_backoffice_user),
 ):
@@ -225,7 +225,7 @@ async def marcar_pago_distribuidor_handler(
     return {"ok": True, "pedido_id": pedido_id, "pagado_at": ahora}
 
 
-async def gmv_handler(
+def gmv_handler(
     test: str = "real",
     periodo: str = "mes",
     user: dict = Depends(get_backoffice_user),

@@ -562,7 +562,7 @@ tr:hover td{background:var(--card-hover)}
 <div class="section">
 <h2>💰 Cobranzas (bodegas que deben pagar a Circa)</h2>
 <div class="filters">
-<input type="text" id="cobFiltroBodega" placeholder="Buscar bodega..." onkeyup="loadCobranzas()">
+<input type="text" id="cobFiltroBodega" placeholder="Buscar bodega..." onkeyup="cobBuscarDebounce()">
 <select id="cobFiltroDist" onchange="loadCobranzas()"><option value="">Todos los distribuidores</option></select>
 <select id="cobFiltroEstado" onchange="loadCobranzas()">
 <option value="todos">Todos</option>
@@ -1571,6 +1571,14 @@ function fmtFechaCorta(s){
   if(!d) d=new Date(s);
   if(isNaN(d.getTime())) return '-';
   return d.toLocaleDateString('es-PE',{day:'2-digit',month:'short'});
+}
+
+// Espera a que termines de escribir antes de pedir al servidor.
+// Antes cada tecla disparaba una recarga completa de Cobranzas.
+var cobBuscarTimer = null;
+function cobBuscarDebounce(){
+  clearTimeout(cobBuscarTimer);
+  cobBuscarTimer = setTimeout(loadCobranzas, 300);
 }
 
 function loadCobranzas(){
