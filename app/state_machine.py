@@ -38,7 +38,11 @@ from app.services.preventa_propuesta import (
 
 # Test phones — bypass SUNAT/RENIEC/Vision validation
 TEST_PHONES = {"+51954712581", "+51977652871", "+56991291415", "+51955755308", "+51981254477", "+51961276835", "51954712581", "51977652871", "56991291415", "51955755308", "51981254477", "51961276835"}
-from app.services.biometria_policy import skip_biometria_checks
+from app.services.biometria_policy import (
+    skip_biometria_checks,
+    es_falla_proveedor,
+    marcar_revalidar_biometria,
+)
 from app.config import (
     ANTHROPIC_VISION_MODEL,
     BIOMETRIA_MODE,
@@ -684,6 +688,15 @@ def handle_message(telefono: str, body: str, media_url: str = None) -> list:
                                 datos.get("dni_number", ""),
                                 datos.get("dni_nombre", ""),
                             )
+                            if es_falla_proveedor(check):
+                                # Anthropic caído: no frenar al cliente; queda marcado para revalidar.
+                                marcar_revalidar_biometria(bodega_id, "dni_anverso")
+                                check = {
+                                    **check,
+                                    "valid": True,
+                                    "reason_code": "provider_down_pass",
+                                    "reason": "Aprobado sin verificar (proveedor no disponible).",
+                                }
                         if not check.get("valid", False):
                             reason = check.get("reason", "No se pudo verificar el DNI.")
                             db.log_biometria_auditoria(
@@ -721,6 +734,8 @@ def handle_message(telefono: str, body: str, media_url: str = None) -> list:
                                 "name_found": check.get("name_found", ""),
                                 "matches_expected_dni": check.get("matches_expected_dni"),
                                 "matches_expected_name": check.get("matches_expected_name"),
+                                "provider_status": check.get("provider_status"),
+                                "provider_error": check.get("provider_error"),
                             },
                         )
                         datos["dni_photo_verified"] = True
@@ -778,6 +793,7 @@ def handle_message(telefono: str, body: str, media_url: str = None) -> list:
                         model=ANTHROPIC_VISION_MODEL,
                         metadata={"error": str(e)[:200]},
                     )
+                    marcar_revalidar_biometria(bodega_id, "dni_photo_exception")
                     datos["dni_photo_verified"] = True
                     db.upsert_session(telefono, "reg_biometria", datos, bodega_id)
                     saludo_rep = nombre_para_comunicar_representante(
@@ -908,6 +924,16 @@ def handle_message(telefono: str, body: str, media_url: str = None) -> list:
                                  "reason_code": "manual_bypass" if bodega_bio.get("biometria_bypass") else "demo_bypass"}
                     else:
                         check = verify_selfie(image_bytes, strict=(BIOMETRIA_MODE == "strict"))
+                    proveedor_caido = es_falla_proveedor(check)
+                    if proveedor_caido:
+                        # Anthropic caído: no frenar al cliente; queda marcado para revalidar.
+                        marcar_revalidar_biometria(bodega_id, "selfie")
+                        check = {
+                            **check,
+                            "valid": True,
+                            "reason_code": "provider_down_pass",
+                            "reason": "Aprobado sin verificar (proveedor no disponible).",
+                        }
                     if not check.get("valid", False):
                         reason = check.get("reason", "La imagen no es una selfie valida.")
                         db.log_biometria_auditoria(
@@ -929,7 +955,7 @@ def handle_message(telefono: str, body: str, media_url: str = None) -> list:
                         return [f"\u274c {reason}\n\nPor favor, toma una *selfie mirando a la camara*."]
 
                     # 1:1 face comparison (strict mode only): selfie vs DNI front image
-                    if BIOMETRIA_MODE == "strict" and not skip_biometria_checks(
+                    if BIOMETRIA_MODE == "strict" and not proveedor_caido and not skip_biometria_checks(
                         telefono, bodega_bio, test_phones=TEST_PHONES,
                     ):
                         dni_media_id = datos.get("dni_photo_media_id")
@@ -976,6 +1002,12 @@ def handle_message(telefono: str, body: str, media_url: str = None) -> list:
                                 datos.get("dni_photo_verified") and datos.get("dni_number"),
                             ),
                         )
+                        if es_falla_proveedor(face_cmp):
+                            marcar_revalidar_biometria(bodega_id, "selfie_vs_dni")
+                            check = {**check, "reason_code": "provider_down_pass",
+                                     "provider_status": face_cmp.get("provider_status"),
+                                     "provider_error": face_cmp.get("provider_error")}
+                            face_cmp = {**face_cmp, "valid": True}
                         if not face_cmp.get("valid", False):
                             db.log_biometria_auditoria(
                                 bodega_id=bodega_id,
@@ -1010,6 +1042,8 @@ def handle_message(telefono: str, body: str, media_url: str = None) -> list:
                         model=ANTHROPIC_VISION_MODEL,
                         metadata={
                             "phase": "selfie_liveness",
+                            "provider_status": check.get("provider_status"),
+                            "provider_error": check.get("provider_error"),
                             "checks": check.get("checks", {}),
                             "face_match": face_cmp.get("face_match"),
                             "face_match_score": face_cmp.get("face_match_score"),
@@ -1045,6 +1079,7 @@ def handle_message(telefono: str, body: str, media_url: str = None) -> list:
                     model=ANTHROPIC_VISION_MODEL,
                     metadata={"error": str(e)[:200]},
                 )
+                marcar_revalidar_biometria(bodega_id, "selfie_exception")
                 datos["biometria_verified"] = True
             
             dist_r = db.sb.table("distribuidores").select("nombre_comercial").eq("id", bodega_bio["distribuidor_id"]).execute()
