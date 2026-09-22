@@ -1,7 +1,7 @@
 """
 Distribuidor Portal API — Circa
 """
-from fastapi import APIRouter, HTTPException, Header, Depends, UploadFile, File
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Header, Depends, UploadFile, File
 from pydantic import BaseModel, Field
 from typing import Optional, List
 import os, httpx
@@ -524,61 +524,64 @@ def admin_list_pedidos(
     test: Optional[str] = None,
     admin: bool = Depends(verify_admin),
 ):
-    """List all orders with full details — admin view. Filtra por test/real."""
-    params = {"select":"*","order":"created_at.desc","limit":"1000"}
-    if estado: params["estado"] = f"eq.{estado}"
+    """Pedidos del backoffice desde la vista v_pedidos_admin (una sola consulta).
+
+    Antes: 1 consulta de pedidos + 1 consulta POR CADA bodega distinta en
+    pantalla (~200 llamadas encadenadas) + la lista completa de bodegas para
+    separar test/real. Medido en 12.8 s. La vista ya trae bodega y
+    distribuidor, y el filtro de texto se hace en SQL.
+    """
+    params = {"select": "*", "order": "created_at.desc", "limit": "1000"}
+    if estado:
+        params["estado"] = f"eq.{estado}"
     if tipo in ("venta", "preventa"):
         params["tipo_operacion"] = f"eq.{tipo}"
-    pedidos = _sb_get("pedidos", params)
-    # NUEVO: filtrar por test/real
-    ids_filter = _bodega_ids_por_test(test)
-    if ids_filter is not None:
-        pedidos = [p for p in pedidos if p.get("bodega_id") in ids_filter]
-    # Fetch all bodegas and distribuidores
-    bodega_ids = list(set(p.get("bodega_id","") for p in pedidos if p.get("bodega_id")))
-    dist_ids = list(set(p.get("distribuidor_id","") for p in pedidos if p.get("distribuidor_id")))
-    bodegas_map = {}
-    for bid in bodega_ids:
-        try:
-            rows = _sb_get("bodegas", {
-                "select": (
-                    "id,nombre_comercial,razon_social,representante_legal,"
-                    "representante_nombre_corto,telefono_whatsapp,ruc,"
-                    "direccion_fiscal,linea_aprobada,linea_disponible"
-                ),
-                "id": f"eq.{bid}",
-            })
-            if rows: bodegas_map[bid] = rows[0]
-        except: pass
-    dist_map = {}
-    for did in dist_ids:
-        try:
-            rows = _sb_get("distribuidores", {"select":"id,nombre_comercial,ruc","id":f"eq.{did}"})
-            if rows: dist_map[did] = rows[0]
-        except: pass
-    for p in pedidos:
-        p["bodega"] = bodegas_map.get(p.get("bodega_id"), {})
-        p["distribuidor"] = dist_map.get(p.get("distribuidor_id"), {})
-        if "items_json" in p and "items" not in p:
-            p["items"] = p["items_json"]
-    # Filter by name if provided
+    if test == "real":
+        params["bodega_es_test"] = "is.false"
+    elif test == "test":
+        params["bodega_es_test"] = "is.true"
     if bodega:
-        bl = bodega.lower()
-        def _match_bodega(p: dict) -> bool:
-            b = p.get("bodega", {}) or {}
-            haystack = " ".join([
-                b.get("nombre_comercial", "") or "",
-                b.get("razon_social", "") or "",
-                b.get("representante_legal", "") or "",
-                b.get("representante_nombre_corto", "") or "",
-                b.get("telefono_whatsapp", "") or "",
-                b.get("ruc", "") or "",
-            ]).lower()
-            return bl in haystack
-        pedidos = [p for p in pedidos if _match_bodega(p)]
+        params["busqueda"] = f"ilike.*{bodega.strip().lower()}*"
     if distribuidor:
-        dl = distribuidor.lower()
-        pedidos = [p for p in pedidos if dl in (p.get("distribuidor",{}).get("nombre_comercial","") or "").lower()]
+        params["dist_nombre_comercial"] = f"ilike.*{distribuidor.strip()}*"
+
+    filas = _sb_get("v_pedidos_admin", params)
+
+    pedidos = []
+    for f in filas:
+        p = {k: v for k, v in f.items()
+             if not k.startswith("bodega_") and not k.startswith("dist_")
+             and k != "busqueda"}
+        p["bodega_id"] = f.get("bodega_id")
+        p["bodega"] = {
+            "id": f.get("bodega_id"),
+            "nombre_comercial": f.get("bodega_nombre_comercial"),
+            "razon_social": f.get("bodega_razon_social"),
+            "representante_legal": f.get("bodega_representante_legal"),
+            "representante_nombre_corto": f.get("bodega_representante_nombre_corto"),
+            "telefono_whatsapp": f.get("bodega_telefono_whatsapp"),
+            "ruc": f.get("bodega_ruc"),
+            "direccion_fiscal": f.get("bodega_direccion_fiscal"),
+            "linea_aprobada": f.get("bodega_linea_aprobada"),
+            "linea_disponible": f.get("bodega_linea_disponible"),
+        }
+        p["distribuidor"] = {
+            "id": f.get("distribuidor_id"),
+            "nombre_comercial": f.get("dist_nombre_comercial"),
+            "ruc": f.get("dist_ruc"),
+        }
+        # ¿La bodega escribió al bot en las últimas 24 h? Si no, WhatsApp
+        # rechaza el texto libre y la confirmación de aceptación no llega.
+        p["wa_activa"] = bool(f.get("bodega_wa_activa"))
+        p["wa_ultimo_inbound"] = f.get("bodega_ultimo_inbound")
+        # La tabla de Pedidos no muestra el detalle de items; mandarlos infla
+        # la respuesta (un pedido llego a traer 499 items). El detalle se pide
+        # con /admin/pedido/{id} cuando se abre.
+        n_items = len(p.get("items_json") or [])
+        p.pop("items_json", None)
+        p["n_items"] = n_items
+        pedidos.append(p)
+
     return {"pedidos": pedidos, "total": len(pedidos)}
 
 
@@ -588,6 +591,7 @@ def admin_aceptar_preventa(
     monto_financiado: float | None = None,
     plazo_dias: int = 7,
     forzar_monto: bool = False,
+    background: BackgroundTasks = None,
     admin: bool = Depends(verify_admin),
 ):
     rows = _sb_get(
@@ -704,17 +708,26 @@ def admin_aceptar_preventa(
                 num_msg, monto_msg, fee_msg, contado_msg, plazo_msg, fecha_pago,
             )
             from app.services.meta_client import send_text_sync
-            _ok_conf = send_text_sync(
-                phone, conf_msg,
-                contexto="confirmacion_preventa_aceptada_admin",
-                bodega_id=str(p.get("bodega_id") or "") or None,
-                pedido_id=pedido_id,
-            )
-            if not _ok_conf:
-                import logging
-                logging.getLogger("circa").warning(
-                    "confirmacion preventa %s no entregada a %s", pedido_id, phone,
+
+            def _mandar_confirmacion():
+                """El envio a WhatsApp tarda; se hace despues de responder."""
+                ok = send_text_sync(
+                    phone, conf_msg,
+                    contexto="confirmacion_preventa_aceptada_admin",
+                    bodega_id=str(p.get("bodega_id") or "") or None,
+                    pedido_id=pedido_id,
                 )
+                if not ok:
+                    import logging
+                    logging.getLogger("circa").warning(
+                        "confirmacion preventa %s no entregada a %s", pedido_id, phone,
+                    )
+
+            if background is not None:
+                # La pantalla no espera al envio: el registro queda igual en `messages`.
+                background.add_task(_mandar_confirmacion)
+            else:
+                _mandar_confirmacion()
         except Exception as _wa_err:
             import logging
             logging.getLogger("circa").error(f"WA confirm admin_aceptar_preventa: {_wa_err}")

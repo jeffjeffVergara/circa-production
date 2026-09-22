@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 import httpx
-from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Header, HTTPException, UploadFile
 from fastapi.responses import Response
 from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
@@ -765,12 +765,14 @@ class AceptarPreventaBody(BaseModel):
 def aceptar_preventa(
     pedido_id: str,
     body: AceptarPreventaBody = AceptarPreventaBody(),
+    background: BackgroundTasks = None,
     user: dict = Depends(get_backoffice_writer),
 ):
     res = dist.admin_aceptar_preventa(
         pedido_id,
         monto_financiado=body.monto_financiado,
         plazo_dias=body.plazo_dias,
+        background=background,
         admin=True,
     )
     log_action(
@@ -1410,11 +1412,22 @@ def vendedor_preventas(vendedor_id: str, user: dict = Depends(get_backoffice_use
         "order": "created_at.desc",
         "limit": "100",
     })
+    # Antes: una consulta POR CADA preventa para traer su bodega (hasta 100
+    # llamadas encadenadas, ~12 s). Ahora: una sola consulta con todos los ids.
+    bids = sorted({p.get("bodega_id") for p in pedidos if p.get("bodega_id")})
+    bmap = {}
+    for i in range(0, len(bids), 60):
+        chunk = bids[i:i + 60]
+        try:
+            for b in _sb_get("bodegas", {
+                "select": "id,nombre_comercial,telefono_whatsapp",
+                "id": f"in.({','.join(chunk)})",
+            }):
+                bmap[b["id"]] = b
+        except Exception:
+            continue
     for p in pedidos:
-        bid = p.get("bodega_id")
-        if bid:
-            b = _sb_get("bodegas", {"select": "nombre_comercial,telefono_whatsapp", "id": f"eq.{bid}"})
-            p["bodega"] = b[0] if b else {}
+        p["bodega"] = bmap.get(p.get("bodega_id"), {})
     return {"preventas": pedidos, "total": len(pedidos)}
 
 

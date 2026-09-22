@@ -1750,7 +1750,12 @@ function loadPedidos(){
       }
       var flujo = p.flujo || {};
       var numCell = '<button type="button" class="pedido-link mono" onclick="openPedidoFlujo(\''+p.id+'\')">'+(p.numero||'—')+'</button>';
-      return '<tr><td>'+fecha+'</td><td class="pedido-num">'+numCell+'</td><td>'+tipoBadge+'</td><td>'+nombreBodega(b)+'</td><td style="color:var(--muted)">'+(dt.nombre_comercial||'?')+'</td><td class="mono">S/'+Number(p.total_pedido||p.monto_productos||0).toFixed(2)+'</td><td class="mono" style="color:var(--blue-light)">S/'+Number(p.monto_financiado||0).toFixed(2)+'</td><td><span class="badge badge-'+(p.estado||'').replace(' ','_')+'">'+(p.estado||'-')+'</span></td><td>'+flowMiniHtml(flujo)+'</td><td>'+acciones+'</td></tr>';
+      // ¿La bodega escribió al bot en 24 h? Si no, WhatsApp no deja mandarle
+      // el mensaje de confirmación al aceptar la preventa.
+      var waBadge = p.wa_activa
+        ? '<span class="badge" style="background:rgba(34,197,94,.18);color:#4ade80" title="Escribió al bot en las últimas 24 h: le llega el mensaje">● activa</span>'
+        : '<span class="badge" style="background:rgba(148,163,184,.18);color:#cbd5e1" title="'+(p.wa_ultimo_inbound ? ('Último mensaje suyo: '+new Date(p.wa_ultimo_inbound).toLocaleDateString('es-PE')) : 'Nunca escribió al bot')+'. El mensaje de confirmación no le llegará.">○ sin ventana</span>';
+      return '<tr><td>'+fecha+'</td><td class="pedido-num">'+numCell+'</td><td>'+tipoBadge+'</td><td>'+nombreBodega(b)+'<br>'+waBadge+'</td><td style="color:var(--muted)">'+(dt.nombre_comercial||'?')+'</td><td class="mono">S/'+Number(p.total_pedido||p.monto_productos||0).toFixed(2)+'</td><td class="mono" style="color:var(--blue-light)">S/'+Number(p.monto_financiado||0).toFixed(2)+'</td><td><span class="badge badge-'+(p.estado||'').replace(' ','_')+'">'+(p.estado||'-')+'</span></td><td>'+flowMiniHtml(flujo)+'</td><td>'+acciones+'</td></tr>';
     }).join('') : '<tr><td colspan="10" class="empty">Sin pedidos</td></tr>';
   });
 }
@@ -1774,7 +1779,11 @@ function aceptarPreventa(pid){
       '<div class="modal-info-row"><span>Bodega:</span><strong>'+nombreBodega(b)+'</strong></div>'+
       '<div class="modal-info-row"><span>Total pedido:</span><strong>S/'+total.toFixed(2)+'</strong></div>'+
       '<div class="modal-info-row"><span>Línea disponible:</span><strong>S/'+ld.toFixed(2)+'</strong></div>'+
+      '<div class="modal-info-row"><span>WhatsApp:</span>'+(p.wa_activa
+        ? '<strong style="color:#4ade80">activa · recibe la confirmación</strong>'
+        : '<strong style="color:#fbbf24">sin ventana · no le llegará el mensaje</strong>')+'</div>'+
     '</div>'+
+    (p.wa_activa ? '' : '<div style="margin-top:10px;background:rgba(255,170,0,.12);border:1px solid rgba(255,170,0,.4);border-radius:8px;padding:9px;font-size:12px">⚠️ La bodega no le escribe al bot desde hace más de 24 h'+(p.wa_ultimo_inbound ? ' (último: '+new Date(p.wa_ultimo_inbound).toLocaleDateString('es-PE')+')' : '')+'. Puedes aceptar igual, pero el resumen del pedido no le va a llegar por WhatsApp.</div>')+
     '<div style="margin-top:12px"><label style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Monto a financiar (S/)</label>'+
     '<input id="apMonto" type="number" step="0.01" min="0" max="'+maxFin.toFixed(2)+'" value="'+pref+'" oninput="apResumen()" '+
     'style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border,#334);background:transparent;color:inherit"></div>'+
