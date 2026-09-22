@@ -145,6 +145,25 @@ def calcular_comision_por_plan(monto_financiado: float, plazo_dias: int) -> dict
     }
 
 
+def texto_tramos_cuota(monto_financiado: float) -> str:
+    """
+    Línea para el cliente: cuánto sube la cuota si paga tarde (tramos v4.0).
+    "" cuando no aporta: con montos chicos la comisión mínima iguala los tres tramos.
+    """
+    fin = float(monto_financiado or 0)
+    if fin <= 0:
+        return ""
+    t1 = calcular_comision_por_plan(fin, 7)["total"]
+    t2 = calcular_comision_por_plan(fin, 15)["total"]
+    t3 = calcular_comision_por_plan(fin, 30)["total"]
+    if t2 <= t1 and t3 <= t1:
+        return ""
+    return (
+        f"⏱️ Si te demoras: del día 8 al 14 pagas S/{t2:.2f}"
+        f" · del 15 al 30, S/{t3:.2f}\n"
+    )
+
+
 def calcular_total_financiado(monto_financiado: float, plazo_dias: int) -> float:
     return calcular_comision_por_plan(monto_financiado, plazo_dias)["total"]
 

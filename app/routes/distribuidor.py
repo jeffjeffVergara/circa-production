@@ -689,18 +689,9 @@ async def admin_aceptar_preventa(
             contado_msg = float(patch.get("monto_contado", 0) or 0)
             plazo_msg = int(patch.get("plazo_dias", 7) or 7)
             fecha_pago = (datetime.now(timezone.utc) + timedelta(days=plazo_msg)).strftime("%d/%m/%Y")
-            conf_msg = (
-                f"✅ *Pedido #{num_msg} confirmado*\n"
-                f"Financiado con Circa\n\n"
-                f"Financiado: *S/{monto_msg:.2f}*\n"
-                f"Cuota Circa: *S/{monto_msg + fee_msg:.2f}*\n"
-                f"Plazo maximo: {plazo_msg} dias\n"
-            )
-            if contado_msg > 0:
-                conf_msg += f"\n\U0001f4b5 Al distribuidor (contado): *S/{contado_msg:.2f}*\n"
-            conf_msg += (
-                f"\n\U0001f7e3Yape / \U0001f7e2Plin  *986311567*\n"
-                f"Paga antes del {fecha_pago} y escribe *YA PAGUE*"
+            from app.services.messages import msg_pedido_financiado_confirmado
+            conf_msg = msg_pedido_financiado_confirmado(
+                num_msg, monto_msg, fee_msg, contado_msg, plazo_msg, fecha_pago,
             )
             if token:
                 httpx.post(

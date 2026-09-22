@@ -15,6 +15,7 @@ from app.services import db
 from app.services.fees import (
     FECHA_VIGENCIA_TRAMOS,
     calcular_comision_por_plan,
+    texto_tramos_cuota,
     calculate_fee,
     fee_regimen_para_pedido_nuevo,
     format_rate_pct,
@@ -49,23 +50,9 @@ def _debe_mostrar_aviso_tramos(bodega_id) -> bool:
 
 
 def _texto_aviso_tramos(fin_amt: float) -> str:
-    """
-    Importes reales de los tramos 8-14 (3%) y 15-30 (6%) para este pedido.
-    Devuelve "" cuando el aviso no aporta.
-
-    En montos chicos la comisión mínima de S/1.00 domina los tres tramos y los
-    importes colapsan (financiado < ~S/16.67 da el mismo total en los tres).
-    Decir "si te demoras pagas lo mismo" solo confunde, así que se omite.
-    """
-    t1 = calcular_comision_por_plan(fin_amt, 7)["total"]
-    t2 = calcular_comision_por_plan(fin_amt, 15)["total"]
-    t3 = calcular_comision_por_plan(fin_amt, 30)["total"]
-    if t2 <= t1 and t3 <= t1:
-        return ""
-    return (
-        f"⏱️ Si te demoras: del día 8 al 14 pagas S/{t2:.2f}"
-        f" · del 15 al 30, S/{t3:.2f}\n\n"
-    )
+    """Aviso de tramos en el resumen previo al PIN (ver fees.texto_tramos_cuota)."""
+    t = texto_tramos_cuota(fin_amt)
+    return t + "\n" if t else ""
 
 
 def normalize_wa_phone(telefono: str) -> str:

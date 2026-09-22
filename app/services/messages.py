@@ -324,3 +324,24 @@ def msg_ruc_invalido() -> str:
 
 def msg_ruc_no_encontrado() -> str:
     return "❌ No encontramos tu RUC en nuestra base pre-aprobada. Contacta a tu distribuidor."
+
+
+# ── CONFIRMACIÓN DE PEDIDO FINANCIADO (copy de Paola, 22-sep-2026) ──
+def msg_pedido_financiado_confirmado(
+    numero: str, financiado: float, fee: float, contado: float, plazo_dias: int, fecha_pago: str,
+) -> str:
+    from app.services.fees import texto_tramos_cuota
+    msg = f"✅ *Pedido #{numero} confirmado*\n\n"
+    if contado > 0:
+        msg += f"💵 Pago al distribuidor al contado: S/{contado:.2f}\n\n"
+    msg += (
+        f"Financiado con Circa S/{financiado:.2f}\n"
+        f"*Cuota Circa: S/{financiado + fee:.2f}*\n"
+        f"Plazo máximo: {plazo_dias} días\n"
+    )
+    msg += texto_tramos_cuota(financiado)
+    msg += (
+        f"\n*Tu pago a Circa con 🟣Yape / 🟢Plin al {YAPE_PHONE}*\n"
+        f"Paga antes del {fecha_pago} y escribe YA PAGUE y manda tu constancia."
+    )
+    return msg

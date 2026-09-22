@@ -285,18 +285,9 @@ def _verify_pin_for_payment(pin: str, bodega_id: str) -> dict:
             if dias > 0:
                 from datetime import datetime, timedelta
                 fecha_pago_conf = (datetime.now() + timedelta(days=dias)).strftime("%d/%m/%Y")
-                conf_msg = (
-                    f"\u2705 *Pedido #{num} confirmado*\n"
-                    f"Financiado con Circa\n\n"
-                    f"Financiado: *S/{monto:.2f}*\n"
-                    f"Cuota Circa: *S/{monto+fee:.2f}*\n"
-                    f"Plazo maximo: {dias} dias\n"
-                )
-                if contado > 0:
-                    conf_msg += f"\n\U0001f4b5 Al distribuidor (contado): *S/{contado:.2f}*\n"
-                conf_msg += (
-                    f"\n\U0001f7e3Yape / \U0001f7e2Plin  *986311567*\n"
-                    f"Paga antes del {fecha_pago_conf} y escribe *YA PAGUE*"
+                from app.services.messages import msg_pedido_financiado_confirmado
+                conf_msg = msg_pedido_financiado_confirmado(
+                    num, monto, fee, contado, dias, fecha_pago_conf,
                 )
             else:
                 conf_msg = (
