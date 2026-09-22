@@ -40,6 +40,92 @@ def _headers() -> dict:
 # CORE: Send any message payload
 # ══════════════════════════════════════════════
 
+def _log_envio(
+    *, to: str, payload: dict, msg_id: str = "", ok: bool = True,
+    status: int | None = None, error: str = "", contexto: str = "",
+    bodega_id: str | None = None, pedido_id: str | None = None,
+) -> None:
+    """Deja el envío en `messages`, haya llegado o no. Nunca rompe el envío."""
+    try:
+        from app.services.analytics import track_message
+        from app.services import db as _db
+
+        tel = to if str(to).startswith("+") else f"+{str(to).lstrip('+')}"
+        if not bodega_id:
+            b = _db.get_bodega_by_phone(tel) or _db.get_bodega_by_phone(tel.lstrip("+"))
+            bodega_id = b.get("id") if b else None
+        msg_type = payload.get("type", "")
+        content = ""
+        template_name = ""
+        if msg_type == "text":
+            content = payload.get("text", {}).get("body", "")
+        elif msg_type == "interactive":
+            content = payload.get("interactive", {}).get("body", {}).get("text", "")
+        elif msg_type == "template":
+            template_name = payload.get("template", {}).get("name", "")
+        meta = {"payload_type": msg_type, "envio_ok": ok}
+        if contexto:
+            meta["contexto"] = contexto
+        if pedido_id:
+            meta["pedido_id"] = str(pedido_id)
+        if not ok:
+            meta["status"] = status
+            meta["error"] = (error or "")[:400]
+        track_message(
+            telefono=tel,
+            direction="outbound",
+            bodega_id=bodega_id,
+            message_id=msg_id or "",
+            message_type=msg_type,
+            content=content,
+            template_name=template_name,
+            metadata=meta,
+        )
+    except Exception as e:
+        logger.warning("log envio WA: %s", e)
+
+
+def send_text_sync(
+    to: str, text: str, *, contexto: str = "",
+    bodega_id: str | None = None, pedido_id: str | None = None,
+) -> bool:
+    """Envío de texto desde código síncrono, registrando llegue o no."""
+    to_n = str(to).lstrip("+").replace(" ", "")
+    payload = {"type": "text", "text": {"preview_url": False, "body": text}}
+    if not _access_token():
+        _log_envio(to=to_n, payload=payload, ok=False, status=None,
+                   error="META_ACCESS_TOKEN vacío", contexto=contexto,
+                   bodega_id=bodega_id, pedido_id=pedido_id)
+        return False
+    try:
+        r = httpx.post(
+            f"{GRAPH_API_URL}/{_phone_number_id()}/messages",
+            headers=_headers(),
+            json={"messaging_product": "whatsapp", "recipient_type": "individual",
+                  "to": to_n, **payload},
+            timeout=15.0,
+        )
+        ok = r.status_code in (200, 201)
+        msg_id = ""
+        if ok:
+            try:
+                msg_id = r.json().get("messages", [{}])[0].get("id", "")
+            except Exception:
+                msg_id = ""
+        else:
+            logger.error("Meta API error %s (%s): %s", r.status_code, contexto, r.text[:300])
+        _log_envio(to=to_n, payload=payload, msg_id=msg_id, ok=ok,
+                   status=r.status_code, error="" if ok else r.text,
+                   contexto=contexto, bodega_id=bodega_id, pedido_id=pedido_id)
+        return ok
+    except Exception as e:
+        logger.error("send_text_sync %s: %s", contexto, e, exc_info=True)
+        _log_envio(to=to_n, payload=payload, ok=False, status=None,
+                   error=f"{type(e).__name__}: {e}", contexto=contexto,
+                   bodega_id=bodega_id, pedido_id=pedido_id)
+        return False
+
+
 async def _send(to: str, payload: dict) -> dict | None:
     """
     Send a message via Meta Cloud API.
@@ -68,38 +154,16 @@ async def _send(to: str, payload: dict) -> dict | None:
             
             if r.status_code not in (200, 201):
                 logger.error(f"Meta API error {r.status_code}: {r.text}")
+                _log_envio(
+                    to=to, payload=payload, msg_id="", ok=False,
+                    status=r.status_code, error=r.text,
+                )
                 return None
             
             data = r.json()
             msg_id = data.get("messages", [{}])[0].get("id", "")
             logger.info(f"📤 Sent to {to}: {payload.get('type', '?')} (wamid={msg_id})")
-            try:
-                from app.services.analytics import track_message
-                from app.services import db as _db
-
-                b = _db.get_bodega_by_phone(f"+{to}") or _db.get_bodega_by_phone(to)
-                bodega_id = b.get("id") if b else None
-                msg_type = payload.get("type", "")
-                content = ""
-                template_name = ""
-                if msg_type == "text":
-                    content = payload.get("text", {}).get("body", "")
-                elif msg_type == "interactive":
-                    content = payload.get("interactive", {}).get("body", {}).get("text", "")
-                elif msg_type == "template":
-                    template_name = payload.get("template", {}).get("name", "")
-                track_message(
-                    telefono=f"+{to}",
-                    direction="outbound",
-                    bodega_id=bodega_id,
-                    message_id=msg_id,
-                    message_type=msg_type,
-                    content=content,
-                    template_name=template_name,
-                    metadata={"payload_type": msg_type},
-                )
-            except Exception:
-                pass
+            _log_envio(to=to, payload=payload, msg_id=msg_id, ok=True)
             return data
             
     except Exception as e:

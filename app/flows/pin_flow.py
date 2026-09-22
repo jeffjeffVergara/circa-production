@@ -295,13 +295,13 @@ def _verify_pin_for_payment(pin: str, bodega_id: str) -> dict:
                     f"Total: S/{monto:.2f}\n"
                     "Tu distribuidor preparará tu pedido."
                 )
-            req.post(
-                f"https://graph.facebook.com/v23.0/{phone_id}/messages",
-                headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-                json={"messaging_product": "whatsapp", "to": phone, "type": "text", "text": {"body": conf_msg}},
-                timeout=10,
+            from app.services.meta_client import send_text_sync
+            _ok_conf = send_text_sync(
+                phone, conf_msg,
+                contexto="confirmacion_pedido_bodeguero",
+                pedido_id=pedido_id,
             )
-            logger.info(f"Confirmation sent to {phone}")
+            logger.info(f"Confirmation to {phone}: ok={_ok_conf}")
             # Send branded order confirmation card
             try:
                 from app.services.cards import generate_order_confirmed_card

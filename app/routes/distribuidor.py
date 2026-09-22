@@ -693,12 +693,17 @@ async def admin_aceptar_preventa(
             conf_msg = msg_pedido_financiado_confirmado(
                 num_msg, monto_msg, fee_msg, contado_msg, plazo_msg, fecha_pago,
             )
-            if token:
-                httpx.post(
-                    f"https://graph.facebook.com/v23.0/{phone_id}/messages",
-                    headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-                    json={"messaging_product": "whatsapp", "to": phone, "type": "text", "text": {"body": conf_msg}},
-                    timeout=10,
+            from app.services.meta_client import send_text_sync
+            _ok_conf = send_text_sync(
+                phone, conf_msg,
+                contexto="confirmacion_preventa_aceptada_admin",
+                bodega_id=str(p.get("bodega_id") or "") or None,
+                pedido_id=pedido_id,
+            )
+            if not _ok_conf:
+                import logging
+                logging.getLogger("circa").warning(
+                    "confirmacion preventa %s no entregada a %s", pedido_id, phone,
                 )
         except Exception as _wa_err:
             import logging
