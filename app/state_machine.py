@@ -1130,7 +1130,8 @@ def handle_message(telefono: str, body: str, media_url: str = None) -> list:
             # Already shown, user accepts
             contract_data = f"{datos['bodega_id']}|{telefono}|{datetime.utcnow().isoformat()}"
             contract_hash = hashlib.sha256(contract_data.encode()).hexdigest()
-            db.sign_contract(datos["bodega_id"], contract_hash)
+            # Aceptación escrita: firmamos y le mandamos el PDF del contrato.
+            db.sign_contract(datos["bodega_id"], contract_hash, enviar_pdf=True)
             db.upsert_session(telefono, "reg_pin", datos, datos["bodega_id"])
             return [{"signal": "PIN_ASK", "mode": "create", "bodega_id": datos.get("bodega_id", "")}]
 

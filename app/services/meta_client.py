@@ -85,6 +85,71 @@ def _log_envio(
         logger.warning("log envio WA: %s", e)
 
 
+def send_contract_document_sync(
+    to: str, file_path: str, bodega_nombre: str, *, bodega_id: str | None = None,
+) -> bool:
+    """Manda el PDF del contrato desde código síncrono, registrando llegue o no."""
+    import os as _os
+
+    to_n = str(to).lstrip("+").replace(" ", "")
+    safe_name = (bodega_nombre or "Bodega").replace(" ", "_").replace(".", "")
+    filename = f"Terminos_Circa_{safe_name}.pdf"
+    payload_log = {"type": "document", "text": {"body": filename}}
+    try:
+        with open(file_path, "rb") as fh:
+            up = httpx.post(
+                f"{GRAPH_API_URL}/{_phone_number_id()}/media",
+                headers={"Authorization": f"Bearer {_access_token()}"},
+                data={"messaging_product": "whatsapp", "type": "application/pdf"},
+                files={"file": (_os.path.basename(file_path), fh, "application/pdf")},
+                timeout=30.0,
+            )
+        if up.status_code != 200:
+            logger.error("Contract upload failed: %s", up.text[:300])
+            _log_envio(to=to_n, payload=payload_log, ok=False, status=up.status_code,
+                       error=up.text, contexto="contrato_pdf_aceptacion_escrita",
+                       bodega_id=bodega_id)
+            return False
+        media_id = up.json().get("id")
+
+        r = httpx.post(
+            f"{GRAPH_API_URL}/{_phone_number_id()}/messages",
+            headers=_headers(),
+            json={
+                "messaging_product": "whatsapp", "recipient_type": "individual", "to": to_n,
+                "type": "document",
+                "document": {
+                    "id": media_id,
+                    "filename": filename,
+                    "caption": (
+                        f"📄 Términos de uso Circa — {bodega_nombre}\n\n"
+                        "Guárdalo. Confirma los términos que aceptaste."
+                    ),
+                },
+            },
+            timeout=30.0,
+        )
+        ok = r.status_code in (200, 201)
+        msg_id = ""
+        if ok:
+            try:
+                msg_id = r.json().get("messages", [{}])[0].get("id", "")
+            except Exception:
+                msg_id = ""
+        else:
+            logger.error("Contract send failed %s: %s", r.status_code, r.text[:300])
+        _log_envio(to=to_n, payload=payload_log, msg_id=msg_id, ok=ok,
+                   status=r.status_code, error="" if ok else r.text,
+                   contexto="contrato_pdf_aceptacion_escrita", bodega_id=bodega_id)
+        return ok
+    except Exception as e:
+        logger.error("send_contract_document_sync: %s", e, exc_info=True)
+        _log_envio(to=to_n, payload=payload_log, ok=False, status=None,
+                   error=f"{type(e).__name__}: {e}",
+                   contexto="contrato_pdf_aceptacion_escrita", bodega_id=bodega_id)
+        return False
+
+
 def send_text_sync(
     to: str, text: str, *, contexto: str = "",
     bodega_id: str | None = None, pedido_id: str | None = None,

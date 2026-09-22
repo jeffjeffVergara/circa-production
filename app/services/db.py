@@ -121,7 +121,7 @@ def _generar_y_subir_contrato_pdf(
     Si `pdf_path` viene (flujo del botón "Acepto"), archiva ese archivo tal cual.
     Si no (aceptación escrita), lo regenera con `contract_generator` (v4.0).
 
-    Devuelve (storage_path, version) o (None, None) si algo falla.
+    Devuelve (storage_path, version, contenido_pdf) o (None, None, None) si algo falla.
     Best-effort: nunca rompe la firma, solo loggea.
     """
     import logging
@@ -134,7 +134,7 @@ def _generar_y_subir_contrato_pdf(
         from app.services.contract_generator import generate_contract, CONTRATO_VERSION
     except Exception as e:
         logging.warning(f"contrato_pdf: no pude importar el generador: {e}")
-        return None, None
+        return None, None, None
 
     try:
         b = sb.table("bodegas").select(
@@ -189,13 +189,16 @@ def _generar_y_subir_contrato_pdf(
             path=destino, file=contenido,
             file_options={"content-type": "application/pdf", "upsert": "true"},
         )
-        return destino, CONTRATO_VERSION
+        return destino, CONTRATO_VERSION, contenido
     except Exception as e:
         logging.warning(f"contrato_pdf: fallo generando/subiendo para bodega {bodega_id}: {e}")
-        return None, None
+        return None, None, None
 
 
-def sign_contract(bodega_id: str, contract_hash: str, pdf_path: str | None = None):
+def sign_contract(
+    bodega_id: str, contract_hash: str, pdf_path: str | None = None,
+    enviar_pdf: bool = False,
+):
     firmado_at = now_peru().isoformat()
     # 1. Marcar contrato firmado
     sb.table("bodegas").update({
@@ -216,6 +219,7 @@ def sign_contract(bodega_id: str, contract_hash: str, pdf_path: str | None = Non
         import logging
         logging.warning(f"sign_contract: liberacion forzada de linea fallo para bodega {bodega_id}: {e}")
 
+    pdf_bytes = None
     # NUEVO: registrar en tabla contratos para evidencia legal
     # Si falla por cualquier razon, NO rompemos la firma - solo loggeamos warning
     try:
@@ -225,7 +229,7 @@ def sign_contract(bodega_id: str, contract_hash: str, pdf_path: str | None = Non
 
         # Genera el PDF y lo sube. Si falla, url_contrato queda None
         # (la firma sigue siendo valida por el registro + hash).
-        url_pdf, version_pdf = _generar_y_subir_contrato_pdf(
+        url_pdf, version_pdf, pdf_bytes = _generar_y_subir_contrato_pdf(
             bodega_id, contract_hash, firmado_at, pdf_path=pdf_path
         )
 
@@ -260,6 +264,36 @@ def sign_contract(bodega_id: str, contract_hash: str, pdf_path: str | None = Non
     except Exception as e:
         import logging
         logging.warning(f"sign_contract: registro de contrato fallo para bodega {bodega_id}: {e}")
+
+    # Aceptación escrita ("acepto" como texto): la bodega no recibió el PDF,
+    # así que se lo mandamos con el mismo contrato que quedó archivado.
+    if enviar_pdf and pdf_bytes:
+        import logging
+        import os as _os
+        import tempfile as _tempfile
+        try:
+            b = sb.table("bodegas").select(
+                "telefono_whatsapp, nombre_comercial, razon_social"
+            ).eq("id", bodega_id).single().execute().data or {}
+            tel = (b.get("telefono_whatsapp") or "").strip()
+            if tel:
+                from app.services.meta_client import send_contract_document_sync
+
+                nombre = b.get("nombre_comercial") or b.get("razon_social") or "Bodega"
+                tmp = _tempfile.NamedTemporaryFile(suffix=".pdf", delete=False)
+                try:
+                    tmp.write(pdf_bytes)
+                    tmp.close()
+                    send_contract_document_sync(
+                        tel, tmp.name, nombre, bodega_id=bodega_id,
+                    )
+                finally:
+                    try:
+                        _os.remove(tmp.name)
+                    except OSError:
+                        pass
+        except Exception as e:
+            logging.warning(f"sign_contract: envio del PDF fallo para bodega {bodega_id}: {e}")
 
 # ── CATÁLOGO ──────────────────────────────────
 def get_catalogo(distribuidor_id: str, marca: str = None, categoria: str = None):

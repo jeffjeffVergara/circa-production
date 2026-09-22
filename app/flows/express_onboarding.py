@@ -295,7 +295,8 @@ def handle(
 
             contract_data = f"{bodega_id}|{telefono}|express|{datetime.utcnow().isoformat()}"
             contract_hash = hashlib.sha256(contract_data.encode()).hexdigest()
-            db.sign_contract(bodega_id, contract_hash)
+            # Aceptación escrita: firmamos y le mandamos el PDF del contrato.
+            db.sign_contract(bodega_id, contract_hash, enviar_pdf=True)
             datos_pin = {"bodega_id": bodega_id}
             db.upsert_session(telefono, "reg_pin", datos_pin, bodega_id)
             try:
