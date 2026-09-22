@@ -1441,7 +1441,26 @@ function subirSustentoPagoCliente(pid, inputEl){
   _subirSustentoPago('/api/backoffice/cobranza/'+pid+'/sustento-pago', inputEl, 'Sustento de pago guardado', loadCobranzas);
 }
 function subirSustentoPagoDistribuidor(pid, inputEl){
-  _subirSustentoPago('/api/backoffice/pedido/'+pid+'/pago-distribuidor/sustento', inputEl, 'Sustento guardado', loadPagos);
+  // El pago a ZOOM siempre es completo: subir el voucher tambien lo marca pagado
+  // (una sola llamada, antes eran dos acciones separadas).
+  if(isReadOnly()) return readOnlyBlocked();
+  var f = inputEl.files && inputEl.files[0];
+  if(!f) return;
+  if(f.size > 15*1024*1024){ showToast('Archivo muy grande (máx 15MB)','error'); inputEl.value=''; return; }
+  var fd = new FormData(); fd.append('file', f);
+  showToast('Subiendo voucher y marcando pagado…','info');
+  fetch('/api/backoffice/pedido/'+pid+'/pago-distribuidor/completo', {
+    method:'POST', headers: authHeaders(), body: fd
+  }).then(function(r){ return r.json().then(function(d){ return {ok:r.ok, d:d}; }); })
+  .then(function(res){
+    if(res.ok && res.d && res.d.ok){
+      showToast(res.d.ya_estaba_pagado ? 'Voucher guardado (ya estaba pagado)' : 'Voucher guardado y pago a ZOOM marcado','success');
+      loadPagos();
+    } else {
+      showToast('No se pudo: '+((res.d && res.d.detail) || 'error'), 'error');
+    }
+  }).catch(function(e){ showToast('Error: '+e.message,'error'); })
+  .then(function(){ inputEl.value=''; });
 }
 
 // ── Pagos parciales (abonos) ─────────────────────────────
@@ -1812,18 +1831,77 @@ function openVerificarPago(pid){
   var c = allCobranzas.find(function(x){return x.pedido_id===pid});
   if(!c) return;
   var b = c.bodega || {};
-  document.getElementById('modalContainer').innerHTML = 
-  '<div class="modal-overlay open" onclick="if(event.target===this)closeModal()"><div class="modal"><h3>💵 Verificar pago</h3>'+
+  var saldo = Number(c.total_pagar||0);
+  var abonado = Number(c.abonado_total||0);
+  var filaAbonado = abonado > 0
+    ? '<div class="modal-info-row"><span>Ya abonado:</span><strong style="color:var(--green)">S/'+abonado.toFixed(2)+'</strong></div>'
+    : '';
+  document.getElementById('modalContainer').innerHTML =
+  '<div class="modal-overlay open" onclick="if(event.target===this)closeModal()"><div class="modal"><h3>💵 Validar pago total</h3>'+
   '<div class="modal-info">'+
   '<div class="modal-info-row"><span>Pedido:</span><strong>'+(c.numero||'-')+'</strong></div>'+
-  '<div class="modal-info-row"><span>Bodega:</span><strong>'+(b.nombre_comercial||'?')+'</strong></div>'+
+  '<div class="modal-info-row"><span>Bodega:</span><strong>'+(b.nombre_comercial||b.razon_social||'?')+'</strong></div>'+
   '<div class="modal-info-row"><span>Teléfono:</span><span class="mono">'+(b.telefono_whatsapp||'-')+'</span></div>'+
-  '<div class="modal-info-row"><span>Monto a pagar:</span><strong style="color:var(--blue-light)">S/'+c.total_pagar.toFixed(2)+'</strong></div>'+
+  filaAbonado+
+  '<div class="modal-info-row"><span>Saldo a pagar:</span><strong style="color:var(--blue-light)">S/'+saldo.toFixed(2)+'</strong></div>'+
   '</div>'+
+  '<div id="vpConstancias" style="margin:10px 0;font-size:12px;color:var(--text-dim)">Buscando constancias ya subidas…</div>'+
   '<div class="modal-field"><label>Método de pago</label><select id="vpMetodo"><option value="yape">Yape</option><option value="plin">Plin</option><option value="transferencia">Transferencia</option><option value="efectivo">Efectivo</option></select></div>'+
   '<div class="modal-field"><label>N° de operación / Referencia</label><input type="text" id="vpNroOp" placeholder="Ej: 123456"></div>'+
-  '<div class="modal-actions"><button class="btn btn-outline" onclick="closeModal()">Cancelar</button><button class="btn btn-green" onclick="confirmarPago(\''+pid+'\')">✓ Confirmar pago</button></div>'+
+  '<div class="modal-field"><label>Constancia de pago</label><input type="file" id="vpArchivo" accept="image/*,.pdf"></div>'+
+  '<label style="display:flex;gap:8px;align-items:flex-start;margin:10px 0;font-size:13px">'+
+    '<input type="checkbox" id="vpCheck" onchange="document.getElementById(\'vpBtn\').disabled=!this.checked">'+
+    '<span>Revisé la constancia y el monto coincide con <strong>S/'+saldo.toFixed(2)+'</strong>.</span>'+
+  '</label>'+
+  '<div id="vpAcciones" class="modal-actions">'+
+    '<button class="btn btn-outline" onclick="closeModal()">Cancelar</button>'+
+    '<button id="vpBtn" class="btn btn-green" disabled onclick="pedirConfirmacionPago(\''+pid+'\','+saldo+')">Validar pago</button>'+
+  '</div>'+
   '</div></div>';
+  cargarConstanciasPedido(pid, c);
+}
+
+// Muestra las constancias que ya existen: la del pago total y las de cada abono.
+function cargarConstanciasPedido(pid, c){
+  var cont = document.getElementById('vpConstancias');
+  if(!cont) return;
+  var items = [];
+  if(c.pago_cliente_sustento_url){
+    items.push({url: c.pago_cliente_sustento_url, etiqueta: 'Constancia del pago'});
+  }
+  api('/api/backoffice/cobranza/'+pid+'/abonos').then(function(d){
+    (d.abonos||[]).forEach(function(a, i){
+      (a.sustentos||[]).forEach(function(u, j){
+        items.push({url: u, etiqueta: 'Abono '+(i+1)+' · S/'+Number(a.monto||0).toFixed(2)+(j>0?' ('+(j+1)+')':'')});
+      });
+    });
+  }).catch(function(){}).then(function(){
+    if(!items.length){
+      cont.innerHTML = '<span style="color:var(--text-dim)">Sin constancias subidas todavía.</span>';
+      return;
+    }
+    cont.innerHTML = '<div style="margin-bottom:4px"><strong>Constancias ya subidas ('+items.length+')</strong></div>'+
+      items.map(function(it){
+        return '<div>📎 <a href="'+it.url+'" target="_blank" rel="noopener">'+it.etiqueta+'</a></div>';
+      }).join('');
+  });
+}
+
+// Doble confirmación: validar el pago factura, así que se pregunta una vez más.
+function pedirConfirmacionPago(pid, saldo){
+  if(isReadOnly()) return readOnlyBlocked();
+  var acciones = document.getElementById('vpAcciones');
+  if(!acciones) return;
+  var f = document.getElementById('vpArchivo');
+  var conArchivo = f && f.files && f.files[0];
+  acciones.innerHTML =
+    '<div style="width:100%;background:rgba(255,170,0,.12);border:1px solid rgba(255,170,0,.4);border-radius:8px;padding:10px;margin-bottom:10px;font-size:13px">'+
+      '⚠️ Vas a marcar el pedido como <strong>pagado por S/'+Number(saldo).toFixed(2)+'</strong>'+
+      (conArchivo ? ' y a guardar la constancia' : ' <strong>sin constancia</strong>')+
+      '. Esto emite el comprobante y libera la línea.'+
+    '</div>'+
+    '<button class="btn btn-outline" onclick="openVerificarPago(\''+pid+'\')">← Volver</button>'+
+    '<button class="btn btn-green" onclick="confirmarPago(\''+pid+'\')">✓ Sí, validar pago</button>';
 }
 
 function closeModal(){
@@ -1834,15 +1912,37 @@ function confirmarPago(pid){
   if(isReadOnly()) return readOnlyBlocked();
   var metodo = document.getElementById('vpMetodo').value;
   var nroOp = document.getElementById('vpNroOp').value;
-  fetch('/api/backoffice/cobranza/'+pid+'/verificar-pago', {
-    method:'POST', headers: authHeaders({'Content-Type':'application/json'}),
-    body: JSON.stringify({metodo:metodo, nro_operacion:nroOp})
-  }).then(function(r){return r.json()}).then(function(d){
-    closeModal();
-    showToast('Pago verificado. Línea restaurada.','success');
-    refreshAll();
-    loadCobranzas();
-  }).catch(function(e){showToast('Error: '+e.message,'error')});
+  var f = document.getElementById('vpArchivo');
+  var archivo = f && f.files && f.files[0];
+  if(archivo && archivo.size > 15*1024*1024){
+    showToast('Archivo muy grande (máx 15MB)','error'); return;
+  }
+  var fd = new FormData();
+  fd.append('metodo', metodo);
+  fd.append('nro_operacion', nroOp);
+  if(archivo) fd.append('file', archivo);
+  var btns = document.getElementById('vpAcciones');
+  if(btns) btns.innerHTML = '<span style="padding:8px">Guardando…</span>';
+  // Una sola llamada: sube la constancia y marca pagado. Si falla el archivo,
+  // no se marca nada (antes eran dos llamadas y podía quedar a medias).
+  fetch('/api/backoffice/cobranza/'+pid+'/pagar', {
+    method:'POST', headers: authHeaders(), body: fd
+  }).then(function(r){ return r.json().then(function(d){ return {ok:r.ok, d:d}; }); })
+  .then(function(res){
+    if(res.ok && res.d && res.d.ok){
+      closeModal();
+      showToast('Pago validado'+(res.d.sustento_url?' con constancia':'')+'. Línea restaurada.','success');
+      refreshAll();
+      loadCobranzas();
+    } else {
+      var msg = (res.d && res.d.detail) ? String(res.d.detail) : 'No se pudo validar';
+      showToast('No se validó: '+msg.slice(0,180),'error');
+      openVerificarPago(pid);
+    }
+  }).catch(function(e){
+    showToast('Error: '+e.message,'error');
+    openVerificarPago(pid);
+  });
 }
 
 function enviarRecordatorio(pid){
