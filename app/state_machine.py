@@ -676,7 +676,8 @@ def handle_message(telefono: str, body: str, media_url: str = None) -> list:
                     image_bytes = download_whatsapp_media_sync(media_url)
                     if image_bytes:
                         if skip_biometria_checks(telefono, bodega_data, test_phones=TEST_PHONES):
-                            check = {"valid": True, "matches_expected": True, "reason_code": "demo_bypass"}
+                            check = {"valid": True, "matches_expected": True,
+                                     "reason_code": "manual_bypass" if (bodega_data or {}).get("biometria_bypass") else "demo_bypass"}
                         else:
                             check = verify_dni_photo(
                                 image_bytes,
@@ -700,6 +701,8 @@ def handle_message(telefono: str, body: str, media_url: str = None) -> list:
                                     "name_found": check.get("name_found", ""),
                                     "matches_expected_dni": check.get("matches_expected_dni"),
                                     "matches_expected_name": check.get("matches_expected_name"),
+                                    "provider_status": check.get("provider_status"),
+                                    "provider_error": check.get("provider_error"),
                                 },
                             )
                             return [f"\u274c {reason}\n\nEnv\u00eda una foto clara del *anverso de tu DNI f\u00edsico*."]
@@ -901,7 +904,8 @@ def handle_message(telefono: str, body: str, media_url: str = None) -> list:
                 if image_bytes:
                     face_cmp = {}
                     if skip_biometria_checks(telefono, bodega_bio, test_phones=TEST_PHONES):
-                        check = {"valid": True, "reason_code": "demo_bypass"}
+                        check = {"valid": True,
+                                 "reason_code": "manual_bypass" if bodega_bio.get("biometria_bypass") else "demo_bypass"}
                     else:
                         check = verify_selfie(image_bytes, strict=(BIOMETRIA_MODE == "strict"))
                     if not check.get("valid", False):
@@ -918,6 +922,8 @@ def handle_message(telefono: str, body: str, media_url: str = None) -> list:
                             model=ANTHROPIC_VISION_MODEL,
                             metadata={
                                 "checks": check.get("checks", {}),
+                                "provider_status": check.get("provider_status"),
+                                "provider_error": check.get("provider_error"),
                             },
                         )
                         return [f"\u274c {reason}\n\nPor favor, toma una *selfie mirando a la camara*."]

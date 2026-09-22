@@ -22,4 +22,7 @@ def skip_biometria_checks(
     """Bypass RENIEC/visión: teléfonos QA hardcodeados o bodega es_test con flag demo."""
     if telefono in test_phones:
         return True
+    if bodega and bodega.get("biometria_bypass"):
+        # Bypass manual por bodega (backoffice/SQL), p.ej. proveedor de visión caído.
+        return True
     return biometria_demo_relaxed(bodega)

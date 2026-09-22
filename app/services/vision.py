@@ -84,6 +84,17 @@ def download_dni_reference_bytes(
     return None
 
 
+def _provider_error_detail(r) -> dict:
+    """Detalle del error HTTP de Anthropic para auditoría (sin datos sensibles)."""
+    try:
+        body = r.json()
+        err = body.get("error") or {}
+        msg = f"{err.get('type', '')}: {err.get('message', '')}".strip(": ")
+    except Exception:
+        msg = (r.text or "")[:300]
+    return {"provider_status": r.status_code, "provider_error": msg[:300]}
+
+
 def verify_selfie(image_bytes: bytes, strict: bool = True) -> dict:
     """
     Use Claude Vision to verify a selfie.
@@ -159,13 +170,15 @@ def verify_selfie(image_bytes: bytes, strict: bool = True) -> dict:
         
         if r.status_code != 200:
             logger.error(f"Claude Vision error: {r.status_code} {r.text[:200]}")
+            detail = _provider_error_detail(r)
             if not strict:
-                return {"valid": True, "reason": "Error verificacion", "confidence": "low", "reason_code": "legacy_provider_error"}
+                return {"valid": True, "reason": "Error verificacion", "confidence": "low", "reason_code": "legacy_provider_error", **detail}
             return {
                 "valid": False,
                 "reason_code": "provider_error",
                 "reason": "No se pudo validar la selfie en este momento.",
                 "confidence": "low",
+                **detail,
             }
         
         text = r.json()["content"][0]["text"].strip()
@@ -188,6 +201,7 @@ def verify_selfie(image_bytes: bytes, strict: bool = True) -> dict:
             "reason_code": "invalid_response",
             "reason": "No se pudo validar la selfie en este momento.",
             "confidence": "low",
+            "provider_error": text[:300],
         }
         
     except Exception as e:
@@ -199,6 +213,7 @@ def verify_selfie(image_bytes: bytes, strict: bool = True) -> dict:
             "reason_code": "exception",
             "reason": "No se pudo validar la selfie en este momento.",
             "confidence": "low",
+            "provider_error": f"{type(e).__name__}: {e}"[:300],
         }
 
 
@@ -326,7 +341,7 @@ def verify_dni_photo(image_bytes: bytes, expected_dni: str, expected_name: str) 
     """
     api_key = os.getenv("ANTHROPIC_API_KEY", "")
     if not api_key:
-        return {"valid": True, "reason": "Sin API key", "dni_found": ""}
+        return {"valid": False, "reason_code": "no_api_key", "reason": "No se pudo verificar el DNI en este momento.", "dni_found": "", "confidence": "low"}
     
     b64 = base64.standard_b64encode(image_bytes).decode("utf-8")
     
@@ -385,8 +400,9 @@ def verify_dni_photo(image_bytes: bytes, expected_dni: str, expected_name: str) 
         )
         
         if r.status_code != 200:
-            logger.error(f"Claude DNI check error: {r.status_code}")
-            return {"valid": True, "reason": "Error verificacion", "dni_found": ""}
+            logger.error(f"Claude DNI check error: {r.status_code} {r.text[:200]}")
+            return {"valid": False, "reason_code": "provider_error", "reason": "No se pudo verificar el DNI en este momento.",
+                    "dni_found": "", "confidence": "low", **_provider_error_detail(r)}
         
         text = r.json()["content"][0]["text"].strip()
         logger.info(f"Claude DNI raw: {text}")
@@ -399,11 +415,13 @@ def verify_dni_photo(image_bytes: bytes, expected_dni: str, expected_name: str) 
             logger.info(f"DNI photo result: {result}")
             return result
         
-        return {"valid": True, "reason": "Respuesta inesperada", "dni_found": ""}
+        return {"valid": False, "reason_code": "invalid_response", "reason": "No se pudo verificar el DNI en este momento.",
+                "dni_found": "", "confidence": "low", "provider_error": text[:300]}
         
     except Exception as e:
         logger.error(f"DNI photo verify error: {e}", exc_info=True)
-        return {"valid": True, "reason": "Error verificacion", "dni_found": ""}
+        return {"valid": False, "reason_code": "exception", "reason": "No se pudo verificar el DNI en este momento.",
+                "dni_found": "", "confidence": "low", "provider_error": f"{type(e).__name__}: {e}"[:300]}
 
 
 _SKIN_TONE_INFERENCE_RE = re.compile(
