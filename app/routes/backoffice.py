@@ -844,6 +844,44 @@ async def verificar_pago(pedido_id: str, payload: dict, user: dict = Depends(get
     return result
 
 
+@router.post("/cobranza/{pedido_id}/pagar")
+async def cobranza_pagar(
+    pedido_id: str,
+    metodo: str = Form("yape"),
+    nro_operacion: str = Form(""),
+    file: Optional[UploadFile] = File(None),
+    user: dict = Depends(get_backoffice_writer),
+):
+    """Sustento + marcar pagado en UNA sola operacion.
+
+    Antes eran dos llamadas separadas desde el navegador: si la segunda fallaba
+    (o se recargaba la pagina en el medio) el pedido quedaba con sustento y sin
+    pago, o pagado sin sustento, y nadie se enteraba.
+
+    Orden a proposito: primero el archivo, despues el estado. Si el archivo
+    falla no se marca nada; si el pedido ya estaba pagado, igual se guarda el
+    sustento (la operacion es idempotente por ese lado).
+    """
+    sustento = None
+    if file is not None and getattr(file, "filename", ""):
+        sustento = await _subir_sustento_pago(
+            pedido_id, file, "pagos_cliente",
+            "pago_cliente_sustento_url", "pago_cliente_sustento_subido_at", user,
+        )
+
+    result = await dist.admin_verificar_pago(
+        pedido_id, {"metodo": metodo, "nro_operacion": nro_operacion}, admin=True,
+    )
+    log_action(user=user, action="cobranza_pagar", entity_type="pedido",
+               entity_id=pedido_id, pedido_id=pedido_id,
+               comment=f"{metodo} {nro_operacion} · sustento={'si' if sustento else 'no'}")
+    return {
+        "ok": True,
+        "sustento_url": (sustento or {}).get("url"),
+        "pago": result,
+    }
+
+
 @router.post("/cobranza/{pedido_id}/recordatorio")
 async def enviar_recordatorio(pedido_id: str, user: dict = Depends(get_backoffice_writer)):
     return await dist.admin_send_cobranza(pedido_id, admin=True)
@@ -1009,6 +1047,41 @@ async def agregar_sustentos_abono(abono_id: str, files: list[UploadFile] = File(
     log_action(user=user, action="agregar_sustento_abono", entity_type="pedido",
                entity_id=ab["pedido_id"], pedido_id=ab["pedido_id"], comment=f"{len(urls)} archivo(s)")
     return {"ok": True, "sustentos": previos + urls}
+
+
+@router.post("/pedido/{pedido_id}/pago-distribuidor/completo")
+async def pago_distribuidor_completo(
+    pedido_id: str,
+    file: Optional[UploadFile] = File(None),
+    user: dict = Depends(get_backoffice_writer),
+):
+    """Sustento del pago a ZOOM + marcar pagado, en una sola operacion.
+
+    Primero el archivo, despues el sello. Si el pedido ya estaba marcado como
+    pagado, igual guarda el sustento y lo reporta, en vez de fallar entero.
+    """
+    from app.routes.backoffice_ops import marcar_pago_distribuidor_handler
+
+    sustento = None
+    if file is not None and getattr(file, "filename", ""):
+        sustento = await _subir_sustento_pago(
+            pedido_id, file, "pagos_distribuidor",
+            "pago_distribuidor_sustento_url", "pago_distribuidor_sustento_subido_at", user,
+        )
+
+    ya_estaba = False
+    try:
+        marca = marcar_pago_distribuidor_handler(pedido_id, user=user)
+    except HTTPException as e:
+        if e.status_code == 400 and "Ya marcado" in str(e.detail):
+            ya_estaba, marca = True, {"ok": True, "pedido_id": pedido_id}
+        else:
+            raise
+    log_action(user=user, action="pago_distribuidor_completo", entity_type="pedido",
+               entity_id=pedido_id, pedido_id=pedido_id,
+               comment=f"sustento={'si' if sustento else 'no'} · ya_pagado={ya_estaba}")
+    return {"ok": True, "sustento_url": (sustento or {}).get("url"),
+            "ya_estaba_pagado": ya_estaba, "pago": marca}
 
 
 @router.post("/pedido/{pedido_id}/pago-distribuidor/sustento")
