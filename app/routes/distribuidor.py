@@ -987,6 +987,8 @@ def admin_cobranzas(
             "vendedor": {
                 "codigo": f.get("vendedor_codigo") or "",
                 "supervisor": f.get("vendedor_supervisor") or "",
+                "dia_visita": f.get("bodega_dia_visita") or "",
+                "dia_entrega": f.get("bodega_dia_entrega") or "",
             },
             "monto_financiado": float(p.get("monto_financiado") or 0),
             "fee": float(tp.get("fee_vigente") or p.get("fee_monto") or 0),

@@ -1654,7 +1654,8 @@ function loadCobranzas(){
         ((b.dni_representante||b.ruc)?('<div style="font-size:10px;color:var(--muted);margin-top:3px">'+(b.dni_representante?('DNI '+b.dni_representante):'')+(b.ruc?((b.dni_representante?' \u00b7 ':'')+'RUC '+b.ruc):'')+'</div>'):'')+
         (b.telefono_whatsapp?('<div style="font-size:10px;margin-top:2px"><a href="https://wa.me/'+String(b.telefono_whatsapp).replace(/\D/g,'')+'" target="_blank" rel="noopener" style="color:var(--green);text-decoration:none">\ud83d\udcf1 '+b.telefono_whatsapp+'</a></div>'):'')+'</td>'+
         '<td data-label="Distribuidor" style="color:var(--muted)">'+(dt.nombre_comercial||'?')+'</td>'+
-        '<td data-label="Vendedor" style="font-size:11px">'+((c.vendedor&&c.vendedor.codigo)?(c.vendedor.codigo+(c.vendedor.supervisor?('<div style="color:var(--muted);font-size:10px">'+String(c.vendedor.supervisor).split(' ')[0]+'</div>'):'')):'\u2014')+'</td>'+
+        '<td data-label="Vendedor" style="font-size:11px">'+((c.vendedor&&c.vendedor.codigo)?(c.vendedor.codigo+(c.vendedor.supervisor?('<div style="color:var(--muted);font-size:10px">'+String(c.vendedor.supervisor).split(' ')[0]+'</div>'):'')):'\u2014')+
+          ((c.vendedor&&c.vendedor.dia_visita)?('<div style="color:var(--blue-light);font-size:10px" title="Día de visita del vendedor">🗓 '+c.vendedor.dia_visita+'</div>'):'')+'</td>'+
         '<td data-label="Entregado">'+entr+'</td>'+
         '<td data-label="Vence">'+venc+'</td>'+
         '<td data-label="Días">'+diasText+'</td>'+
