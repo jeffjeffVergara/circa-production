@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import time
 from datetime import datetime, timezone
@@ -221,6 +222,53 @@ def track_message(
         source="whatsapp_webhook" if direction == "inbound" else "meta_client",
         metadata=ev_meta,
     )
+
+
+def record_wa_delivery(update: dict[str, Any]) -> None:
+    """Persiste sent/delivered/read/failed de Meta sobre la fila outbound de messages."""
+    mid = (update.get("message_id") or "").strip()
+    status = (update.get("status") or "").strip()
+    if not mid or not status:
+        return
+    errors = update.get("errors") or []
+    if status == "failed":
+        logger.warning(
+            "WA delivery failed message_id=%s recipient=%s errors=%s",
+            mid,
+            update.get("recipient_id") or "",
+            errors,
+        )
+    try:
+        rows = (
+            db.sb.table("messages")
+            .select("id,metadata")
+            .eq("message_id", mid)
+            .limit(5)
+            .execute()
+            .data
+            or []
+        )
+    except Exception:
+        logger.warning("record_wa_delivery lookup failed message_id=%s", mid, exc_info=True)
+        return
+    if not rows:
+        return
+    for row in rows:
+        meta = row.get("metadata") or {}
+        if isinstance(meta, str):
+            try:
+                meta = json.loads(meta)
+            except json.JSONDecodeError:
+                meta = {}
+        if not isinstance(meta, dict):
+            meta = {}
+        meta["wa_status"] = status
+        if errors:
+            meta["wa_errors"] = errors
+        try:
+            db.sb.table("messages").update({"metadata": meta}).eq("id", row["id"]).execute()
+        except Exception:
+            logger.warning("record_wa_delivery update failed id=%s", row.get("id"), exc_info=True)
 
 
 def get_bodega_features(bodega_id: str) -> dict[str, Any]:

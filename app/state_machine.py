@@ -1599,12 +1599,16 @@ def handle_message(telefono: str, body: str, media_url: str = None) -> list:
     # CONFIRMAR PIN (web overlay)
     # ═══════════════════════════════════════════════
     if fase == "pin_pago":
-        if body_n in ("MENU", "CANCELAR", "VOLVER"):
+        # HOLA/MENU sacan del teclado de clave. Si no, un saludo parece que el bot no contesta.
+        if body_n in ("MENU", "CANCELAR", "VOLVER", "HOLA", "HI", "INICIO"):
             db.upsert_session(telefono, "menu", {}, bodega["id"])
             return [{"signal": "MENU", "linea": bodega["linea_disponible"]}]
         return [msg_pin_pago_ayuda()]
 
     if fase == "pin_confirm":
+        if body_n in ("MENU", "CANCELAR", "VOLVER", "HOLA", "HI", "INICIO"):
+            db.upsert_session(telefono, "menu", {}, bodega["id"])
+            return [{"signal": "MENU", "linea": bodega["linea_disponible"]}]
         if body_n == "OK":
             pedido_id = datos.get("pedido_id")
             pedido_numero = datos.get("pedido_numero")

@@ -248,6 +248,7 @@ def parse_status_updates(body: dict) -> list[dict]:
                         "status": st.get("status", ""),
                         "recipient_id": st.get("recipient_id", ""),
                         "timestamp": st.get("timestamp", ""),
+                        "errors": st.get("errors") or [],
                     }
                 )
 

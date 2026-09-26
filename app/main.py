@@ -430,7 +430,7 @@ async def meta_webhook_incoming(request: Request):
     """Handle incoming messages from Meta Cloud API."""
     from app.services.meta_webhook import parse_incoming, parse_status_updates, verify_signature
     from app.services import meta_client
-    from app.services.analytics import track_message
+    from app.services.analytics import record_wa_delivery, track_message
     from app.support.service import apply_wa_status
 
     raw_body = await request.body()
@@ -445,6 +445,7 @@ async def meta_webhook_incoming(request: Request):
 
     for st in parse_status_updates(body):
         await apply_wa_status(st)
+        record_wa_delivery(st)
     
     # Parse incoming messages
     messages = parse_incoming(body)
@@ -529,6 +530,11 @@ async def meta_webhook_incoming(request: Request):
             contact_name=msg.get("name") or "",
         )
         if sup_decision.skip_remaining_handlers:
+            logger.info(
+                "webhook sin bot (soporte humano) telefono=%s body=%s",
+                telefono,
+                (body_text or "")[:80],
+            )
             if msg.get("message_id"):
                 await meta_client.mark_as_read(msg["message_id"])
             continue
@@ -597,12 +603,23 @@ async def meta_webhook_incoming(request: Request):
         # ── Handle payment replies (buttons or list) ──
         btn = msg.get("button_id", "") or msg.get("list_id", "") or ""
         if await try_handle_commerce_interactive(btn, body_text, wa_ctx, msg, meta_client):
+            logger.info(
+                "webhook commerce telefono=%s btn=%s",
+                telefono,
+                (btn or body_text or "")[:80],
+            )
             continue
 
         # Regular message processing via state machine
         try:
             responses = handle_message(telefono, body_text, media_url)
-            
+            if not responses:
+                logger.warning(
+                    "webhook sin respuesta telefono=%s body=%s",
+                    telefono,
+                    (body_text or "")[:80],
+                )
+
             for resp in responses:
                 if isinstance(resp, dict):
                     signal = resp.get("signal", "")
