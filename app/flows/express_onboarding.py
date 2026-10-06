@@ -6,8 +6,8 @@ Flujo:
   → express_linea → express_tyc → crear PIN (reg_pin) → menu
 
 Quién entra (gate):
-  - bodega.es_test = true, o
-  - teléfono en allowlist (EXPRESS_ONBOARDING_PHONES)
+  - vendedor activo de la bodega en EXPRESS_ONBOARDING_VENDEDORES, o
+  - teléfono en EXPRESS_ONBOARDING_PHONES (solo si la variable está puesta)
 
 Entradas: de cero (allowlist), precarga, post-afiliar vendedor.
 No modifica state_machine reg_* / prospecto clásico.

@@ -3,8 +3,8 @@
 | | |
 |--|--|
 | **Código** | `app/flows/express_onboarding.py`, `app/services/express_onboarding_gate.py` |
-| **Gate** | Allowlist de teléfonos; onboarding clásico intacto |
-| **Env** | `EXPRESS_ONBOARDING_ENABLED`, `EXPRESS_ONBOARDING_PHONES` |
+| **Gate** | Lista de vendedores; onboarding clásico para el resto |
+| **Env** | `EXPRESS_ONBOARDING_ENABLED`, `EXPRESS_ONBOARDING_VENDEDORES`, `EXPRESS_ONBOARDING_PHONES` |
 
 # Qué es
 
@@ -16,23 +16,19 @@ Flujo corto de activación para el piloto:
 4. Términos y condiciones  
 5. Crear PIN → cuenta activa
 
-> **Estado (2026-09):** apagado por defecto (`EXPRESS_ONBOARDING_ENABLED` default `false`).  
-> Activar sin PIN dejaba bodegas test en bucle al pagar/financiar. Si se reactiva, Express **pide PIN** tras T&C.
+> **Estado:** apagado por defecto (`EXPRESS_ONBOARDING_ENABLED` default `false`).  
+> Si se reactiva, Express **pide PIN** tras T&C. `es_test` ya no abre el flujo.
 
 ## Quién entra a Express
 
-Si `EXPRESS_ONBOARDING_ENABLED=true`, entra quien cumpla **cualquiera**:
+Hacen falta las dos cosas:
 
-1. **Bodega de prueba** (`bodegas.es_test = true`) — al marcar una bodega como prueba (o cargarla como test), ese WhatsApp usa Express automáticamente  
-2. **Allowlist de teléfonos** (`EXPRESS_ONBOARDING_PHONES` / default en código), útil para de-cero sin bodega aún  
+1. `EXPRESS_ONBOARDING_ENABLED=true`
+2. El vendedor activo de la bodega (`bodega_vendedores`) está en `EXPRESS_ONBOARDING_VENDEDORES` (códigos `V0034`, separados por coma)
 
-El resto sigue el onboarding clásico (`reg_*` / `prospecto`).
+Opcional: un teléfono en `EXPRESS_ONBOARDING_PHONES`. Si esa variable no está, no hay teléfonos de piloto.
 
-### Allowlist default (además de `es_test`)
-
-- `+51942616682` (942616682)
-- `+51993557282` (993557282)
-- `+51954712581` (954712581)
+Una bodega de otro vendedor, aunque sea `es_test`, sigue el onboarding clásico (`reg_*` / `prospecto`). Una sesión que haya quedado en `express_*` también sale si su vendedor ya no está en la lista.
 
 ## Fases de sesión
 
@@ -41,9 +37,8 @@ El resto sigue el onboarding clásico (`reg_*` / `prospecto`).
 ## Apagar / cambiar lista
 
 ```env
-EXPRESS_ONBOARDING_ENABLED=false
-# o
-EXPRESS_ONBOARDING_PHONES=+51942616682,+51993557282
+EXPRESS_ONBOARDING_ENABLED=true
+EXPRESS_ONBOARDING_VENDEDORES=V0034
 ```
 
-Con el master en `false`, las sesiones que hayan quedado en `express_*` **salen** del flujo Express (ya no se queda sticky).
+Con el master en `false`, o sin el código del vendedor en la lista, las sesiones `express_*` salen del flujo Express.

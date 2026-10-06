@@ -1,24 +1,20 @@
 """
 Gate para Express Onboarding (piloto).
 
-Entran al flujo Express si:
-  - el número está en EXPRESS_ONBOARDING_PHONES (allowlist), o
-  - la bodega tiene es_test=true
+Entra al flujo Express solo si el master está encendido y, además:
+  - el vendedor activo de la bodega está en EXPRESS_ONBOARDING_VENDEDORES, o
+  - el teléfono está en EXPRESS_ONBOARDING_PHONES (si esa variable está puesta)
 
-El onboarding clásico no se modifica para el resto.
+es_test ya no abre Express. Sin vendedor en la lista, el onboarding clásico sigue.
 """
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 
-# Allowlist opcional (además de bodegas es_test)
-_DEFAULT_PILOT_PHONES = (
-    "+51942616682",  # 942616682
-    "+51993557282",  # 993557282
-    "+51954712581",  # 954712581
-)
+logger = logging.getLogger("circa.express_onboarding_gate")
 
 
 def _env_flag(name: str, default: bool = False) -> bool:
@@ -47,15 +43,69 @@ def express_onboarding_enabled() -> bool:
 
 
 def express_pilot_phones() -> set[str]:
+    """Solo los teléfonos escritos en EXPRESS_ONBOARDING_PHONES. Vacío = ninguno."""
     raw = (os.getenv("EXPRESS_ONBOARDING_PHONES") or "").strip()
-    if raw:
-        parts = re.split(r"[\s,;]+", raw)
-        return {normalize_phone_e164(p) for p in parts if p.strip()}
-    return {normalize_phone_e164(p) for p in _DEFAULT_PILOT_PHONES}
+    if not raw:
+        return set()
+    parts = re.split(r"[\s,;]+", raw)
+    return {normalize_phone_e164(p) for p in parts if p.strip()}
+
+
+def express_vendor_codes() -> set[str]:
+    """Códigos de vendedor (V0034) que pueden enrolar por Express. Vacío = ninguno."""
+    raw = (os.getenv("EXPRESS_ONBOARDING_VENDEDORES") or "").strip()
+    if not raw:
+        return set()
+    return {p.strip().upper() for p in re.split(r"[\s,;]+", raw) if p.strip()}
+
+
+def _lookup_vendor_codes(bodega_id: str) -> set[str]:
+    """Códigos de vendedores con mapeo activo en esta bodega."""
+    try:
+        from app.services import db
+
+        maps = (
+            db.sb.table("bodega_vendedores")
+            .select("vendedor_id")
+            .eq("bodega_id", str(bodega_id))
+            .eq("activo", True)
+            .limit(5)
+            .execute()
+        )
+        ids = [r["vendedor_id"] for r in (maps.data or []) if r.get("vendedor_id")]
+        if not ids:
+            return set()
+        vends = (
+            db.sb.table("vendedores")
+            .select("codigo")
+            .in_("id", ids)
+            .limit(5)
+            .execute()
+        )
+        return {
+            (r.get("codigo") or "").strip().upper()
+            for r in (vends.data or [])
+            if (r.get("codigo") or "").strip()
+        }
+    except Exception:
+        logger.warning("express: no se pudo leer vendedor de bodega %s", bodega_id, exc_info=True)
+        return set()
+
+
+def vendedor_codigos_de_bodega(bodega: dict | None) -> set[str]:
+    if not bodega:
+        return set()
+    explicit = (bodega.get("vendedor_codigo") or "").strip().upper()
+    if explicit:
+        return {explicit}
+    bid = bodega.get("id")
+    if not bid:
+        return set()
+    return _lookup_vendor_codes(str(bid))
 
 
 def is_express_allowlist_phone(telefono: str | None) -> bool:
-    """Solo allowlist explícita (env / default). No mira es_test."""
+    """Solo teléfonos en EXPRESS_ONBOARDING_PHONES. Vacío = ninguno."""
     if not express_onboarding_enabled():
         return False
     norm = normalize_phone_e164(telefono)
@@ -72,15 +122,17 @@ is_express_pilot_phone = is_express_allowlist_phone
 def qualifies_for_express(telefono: str | None, bodega: dict | None = None) -> bool:
     """
     True si el contacto debe usar Express:
-    allowlist de teléfonos O bodega de prueba (es_test).
+    teléfono en allowlist explícita, o vendedor activo de la bodega en la lista.
+    es_test no alcanza.
     """
     if not express_onboarding_enabled():
         return False
     if is_express_allowlist_phone(telefono):
         return True
-    if bodega and bool(bodega.get("es_test")):
-        return True
-    return False
+    allowed = express_vendor_codes()
+    if not allowed:
+        return False
+    return bool(vendedor_codigos_de_bodega(bodega) & allowed)
 
 
 def should_use_express_onboarding(
@@ -90,19 +142,19 @@ def should_use_express_onboarding(
 ) -> bool:
     """
     - Master off → nunca Express (tampoco si la sesión quedó en express_*)
-    - Ya en fase express_* y master on → seguir
+    - Sin vendedor de la lista ni teléfono allowlist → clásico, aunque la fase sea express_*
+    - Ya en fase express_* y sigue calificando → seguir
     - Bodega activa → menú (no Express)
-    - Allowlist o es_test, sin bodega / inactiva → Express
     """
     if not express_onboarding_enabled():
+        return False
+
+    if not qualifies_for_express(telefono, bodega):
         return False
 
     fase = (session or {}).get("fase") or ""
     if fase.startswith("express_"):
         return True
-
-    if not qualifies_for_express(telefono, bodega):
-        return False
 
     if bodega and (bodega.get("estado") or "") == "activo":
         return False
