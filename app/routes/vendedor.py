@@ -1422,6 +1422,32 @@ def _bodega_afiliar_item(b: dict) -> dict:
     }
 
 
+def _listar_inactivas_cartera(vendedor: dict) -> list[dict]:
+    """Todas las bodegas activas en cartera cuyo estado no es activo."""
+    page = 200
+    off = 0
+    bodegas: list[dict] = []
+    while off < 2000:
+        rows = _sb_get("bodega_vendedores", {
+            "select": f"bodegas({_AFILIAR_BODEGA_SELECT})",
+            "vendedor_id": f"eq.{vendedor['id']}",
+            "activo": "eq.true",
+            "limit": str(page),
+            "offset": str(off),
+        }) or []
+        for row in rows:
+            b = row.get("bodegas")
+            if b and (b.get("estado") or "").lower() != "activo":
+                bodegas.append(b)
+        if len(rows) < page:
+            break
+        off += page
+    bodegas.sort(
+        key=lambda x: (x.get("nombre_comercial") or x.get("razon_social") or "").lower(),
+    )
+    return [_bodega_afiliar_item(b) for b in bodegas]
+
+
 def _buscar_cartera_afiliar(vendedor: dict, q: str = "") -> list[dict]:
     q_raw = (q or "").strip()
     # Admin con búsqueda: busca en TODAS las bodegas del distribuidor (no solo su
@@ -1479,12 +1505,16 @@ def _buscar_cartera_afiliar(vendedor: dict, q: str = "") -> list[dict]:
 def api_cartera_afiliar(
     token: str = Path(..., min_length=16, max_length=64),
     q: str = Query("", max_length=64),
+    solo_inactivas: int = Query(0),
 ):
     """Lista bodegas de la cartera del vendedor para autocompletar Afiliar."""
     vendedor = _get_vendedor_by_token(token)
     if not vendedor:
         raise HTTPException(status_code=404, detail="Acceso no encontrado")
-    items = _buscar_cartera_afiliar(vendedor, q)
+    if solo_inactivas:
+        items = _listar_inactivas_cartera(vendedor)
+    else:
+        items = _buscar_cartera_afiliar(vendedor, q)
     return {"items": items, "total": len(items)}
 
 
@@ -1520,6 +1550,13 @@ def afiliar_form(token: str = Path(..., min_length=16, max_length=64)):
     .cartera-item .ci-tag{{display:inline-block;margin-top:8px;font-size:10px;padding:3px 8px;border-radius:999px;background:rgba(34,211,238,0.12);color:#22D3EE;letter-spacing:0.3px}}
     .cartera-item .ci-tag.done{{background:rgba(34,197,94,0.12);color:#86efac}}
     #selected_bodega{{margin-top:16px}}
+    .modal-bg{{position:fixed;inset:0;background:rgba(0,0,0,0.72);z-index:30;display:flex;align-items:flex-end;justify-content:center}}
+    .modal{{background:#121826;width:100%;max-width:520px;max-height:86vh;border-radius:18px 18px 0 0;padding:18px 16px 28px;display:flex;flex-direction:column}}
+    .modal-head{{display:flex;align-items:center;justify-content:space-between;gap:12px}}
+    .modal-head h2{{font-size:16px;font-weight:600}}
+    .modal-x{{background:none;border:0;color:#fff;font-size:26px;line-height:1;cursor:pointer;padding:4px 8px}}
+    .modal-sub{{font-size:12px;color:rgba(255,255,255,0.5);margin:6px 0 12px}}
+    .modal-list{{overflow:auto;-webkit-overflow-scrolling:touch;padding-bottom:8px}}
     .form-section{{margin-top:24px}}
     .form-section .section-label{{font-size:11px;color:rgba(255,255,255,0.45);letter-spacing:0.6px;margin-bottom:14px}}
   </style>
@@ -1534,6 +1571,7 @@ def afiliar_form(token: str = Path(..., min_length=16, max_length=64)):
     <label class="label">BUSCAR EN MI CARTERA</label>
     <input class="input" id="cartera_q" type="search" placeholder="Nombre, DNI o RUC" autocomplete="off">
     <button type="button" class="btn secondary" id="cartera_btn" onclick="buscarCartera()">Buscar</button>
+    <button type="button" class="btn secondary" id="inactivas_btn" onclick="abrirInactivas()">Ver bodegas inactivas</button>
     <div id="cartera_results" class="result"></div>
     <div id="selected_bodega" style="display:none"></div>
   </div>
@@ -1573,6 +1611,17 @@ def afiliar_form(token: str = Path(..., min_length=16, max_length=64)):
   </div>
   <div id="msg"></div>
 
+  <div id="modal_inactivas" class="modal-bg" style="display:none" onclick="if(event.target===this)cerrarInactivas()">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal_inactivas_titulo">
+      <div class="modal-head">
+        <h2 id="modal_inactivas_titulo">Bodegas inactivas</h2>
+        <button type="button" class="modal-x" onclick="cerrarInactivas()" aria-label="Cerrar">&times;</button>
+      </div>
+      <div class="modal-sub">Las de tu cartera que aún no están activas. Toca una para usarla.</div>
+      <div id="modal_inactivas_list" class="modal-list"></div>
+    </div>
+  </div>
+
   <script>
     const TOKEN = "{token}";
     let selectedBodega = null;
@@ -1592,10 +1641,10 @@ def afiliar_form(token: str = Path(..., min_length=16, max_length=64)):
       return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     }}
 
-    function renderCarteraItems(items) {{
-      const out = document.getElementById('cartera_results');
+    function renderCarteraItems(items, targetId, emptyMsg) {{
+      const out = document.getElementById(targetId || 'cartera_results');
       if (!items.length) {{
-        out.innerHTML = '<div class="error" style="margin-top:12px">No hay bodegas en tu cartera con ese criterio.</div>';
+        out.innerHTML = '<div class="error" style="margin-top:12px">'+(emptyMsg || 'No hay bodegas en tu cartera con ese criterio.')+'</div>';
         return;
       }}
       out.innerHTML = items.map((b, i) => {{
@@ -1636,7 +1685,35 @@ def afiliar_form(token: str = Path(..., min_length=16, max_length=64)):
       }}
     }}
 
+    function cerrarInactivas() {{
+      document.getElementById('modal_inactivas').style.display = 'none';
+    }}
+
+    async function abrirInactivas() {{
+      const modal = document.getElementById('modal_inactivas');
+      const list = document.getElementById('modal_inactivas_list');
+      const btn = document.getElementById('inactivas_btn');
+      modal.style.display = 'flex';
+      list.innerHTML = '<div class="hint">Cargando...</div>';
+      btn.disabled = true;
+      try {{
+        const r = await fetch('/v/'+TOKEN+'/api/cartera-afiliar?solo_inactivas=1');
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.detail || 'Error al listar');
+        renderCarteraItems(
+          data.items || [],
+          'modal_inactivas_list',
+          'No tienes bodegas inactivas en tu cartera.'
+        );
+      }} catch (err) {{
+        list.innerHTML = '<div class="error" style="margin-top:12px">'+escHtml(err.message)+'</div>';
+      }} finally {{
+        btn.disabled = false;
+      }}
+    }}
+
     function seleccionarBodega(b) {{
+      cerrarInactivas();
       selectedBodega = b;
       document.getElementById('dni').value = (b.dni || '').replace(/\\D/g,'').slice(0,8);
       document.getElementById('ruc').value = (b.ruc || '').replace(/\\D/g,'').slice(0,11);
