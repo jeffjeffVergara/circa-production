@@ -240,16 +240,22 @@ def list_pedidos(estado: Optional[str] = None, incluir_test: bool = False, dist:
         _pids = [p["id"] for p in pedidos if (p.get("created_at") or "") >= _corte]
         if _pids:
             _reps = _sb_get("entregas_transportista", {
-                "select": "pedido_id,resultado,sustento_url,observacion,reportado_at,transportista_id",
+                "select": "pedido_id,resultado,sustento_url,observacion,reportado_at,transportista_id,anulado_at",
                 "pedido_id": f"in.({','.join(_pids)})",
                 "order": "reportado_at.desc"})
             _nombres = _sb_map_by_ids("transportistas", "id,nombre",
                                       [r.get("transportista_id") for r in _reps])
-            _ult = {}
+            _ult, _anulados = {}, {}
             for _r in _reps:
+                if _r.get("anulado_at"):
+                    _anulados[_r["pedido_id"]] = _anulados.get(_r["pedido_id"], 0) + 1
+                    continue
                 if _r["pedido_id"] not in _ult:
                     _r["transportista"] = (_nombres.get(_r.get("transportista_id")) or {}).get("nombre", "")
                     _ult[_r["pedido_id"]] = _r
+            for _pid, _n in _anulados.items():
+                if _pid in _ult:
+                    _ult[_pid]["anulados"] = _n
             for p in pedidos:
                 if p["id"] in _ult:
                     p["entrega_transportista"] = _ult[p["id"]]
