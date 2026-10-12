@@ -219,7 +219,7 @@ function filaPendiente(p){
         '<label class="subir" id="up-' + p.id + '">Subir<br>voucher' +
           '<input type="file" accept="image/*,application/pdf" capture="environment" ' +
           'onchange="subir(\'' + p.id + '\', this)"></label>' +
-        '<button class="noent" onclick="abrirCaja(\'' + p.id + '\',\'cash\')">Pago efectivo</button>' +
+        '<button class="noent" onclick="abrirCaja(\'' + p.id + '\',\'cash\')">Pago TODO<br>en efectivo</button>' +
         '<button class="noent" onclick="abrirCaja(\'' + p.id + '\',\'no\')">No se entrego</button>' +
       '</div>' +
     '</div>' +
@@ -245,7 +245,7 @@ function filaHistoria(p){
   var cls = r.resultado === 'no_entregado' ? 'no'
           : r.resultado === 'entregado_cash' ? 'cash' : 'ok';
   var etiqueta = r.resultado === 'no_entregado' ? 'No entregado'
-               : r.resultado === 'entregado_cash' ? 'Pago en efectivo' : 'Entregado';
+               : r.resultado === 'entregado_cash' ? 'Pago todo en efectivo' : 'Entregado';
   return '' +
   '<div class="item">' +
     '<div class="l1"><b>' + esc(p.numero) + '</b>' +
