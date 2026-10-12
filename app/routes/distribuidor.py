@@ -240,7 +240,7 @@ def list_pedidos(estado: Optional[str] = None, incluir_test: bool = False, dist:
         _pids = [p["id"] for p in pedidos if (p.get("created_at") or "") >= _corte]
         if _pids:
             _reps = _sb_get("entregas_transportista", {
-                "select": "pedido_id,resultado,sustento_url,observacion,reportado_at,transportista_id,anulado_at",
+                "select": "pedido_id,id,resultado,sustento_url,observacion,reportado_at,transportista_id,anulado_at,aceptado_at,aceptado_por",
                 "pedido_id": f"in.({','.join(_pids)})",
                 "order": "reportado_at.desc"})
             _nombres = _sb_map_by_ids("transportistas", "id,nombre",
@@ -467,6 +467,62 @@ def upload_sustento(pedido_id: str, file: UploadFile = File(...), dist: dict = D
     except Exception as e:
         _sb_patch("pedidos", {"prueba_entrega_url": f"uploaded:{file.filename}"}, {"id": f"eq.{pedido_id}"})
         return {"ok": True, "url": f"uploaded:{file.filename}", "note": str(e)}
+
+@router.post("/pedidos/{pedido_id}/aceptar-entrega")
+def aceptar_entrega_transportista(pedido_id: str, dist: dict = Depends(verify_distribuidor)):
+    """Circa acepta el reporte del transportista: adopta su voucher como sustento
+    del pedido y avanza el pedido hasta `entregado`.
+
+    Esta es la UNICA via por la que lo del transportista entra al pedido, y la
+    dispara Circa, nunca el. Avanza paso a paso con update_status() para reusar
+    tal cual la logica existente: mensajes de WhatsApp por estado,
+    fecha_vencimiento, PATCH a pagos y recordatorio de pago.
+    """
+    reps = _sb_get("entregas_transportista", {
+        "select": "id,resultado,sustento_url,aceptado_at",
+        "pedido_id": f"eq.{pedido_id}",
+        "anulado_at": "is.null",
+        "resultado": "eq.entregado",
+        "order": "reportado_at.desc", "limit": "1",
+    })
+    if not reps:
+        raise HTTPException(status_code=400,
+                            detail="No hay un reporte de entrega vigente del transportista para este pedido.")
+    rep = reps[0]
+    if not rep.get("sustento_url"):
+        raise HTTPException(status_code=400, detail="Ese reporte no tiene voucher adjunto.")
+
+    rows = _sb_get("pedidos", {"select": "id,estado,numero",
+                               "id": f"eq.{pedido_id}", "distribuidor_id": f"eq.{dist['id']}"})
+    if not rows:
+        raise HTTPException(status_code=404, detail="Pedido no encontrado")
+
+    # 1. El voucher del transportista pasa a ser el sustento del pedido.
+    _sb_patch("pedidos", {"prueba_entrega_url": rep["sustento_url"]}, {"id": f"eq.{pedido_id}"})
+
+    # 2. Avanzar hasta entregado por la cadena normal (max 5 saltos por seguridad).
+    pasos = []
+    for _ in range(5):
+        actual = _sb_get("pedidos", {"select": "estado", "id": f"eq.{pedido_id}"})[0]["estado"]
+        if actual == "entregado":
+            break
+        siguiente = STATUS_FLOW.get(actual)
+        if not siguiente:
+            raise HTTPException(
+                status_code=400,
+                detail=f"El pedido esta en '{actual}' y desde ahi no se puede avanzar a entregado.")
+        update_status(pedido_id, StatusUpdate(nuevo_estado=siguiente), dist)
+        pasos.append(siguiente)
+
+    # 3. Sellar el reporte como aceptado.
+    _sb_patch("entregas_transportista",
+              {"aceptado_at": datetime.now(timezone.utc).isoformat(),
+               "aceptado_por": f"circa:{dist.get('nombre_comercial') or dist['id']}"},
+              {"id": f"eq.{rep['id']}"})
+
+    return {"ok": True, "numero": rows[0].get("numero", ""), "pasos": pasos,
+            "sustento_url": rep["sustento_url"]}
+
 
 # ===================== CIRCA ADMIN =====================
 
