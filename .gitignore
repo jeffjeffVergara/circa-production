@@ -97,3 +97,26 @@ Claude outputs/
 
 # LibreOffice / Excel abiertos
 .~lock.*#
+
+# ── Ampliacion 2026-10-12 (segunda pasada) ───────────────────────────────
+# Cargas con DNI y telefonos de bodegueros. NUNCA al repo.
+CIRCA_carga_lote1_*
+BD CLIENTES ZOOM*
+CIRCA_Maestro_Carga_Bodegas_*
+Circa_Lineas_Bodegas_*
+Circa_enroladas_*
+Crosswalk_FFVV_*
+CIRCA_Cambio_Zonas_*
+*_SICHA_*.xlsx
+*_MENDOZA_*.xlsx
+
+# Backups con guion (los *.bak_* ya estaban, estos no)
+*.bak-*
+
+# Scratch
+err[0-9].txt
+main
+skills-lock.json
+
+# Insumos con datos de bodegueros: viven en el proyecto, nunca en git
+_datos_clientes/
