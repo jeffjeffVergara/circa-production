@@ -66,7 +66,7 @@ def _iso_hace(dias: int) -> str:
     return (datetime.now(timezone.utc) - timedelta(days=dias)).isoformat()
 
 
-def _resumen_pedido(p: dict, bodega: dict) -> dict:
+def _resumen_pedido(p: dict, bodega: dict, comercial: dict) -> dict:
     raw = p.get("items_json") or []
     items = raw if isinstance(raw, list) else []
     return {
@@ -79,6 +79,8 @@ def _resumen_pedido(p: dict, bodega: dict) -> dict:
         "codigo_afiliado": bodega.get("codigo_afiliado") or "",
         "direccion": bodega.get("direccion_fiscal") or bodega.get("direccion") or "",
         "telefono": bodega.get("telefono_whatsapp") or "",
+        "vendedor": comercial.get("vendedor") or "",
+        "vendedor_codigo": comercial.get("vendedor_codigo") or "",
         "total": float(p.get("total_pedido") or p.get("monto_productos") or 0),
         "cobra_efectivo": float(p.get("monto_contado") or 0),
         "financiado": float(p.get("monto_financiado") or 0),
@@ -137,6 +139,27 @@ def pedidos_del_transportista(token: str):
         [p.get("bodega_id") for p in todos.values()],
     )
 
+    # Vendedor RESPONSABLE de la bodega (no quien armo la preventa: ese campo,
+    # pedidos.vendedor_id, dice ADMIN CIRCA en las preventas importadas).
+    # Se lee bodega_vendedores directo y no vw_bodega_comercial, porque la vista
+    # hace DISTINCT ON ... ORDER BY created_at y devolveria la asignacion MAS
+    # ANTIGUA si una bodega llegara a tener dos activas. Aqui gana la mas reciente.
+    comercial = {}
+    _bids = list({p.get("bodega_id") for p in todos.values() if p.get("bodega_id")})
+    if _bids:
+        _asig = _sb_get("bodega_vendedores", {
+            "select": "bodega_id,created_at,vendedores(codigo,nombre)",
+            "bodega_id": f"in.({','.join(_bids)})",
+            "activo": "is.true",
+            "order": "created_at.desc",
+        })
+        for _a in _asig:
+            if _a["bodega_id"] in comercial:
+                continue
+            _v = _a.get("vendedores") or {}
+            comercial[_a["bodega_id"]] = {"vendedor": _v.get("nombre") or "",
+                                          "vendedor_codigo": _v.get("codigo") or ""}
+
     por_entregar, historia = [], []
     ultimo_reporte = {}
     for r in mios:
@@ -148,7 +171,7 @@ def pedidos_del_transportista(token: str):
             continue
         if not b:                                 # sin bodega resuelta no se muestra
             continue
-        fila = _resumen_pedido(p, b)
+        fila = _resumen_pedido(p, b, comercial.get(p.get("bodega_id")) or {})
         rep = ultimo_reporte.get(pid)
         if rep:
             fila["reporte"] = {
@@ -181,12 +204,15 @@ def _pedido_del_distribuidor(pedido_id: str, distribuidor_id: str) -> dict:
     return rows[0]
 
 
-@router.post("/{token}/pedidos/{pedido_id}/voucher")
-def subir_voucher(token: str, pedido_id: str, file: UploadFile = File(...)):
-    """Sube el voucher firmado por el cliente. No cambia el estado del pedido."""
-    t = _verify_transportista(token)
-    pedido = _pedido_del_distribuidor(pedido_id, t["distribuidor_id"])
+RESULTADOS = {
+    # resultado -> (necesita foto, necesita motivo)
+    "entregado":      (True,  False),   # voucher firmado por el cliente
+    "no_entregado":   (False, True),    # no se pudo entregar
+    "entregado_cash": (False, False),   # entregado y el cliente pago todo en efectivo
+}
 
+
+def _subir_a_storage(pedido_id: str, file: UploadFile) -> str:
     ext = (file.filename or "").rsplit(".", 1)[-1].lower() if "." in (file.filename or "") else "jpg"
     if ext not in EXT_PERMITIDAS:
         raise HTTPException(status_code=400, detail="Formato no permitido. Sube una foto o un PDF.")
@@ -209,30 +235,44 @@ def subir_voucher(token: str, pedido_id: str, file: UploadFile = File(...)):
         import logging
         logging.getLogger("circa").error(f"[transportista] storage {r.status_code}: {r.text}")
         raise HTTPException(status_code=502, detail="No se pudo guardar la foto. Intenta de nuevo.")
-
-    url = f"{SUPABASE_URL}/storage/v1/object/public/sustentos/{storage_path}"
-    _sb_post("entregas_transportista", {
-        "pedido_id": pedido_id, "transportista_id": t["id"],
-        "resultado": "entregado", "sustento_url": url,
-    })
-    # Alimenta el portal del distribuidor y el cierre diario sin tocar el estado.
-    _sb_patch("pedidos", {"prueba_entrega_url": url}, {"id": f"eq.{pedido_id}"})
-    return {"ok": True, "url": url, "numero": pedido.get("numero", "")}
+    return f"{SUPABASE_URL}/storage/v1/object/public/sustentos/{storage_path}"
 
 
-@router.post("/{token}/pedidos/{pedido_id}/no-entregado")
-def reportar_no_entregado(token: str, pedido_id: str, motivo: str = Form(...)):
-    """El pedido no se pudo entregar hoy. Queda registrado, el pedido no se toca."""
+@router.post("/{token}/pedidos/{pedido_id}/reporte")
+def reportar(token: str, pedido_id: str,
+             resultado: str = Form("entregado"),
+             motivo: Optional[str] = Form(None),
+             file: Optional[UploadFile] = File(None)):
+    """Reporte de reparto. NO cambia `pedidos.estado` en ningun caso.
+
+    entregado      -> voucher firmado, obligatorio.
+    no_entregado   -> motivo obligatorio.
+    entregado_cash -> el cliente pago todo en efectivo. Foto opcional; Circa
+                      decide despues si el pedido pasa a `pagado_cash`.
+    """
     t = _verify_transportista(token)
     pedido = _pedido_del_distribuidor(pedido_id, t["distribuidor_id"])
+
+    if resultado not in RESULTADOS:
+        raise HTTPException(status_code=400, detail="Reporte invalido.")
+    necesita_foto, necesita_motivo = RESULTADOS[resultado]
+
     motivo = (motivo or "").strip()[:300]
-    if not motivo:
+    if necesita_motivo and not motivo:
         raise HTTPException(status_code=400, detail="Escribe el motivo.")
+    if necesita_foto and file is None:
+        raise HTTPException(status_code=400, detail="Falta la foto del voucher firmado.")
+
+    url = _subir_a_storage(pedido_id, file) if file is not None else None
+
     _sb_post("entregas_transportista", {
         "pedido_id": pedido_id, "transportista_id": t["id"],
-        "resultado": "no_entregado", "observacion": motivo,
+        "resultado": resultado, "sustento_url": url, "observacion": motivo or None,
     })
-    return {"ok": True, "numero": pedido.get("numero", "")}
+    # Alimenta el portal del distribuidor y el cierre diario sin tocar el estado.
+    if url:
+        _sb_patch("pedidos", {"prueba_entrega_url": url}, {"id": f"eq.{pedido_id}"})
+    return {"ok": True, "resultado": resultado, "url": url, "numero": pedido.get("numero", "")}
 
 
 @page_router.get("/t/{token}")

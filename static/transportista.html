@@ -24,38 +24,47 @@ body{margin:0;background:var(--bg);color:var(--text);
 .aviso b{color:#fde68a}
 h2{font-size:13px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);
    margin:26px 0 10px;font-weight:700}
-.card{background:var(--card);border:1px solid var(--border);border-radius:14px;
-      padding:14px;margin-bottom:12px}
-.row1{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
-.bodega{font-weight:700;font-size:15px;line-height:1.3}
-.cod{font-size:11px;color:var(--muted);letter-spacing:.5px;margin-top:2px}
-.num{font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
-.fped{font-size:11px;color:var(--muted);margin-top:4px;font-weight:600}
-.dir{font-size:12px;color:var(--muted);margin-top:8px;line-height:1.4}
-.montos{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
-.pill{font-size:12px;padding:5px 10px;border-radius:8px;border:1px solid var(--border);
-      font-variant-numeric:tabular-nums}
-.pill.cash{background:rgba(22,163,74,.14);border-color:rgba(22,163,74,.45);color:#4ade80;font-weight:700}
-.items{margin-top:10px;font-size:12px;color:var(--muted);line-height:1.6}
-.toggle{background:none;border:none;color:var(--muted);font-size:12px;padding:0;
+.lista{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:0 14px}
+.item{padding:15px 0;border-bottom:1px solid var(--border)}
+.item:last-child{border-bottom:none}
+.l1{display:flex;justify-content:space-between;align-items:center;gap:8px;
+    font-size:11px;color:var(--muted);letter-spacing:.4px;margin-bottom:5px}
+.l1 b{color:#93c5fd;font-weight:700}
+.bodega{font-weight:700;font-size:15px;line-height:1.25}
+.l3{font-size:12px;color:var(--muted);margin-top:4px;line-height:1.35}
+.l4{font-size:12px;color:var(--muted);margin-top:4px}
+.l4 span{color:#cbd5e1}
+.plata{display:flex;gap:18px;margin-top:10px;flex-wrap:wrap;font-variant-numeric:tabular-nums}
+.plata div{min-width:88px}
+.et{display:block;font-size:9.5px;color:var(--muted);text-transform:uppercase;
+    letter-spacing:.6px;margin-bottom:2px}
+.mt{font-size:15px;font-weight:700}
+.ef .mt{color:#4ade80}
+.ef.cero .mt{color:var(--muted);font-weight:600}
+.cc .mt{color:#93c5fd}
+.tt .mt{color:var(--text);font-weight:600;font-size:14px}
+.toggle{background:none;border:none;color:var(--muted);font-size:12px;padding:6px 0 0;
         text-decoration:underline;font-family:inherit}
-.acciones{margin-top:14px;display:flex;flex-direction:column;gap:8px}
-.subir{display:block;text-align:center;background:var(--green);color:#fff;font-weight:700;
-       font-size:15px;padding:14px;border-radius:11px;border:none;font-family:inherit}
+.items{margin-top:6px;font-size:12px;color:var(--muted);line-height:1.6}
+.subir{display:block;margin-top:11px;text-align:center;background:var(--green);color:#fff;font-weight:700;
+       font-size:14px;padding:13px;border-radius:10px;border:none;font-family:inherit}
 .subir.busy{opacity:.6}
 .noent{background:none;border:none;color:var(--muted);font-size:12px;text-decoration:underline;
-       font-family:inherit;padding:4px}
-.motivo{display:none;margin-top:8px}
+       font-family:inherit;padding:6px;white-space:nowrap}
+.otras{display:flex;gap:16px;justify-content:center;margin-top:9px;flex-wrap:wrap}
+.cap{font-size:12px;color:var(--muted);line-height:1.4;margin-bottom:7px}
+.adj{display:block;text-align:center;border:1px dashed var(--border);color:var(--muted);
+     font-size:12px;padding:10px;border-radius:9px;margin-top:8px}
+.adj.listo{border-style:solid;border-color:rgba(22,163,74,.5);color:#4ade80}
+.motivo{display:none;margin-top:9px}
 .motivo textarea{width:100%;background:#0f141d;border:1px solid var(--border);color:var(--text);
                  border-radius:9px;padding:10px;font-size:13px;font-family:inherit;resize:vertical}
 .motivo button{margin-top:8px;width:100%;background:var(--amber);color:#111;border:none;
                padding:11px;border-radius:9px;font-weight:700;font-family:inherit;font-size:14px}
-.done{border-color:rgba(22,163,74,.35)}
-.done .bodega{font-weight:600}
-.badge{display:inline-block;font-size:11px;padding:4px 9px;border-radius:7px;font-weight:700}
+.badge{font-size:10px;padding:3px 8px;border-radius:6px;font-weight:700}
 .badge.ok{background:rgba(22,163,74,.16);color:#4ade80}
 .badge.no{background:rgba(220,38,38,.16);color:#f87171}
-.ver{display:inline-block;margin-top:10px;font-size:13px;color:#60a5fa;text-decoration:none;
+.ver{display:inline-block;margin-top:9px;font-size:13px;color:#60a5fa;text-decoration:none;
      border:1px solid var(--border);padding:8px 12px;border-radius:9px}
 .vacio{color:var(--muted);font-size:13px;padding:18px;text-align:center;
        border:1px dashed var(--border);border-radius:12px}
@@ -127,60 +136,80 @@ async function cargar(){
 function pintar(){
   var pend = DATA.por_entregar || [], hist = DATA.historia || [];
   var h = '<h2>Por entregar (' + pend.length + ')</h2>';
-  h += pend.length ? pend.map(cardPendiente).join('')
+  h += pend.length ? '<div class="lista">' + pend.map(filaPendiente).join('') + '</div>'
                    : '<div class="vacio">No hay pedidos por entregar.</div>';
   h += '<h2>Subidos (ultimos ' + (DATA.dias_historia || 2) + ' dias)</h2>';
-  h += hist.length ? hist.map(cardHistoria).join('')
+  h += hist.length ? '<div class="lista">' + hist.map(filaHistoria).join('') + '</div>'
                    : '<div class="vacio">Todavia no subiste nada.</div>';
   document.getElementById('contenido').innerHTML = h;
 }
 
-function cardPendiente(p){
+function vendedorLinea(p){
+  if(!p.vendedor) return '';
+  return '<div class="l4">Vendedor: <span>' +
+         (p.vendedor_codigo ? esc(p.vendedor_codigo) + ' · ' : '') + esc(p.vendedor) + '</span></div>';
+}
+
+function filaPendiente(p){
   var items = (p.items || []).map(function(i){
     return esc(i.cantidad) + ' x ' + esc(i.nombre); }).join('<br>');
+  var cero = Number(p.cobra_efectivo) > 0 ? '' : ' cero';
   return '' +
-  '<div class="card" id="c-' + p.id + '">' +
-    '<div class="row1">' +
-      '<div><div class="bodega">' + esc(p.bodega) + '</div>' +
-      (p.codigo_afiliado ? '<div class="cod">' + esc(p.codigo_afiliado) + '</div>' : '') + '</div>' +
-      '<div class="num">' + esc(p.numero) +
-        '<div class="fped">' + fecha(p.created_at) + '</div></div>' +
-    '</div>' +
-    (p.direccion ? '<div class="dir">' + esc(p.direccion) + '</div>' : '') +
-    '<div class="montos">' +
-      '<span class="pill">Total ' + soles(p.total) + '</span>' +
-      (p.cobra_efectivo > 0 ? '<span class="pill cash">Cobrar ' + soles(p.cobra_efectivo) + '</span>' : '') +
-      (p.financiado > 0 ? '<span class="pill">Credito ' + soles(p.financiado) + '</span>' : '') +
+  '<div class="item" id="c-' + p.id + '">' +
+    '<div class="l1"><b>' + esc(p.numero) + '</b><span>' + fecha(p.created_at) +
+      (p.codigo_afiliado ? ' · ' + esc(p.codigo_afiliado) : '') + '</span></div>' +
+    '<div class="bodega">' + esc(p.bodega) + '</div>' +
+    (p.direccion ? '<div class="l3">' + esc(p.direccion) + '</div>' : '') +
+    vendedorLinea(p) +
+    '<div class="plata">' +
+      '<div class="ef' + cero + '"><span class="et">Efectivo transporte</span>' +
+        '<span class="mt">' + soles(p.cobra_efectivo) + '</span></div>' +
+      '<div class="cc"><span class="et">Circa</span>' +
+        '<span class="mt">' + soles(p.financiado) + '</span></div>' +
+      '<div class="tt"><span class="et">Total</span>' +
+        '<span class="mt">' + soles(p.total) + '</span></div>' +
     '</div>' +
     (items ? '<button class="toggle" onclick="verItems(\'' + p.id + '\')">Ver productos (' +
              (p.items || []).length + ')</button><div class="items" id="it-' + p.id +
              '" style="display:none">' + items + '</div>' : '') +
-    '<div class="acciones">' +
-      '<label class="subir" id="up-' + p.id + '">Subir voucher firmado' +
+    '<label class="subir" id="up-' + p.id + '">Subir voucher firmado' +
+      '<input type="file" accept="image/*,application/pdf" capture="environment" ' +
+      'onchange="subir(\'' + p.id + '\', this)"></label>' +
+    '<div class="otras">' +
+      '<button class="noent" onclick="abrirCaja(\'' + p.id + '\',\'cash\')">Pago todo en efectivo</button>' +
+      '<button class="noent" onclick="abrirCaja(\'' + p.id + '\',\'no\')">No se entrego el pedido</button>' +
+    '</div>' +
+    '<div class="motivo" id="m-no-' + p.id + '">' +
+      '<div class="cap">Por que no se entrego</div>' +
+      '<textarea rows="2" placeholder="Cerrado, no habia quien reciba, rechazo el pedido..."></textarea>' +
+      '<button onclick="reportar(\'' + p.id + '\',\'no_entregado\')">Reportar no entregado</button>' +
+    '</div>' +
+    '<div class="motivo" id="m-cash-' + p.id + '">' +
+      '<div class="cap">El cliente pago los ' + soles(p.total) + ' completos en efectivo. ' +
+        'Si firmo voucher, subelo igual.</div>' +
+      '<textarea rows="2" placeholder="Nota (opcional)"></textarea>' +
+      '<label class="adj" id="adj-' + p.id + '">Adjuntar voucher (opcional)' +
         '<input type="file" accept="image/*,application/pdf" capture="environment" ' +
-        'onchange="subir(\'' + p.id + '\', this)"></label>' +
-      '<button class="noent" onclick="abrirMotivo(\'' + p.id + '\')">No se entrego</button>' +
-      '<div class="motivo" id="m-' + p.id + '">' +
-        '<textarea rows="2" placeholder="Motivo: cerrado, no habia quien reciba, rechazo..."></textarea>' +
-        '<button onclick="noEntregado(\'' + p.id + '\')">Reportar no entregado</button>' +
-      '</div>' +
+        'onchange="marcarAdj(\'' + p.id + '\')"></label>' +
+      '<button onclick="reportar(\'' + p.id + '\',\'entregado_cash\')">Reportar pago en efectivo</button>' +
     '</div>' +
   '</div>';
 }
 
-function cardHistoria(p){
+function filaHistoria(p){
   var r = p.reporte || {};
-  var ok = r.resultado === 'entregado';
+  var ok = r.resultado !== 'no_entregado';
+  var etiqueta = r.resultado === 'no_entregado' ? 'No entregado'
+               : r.resultado === 'entregado_cash' ? 'Pago en efectivo' : 'Voucher subido';
   return '' +
-  '<div class="card done">' +
-    '<div class="row1">' +
-      '<div><div class="bodega">' + esc(p.bodega) + '</div>' +
-        '<div class="cod">' + hora(r.reportado_at) + '</div></div>' +
-      '<div><span class="badge ' + (ok ? 'ok' : 'no') + '">' +
-        (ok ? 'Voucher subido' : 'No entregado') + '</span></div>' +
-    '</div>' +
-    '<div class="dir">' + esc(p.numero) + ' · ' + soles(p.total) + '</div>' +
-    (r.observacion ? '<div class="dir">Motivo: ' + esc(r.observacion) + '</div>' : '') +
+  '<div class="item">' +
+    '<div class="l1"><b>' + esc(p.numero) + '</b>' +
+      '<span class="badge ' + (ok ? 'ok' : 'no') + '">' + etiqueta + '</span></div>' +
+    '<div class="bodega">' + esc(p.bodega) + '</div>' +
+    vendedorLinea(p) +
+    '<div class="l3">' + hora(r.reportado_at) + ' · ' + soles(p.total) +
+      (Number(p.cobra_efectivo) > 0 ? ' · efectivo ' + soles(p.cobra_efectivo) : '') + '</div>' +
+    (r.observacion ? '<div class="l3">Motivo: ' + esc(r.observacion) + '</div>' : '') +
     (r.sustento_url ? '<a class="ver" href="' + esc(r.sustento_url) +
       '" target="_blank" rel="noopener">Ver voucher</a>' : '') +
   '</div>';
@@ -190,9 +219,17 @@ function verItems(id){
   var d = document.getElementById('it-' + id);
   d.style.display = d.style.display === 'none' ? 'block' : 'none';
 }
-function abrirMotivo(id){
-  var d = document.getElementById('m-' + id);
-  d.style.display = d.style.display === 'block' ? 'none' : 'block';
+function abrirCaja(id, cual){
+  var abrir = document.getElementById('m-' + cual + '-' + id);
+  var otra  = document.getElementById('m-' + (cual === 'no' ? 'cash' : 'no') + '-' + id);
+  if(otra) otra.style.display = 'none';
+  abrir.style.display = abrir.style.display === 'block' ? 'none' : 'block';
+}
+function marcarAdj(id){
+  var l = document.getElementById('adj-' + id);
+  var f = l.querySelector('input').files[0];
+  l.classList.add('listo');
+  l.firstChild.nodeValue = f ? 'Voucher listo: ' + f.name : 'Adjuntar voucher (opcional)';
 }
 
 async function subir(id, input){
@@ -201,39 +238,53 @@ async function subir(id, input){
   var lbl = document.getElementById('up-' + id);
   lbl.classList.add('busy');
   lbl.firstChild.nodeValue = 'Subiendo...';
+  var fd = new FormData();
+  fd.append('resultado', 'entregado');
+  fd.append('file', f);
   try {
-    var fd = new FormData();
-    fd.append('file', f);
-    var r = await fetch(API + '/pedidos/' + id + '/voucher', {method:'POST', body:fd});
-    var d = await r.json().catch(function(){ return {}; });
-    if(!r.ok || !d.ok) throw new Error(d.detail || 'No se pudo subir');
-    toast('Voucher de ' + (d.numero || '') + ' subido', 'ok');
-    await cargar();
+    await enviar(id, fd);
   } catch(e){
-    toast(e.message, 'err');
     lbl.classList.remove('busy');
     lbl.firstChild.nodeValue = 'Reintentar';
     input.value = '';
   }
 }
 
-async function noEntregado(id){
-  var box = document.getElementById('m-' + id);
-  var motivo = box.querySelector('textarea').value.trim();
-  if(!motivo){ toast('Escribe el motivo', 'err'); return; }
-  var btn = box.querySelector('button');
-  btn.disabled = true; btn.textContent = 'Enviando...';
+async function reportar(id, resultado){
+  var caja = document.getElementById('m-' + (resultado === 'no_entregado' ? 'no' : 'cash') + '-' + id);
+  var nota = caja.querySelector('textarea').value.trim();
+  if(resultado === 'no_entregado' && !nota){ toast('Escribe el motivo', 'err'); return; }
+  var btn = caja.querySelector('button');
+  btn.disabled = true;
+  var txt = btn.textContent;
+  btn.textContent = 'Enviando...';
+  var fd = new FormData();
+  fd.append('resultado', resultado);
+  if(nota) fd.append('motivo', nota);
+  var adj = document.getElementById('adj-' + id);
+  var f = adj && adj.querySelector('input').files[0];
+  if(f) fd.append('file', f);
   try {
-    var fd = new FormData();
-    fd.append('motivo', motivo);
-    var r = await fetch(API + '/pedidos/' + id + '/no-entregado', {method:'POST', body:fd});
+    await enviar(id, fd);
+  } catch(e){
+    btn.disabled = false;
+    btn.textContent = txt;
+  }
+}
+
+async function enviar(id, fd){
+  try {
+    var r = await fetch(API + '/pedidos/' + id + '/reporte', {method:'POST', body:fd});
     var d = await r.json().catch(function(){ return {}; });
-    if(!r.ok || !d.ok) throw new Error(d.detail || 'No se pudo reportar');
-    toast('Reportado como no entregado', 'ok');
+    if(!r.ok || !d.ok) throw new Error(d.detail || 'No se pudo enviar');
+    var msg = d.resultado === 'no_entregado' ? 'Reportado como no entregado'
+            : d.resultado === 'entregado_cash' ? 'Reportado: pago todo en efectivo'
+            : 'Voucher de ' + (d.numero || '') + ' subido';
+    toast(msg, 'ok');
     await cargar();
   } catch(e){
     toast(e.message, 'err');
-    btn.disabled = false; btn.textContent = 'Reportar no entregado';
+    throw e;
   }
 }
 
