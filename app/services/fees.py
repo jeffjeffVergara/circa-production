@@ -30,6 +30,7 @@ El true-up solo sube (`max`); nunca baja un plan 15d/30d.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from decimal import Decimal, ROUND_HALF_UP
@@ -37,6 +38,34 @@ from typing import Optional
 from zoneinfo import ZoneInfo
 
 TZ_PERU = ZoneInfo("America/Lima")
+
+# Fracción de segundo de un timestamp ISO. Ver _iso_normalizado().
+_FRAC_TS = re.compile(r"\.(\d+)")
+
+
+def _iso_normalizado(value) -> str:
+    """Timestamp ISO de PostgREST con la fracción de segundo normalizada a 6 dígitos.
+
+    OJO (mismo bug que parse_ts en circa_corte_comisiones.py, corregido allí el
+    31-ago-2026; aquí seguía vivo hasta el 26-sep-2026): datetime.fromisoformat
+    en Python < 3.11 solo acepta fracciones de 3 o 6 dígitos. Postgres serializa
+    con los dígitos significativos que tenga, así que un timestamp como
+    '2026-09-17T02:37:53.52519+00:00' (5 dígitos) lanzaba ValueError, el
+    `except` lo tragaba y la función devolvía None EN SILENCIO.
+
+    Efecto medido el 26-sep-2026: 31 de 292 pedidos entregados (11%) tenían
+    fecha_entregado ilegible. Sin fecha de entrega no hay dias_desde_entrega, y
+    sin eso escalon_plazo_por_antiguedad() devuelve None -> el pedido se queda
+    en el plan de origen (7 días, 1.4%) por mucho que se haya pasado del plazo.
+    Resultado: se cobraba de MENOS. Caso que lo destapó (Paola, 26-sep-2026):
+    FLORES RIOS CRC-252, 9 días desde la entrega, salía S/101.40 cuando le
+    correspondía S/103.00 (tramo medio, 3%, desde el día 8).
+    """
+    s = str(value).replace("Z", "+00:00")
+    m = _FRAC_TS.search(s)
+    if m and len(m.group(1)) != 6:
+        s = s[:m.start(1)] + m.group(1)[:6].ljust(6, "0") + s[m.end(1):]
+    return s
 
 FEE_REGIME_LEGACY = "legacy_v20260428"
 FEE_REGIME_PLAN_FIJO = "plan_fijo_v20260520"
@@ -105,7 +134,7 @@ def _parse_date(value: date | str | None) -> Optional[date]:
     if isinstance(value, date) and not isinstance(value, datetime):
         return value
     try:
-        return datetime.fromisoformat(str(value).replace("Z", "+00:00")).date()
+        return datetime.fromisoformat(_iso_normalizado(value)).date()
     except (ValueError, TypeError):
         return None
 
@@ -442,7 +471,7 @@ def _fecha_peru(value) -> Optional[date]:
     if isinstance(value, date) and not isinstance(value, datetime):
         return value
     try:
-        dt = value if isinstance(value, datetime) else datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        dt = value if isinstance(value, datetime) else datetime.fromisoformat(_iso_normalizado(value))
     except (ValueError, TypeError):
         return None
     if dt.tzinfo is None:
