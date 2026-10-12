@@ -19,7 +19,7 @@ import httpx
 from datetime import datetime, timezone, timedelta
 
 from app.routes.distribuidor import (
-    _sb_get, _sb_patch, _sb_map_by_ids, _SB_CLIENT, _sb_headers,
+    _sb_get, _sb_map_by_ids, _SB_CLIENT, _sb_headers,
     SUPABASE_URL, SUPABASE_KEY,
 )
 
@@ -269,9 +269,10 @@ def reportar(token: str, pedido_id: str,
         "pedido_id": pedido_id, "transportista_id": t["id"],
         "resultado": resultado, "sustento_url": url, "observacion": motivo or None,
     })
-    # Alimenta el portal del distribuidor y el cierre diario sin tocar el estado.
-    if url:
-        _sb_patch("pedidos", {"prueba_entrega_url": url}, {"id": f"eq.{pedido_id}"})
+    # AISLAMIENTO (Paola, 12-oct-2026): nada de lo que haga el transportista
+    # escribe en `pedidos`. Ni estado, ni prueba_entrega_url. El reporte vive
+    # solo en `entregas_transportista`; el portal del distribuidor lo LEE y lo
+    # muestra aparte. El sustento oficial del pedido lo sigue poniendo Circa.
     return {"ok": True, "resultado": resultado, "url": url, "numero": pedido.get("numero", "")}
 
 

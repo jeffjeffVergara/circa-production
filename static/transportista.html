@@ -24,48 +24,59 @@ body{margin:0;background:var(--bg);color:var(--text);
 .aviso b{color:#fde68a}
 h2{font-size:13px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);
    margin:26px 0 10px;font-weight:700}
-.lista{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:0 14px}
-.item{padding:15px 0;border-bottom:1px solid var(--border)}
+.resumen{background:var(--card);border:1px solid var(--border);border-radius:14px;
+         padding:13px 14px;margin-bottom:14px}
+.rtop{display:flex;align-items:baseline;gap:9px;margin-bottom:10px}
+.rnum{font-size:27px;font-weight:800;line-height:1}
+.rtxt{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.7px}
+.chips{display:flex;gap:7px;flex-wrap:wrap}
+.chip{background:#0f141d;border:1px solid var(--border);color:var(--muted);font-family:inherit;
+      font-size:12px;padding:7px 11px;border-radius:9px;white-space:nowrap}
+.chip b{color:var(--text);font-weight:700}
+.chip.on{border-color:var(--blue);background:rgba(37,99,235,.16);color:#bfdbfe}
+.chip.on b{color:#fff}
+.lista{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:0 13px}
+.item{padding:13px 0;border-bottom:1px solid var(--border)}
 .item:last-child{border-bottom:none}
-.l1{display:flex;justify-content:space-between;align-items:center;gap:8px;
-    font-size:11px;color:var(--muted);letter-spacing:.4px;margin-bottom:5px}
+.fila{display:flex;gap:11px;align-items:flex-start}
+.izq{flex:1;min-width:0}
+.der{width:108px;flex:none;display:flex;flex-direction:column;gap:5px}
+.l1{display:flex;justify-content:space-between;gap:8px;font-size:11px;color:var(--muted);
+    letter-spacing:.3px;margin-bottom:4px}
 .l1 b{color:#93c5fd;font-weight:700}
-.bodega{font-weight:700;font-size:15px;line-height:1.25}
-.l3{font-size:12px;color:var(--muted);margin-top:4px;line-height:1.35}
-.l4{font-size:12px;color:var(--muted);margin-top:4px}
+.bodega{font-weight:700;font-size:14.5px;line-height:1.25}
+.l3{font-size:11.5px;color:var(--muted);margin-top:3px;line-height:1.35}
+.l4{font-size:11.5px;color:var(--muted);margin-top:3px}
 .l4 span{color:#cbd5e1}
-.plata{display:flex;gap:18px;margin-top:10px;flex-wrap:wrap;font-variant-numeric:tabular-nums}
-.plata div{min-width:88px}
-.et{display:block;font-size:9.5px;color:var(--muted);text-transform:uppercase;
-    letter-spacing:.6px;margin-bottom:2px}
-.mt{font-size:15px;font-weight:700}
-.ef .mt{color:#4ade80}
-.ef.cero .mt{color:var(--muted);font-weight:600}
-.cc .mt{color:#93c5fd}
-.tt .mt{color:var(--text);font-weight:600;font-size:14px}
-.toggle{background:none;border:none;color:var(--muted);font-size:12px;padding:6px 0 0;
-        text-decoration:underline;font-family:inherit}
-.items{margin-top:6px;font-size:12px;color:var(--muted);line-height:1.6}
-.subir{display:block;margin-top:11px;text-align:center;background:var(--green);color:#fff;font-weight:700;
-       font-size:14px;padding:13px;border-radius:10px;border:none;font-family:inherit}
+.plata{margin-top:7px;font-size:12.5px;font-variant-numeric:tabular-nums;line-height:1.7}
+.plata b{font-weight:700}
+.ef b{color:#4ade80}
+.ef.cero b{color:var(--muted)}
+.cc b{color:#93c5fd}
+.sep{color:var(--border);margin:0 7px}
+.subir{display:block;text-align:center;background:var(--green);color:#fff;font-weight:700;
+       font-size:12.5px;line-height:1.25;padding:11px 6px;border-radius:9px;border:none;
+       font-family:inherit}
 .subir.busy{opacity:.6}
-.noent{background:none;border:none;color:var(--muted);font-size:12px;text-decoration:underline;
-       font-family:inherit;padding:6px;white-space:nowrap}
-.otras{display:flex;gap:16px;justify-content:center;margin-top:9px;flex-wrap:wrap}
+.noent{background:#0f141d;border:1px solid var(--border);color:var(--muted);font-size:11px;
+       font-family:inherit;padding:8px 4px;border-radius:8px;line-height:1.2}
 .cap{font-size:12px;color:var(--muted);line-height:1.4;margin-bottom:7px}
 .adj{display:block;text-align:center;border:1px dashed var(--border);color:var(--muted);
      font-size:12px;padding:10px;border-radius:9px;margin-top:8px}
 .adj.listo{border-style:solid;border-color:rgba(22,163,74,.5);color:#4ade80}
-.motivo{display:none;margin-top:9px}
+.motivo{display:none;margin-top:10px}
 .motivo textarea{width:100%;background:#0f141d;border:1px solid var(--border);color:var(--text);
                  border-radius:9px;padding:10px;font-size:13px;font-family:inherit;resize:vertical}
 .motivo button{margin-top:8px;width:100%;background:var(--amber);color:#111;border:none;
                padding:11px;border-radius:9px;font-weight:700;font-family:inherit;font-size:14px}
+.toggle{background:none;border:none;color:var(--muted);font-size:11.5px;padding:5px 0 0;
+        text-decoration:underline;font-family:inherit}
+.items{margin-top:5px;font-size:11.5px;color:var(--muted);line-height:1.6}
 .badge{font-size:10px;padding:3px 8px;border-radius:6px;font-weight:700}
 .badge.ok{background:rgba(22,163,74,.16);color:#4ade80}
 .badge.no{background:rgba(220,38,38,.16);color:#f87171}
-.ver{display:inline-block;margin-top:9px;font-size:13px;color:#60a5fa;text-decoration:none;
-     border:1px solid var(--border);padding:8px 12px;border-radius:9px}
+.ver{display:inline-block;margin-top:8px;font-size:12.5px;color:#60a5fa;text-decoration:none;
+     border:1px solid var(--border);padding:7px 11px;border-radius:9px}
 .vacio{color:var(--muted);font-size:13px;padding:18px;text-align:center;
        border:1px dashed var(--border);border-radius:12px}
 .toast{position:fixed;left:16px;right:16px;bottom:18px;background:#111827;border:1px solid var(--border);
@@ -133,11 +144,37 @@ async function cargar(){
   b.textContent = 'Actualizar';
 }
 
+var FILTRO = 'todos';
+
+function diaKey(iso){ return (iso || '').slice(0, 10); }
+
+function resumen(pend){
+  var dias = {}, orden = [];
+  pend.forEach(function(p){
+    var k = diaKey(p.created_at);
+    if(!(k in dias)){ dias[k] = 0; orden.push(k); }
+    dias[k]++;
+  });
+  orden.sort().reverse();
+  var chips = '<button class="chip' + (FILTRO === 'todos' ? ' on' : '') +
+              '" onclick="filtrar(\'todos\')">Todos <b>' + pend.length + '</b></button>';
+  chips += orden.map(function(k){
+    return '<button class="chip' + (FILTRO === k ? ' on' : '') + '" onclick="filtrar(\'' + k +
+           '\')">' + fecha(k + 'T12:00:00') + ' <b>' + dias[k] + '</b></button>';
+  }).join('');
+  return '<div class="resumen"><div class="rtop"><div class="rnum">' + pend.length +
+         '</div><div class="rtxt">pedidos por entregar</div></div>' +
+         '<div class="chips">' + chips + '</div></div>';
+}
+
+function filtrar(k){ FILTRO = k; pintar(); window.scrollTo(0, 0); }
+
 function pintar(){
   var pend = DATA.por_entregar || [], hist = DATA.historia || [];
-  var h = '<h2>Por entregar (' + pend.length + ')</h2>';
-  h += pend.length ? '<div class="lista">' + pend.map(filaPendiente).join('') + '</div>'
-                   : '<div class="vacio">No hay pedidos por entregar.</div>';
+  var vis = FILTRO === 'todos' ? pend : pend.filter(function(p){ return diaKey(p.created_at) === FILTRO; });
+  var h = pend.length ? resumen(pend) : '';
+  h += vis.length ? '<div class="lista">' + vis.map(filaPendiente).join('') + '</div>'
+                  : '<div class="vacio">No hay pedidos por entregar.</div>';
   h += '<h2>Subidos (ultimos ' + (DATA.dias_historia || 2) + ' dias)</h2>';
   h += hist.length ? '<div class="lista">' + hist.map(filaHistoria).join('') + '</div>'
                    : '<div class="vacio">Todavia no subiste nada.</div>';
@@ -156,31 +193,31 @@ function filaPendiente(p){
   var cero = Number(p.cobra_efectivo) > 0 ? '' : ' cero';
   return '' +
   '<div class="item" id="c-' + p.id + '">' +
-    '<div class="l1"><b>' + esc(p.numero) + '</b><span>' + fecha(p.created_at) +
-      (p.codigo_afiliado ? ' · ' + esc(p.codigo_afiliado) : '') + '</span></div>' +
-    '<div class="bodega">' + esc(p.bodega) + '</div>' +
-    (p.direccion ? '<div class="l3">' + esc(p.direccion) + '</div>' : '') +
-    vendedorLinea(p) +
-    '<div class="plata">' +
-      '<div class="ef' + cero + '"><span class="et">Efectivo transporte</span>' +
-        '<span class="mt">' + soles(p.cobra_efectivo) + '</span></div>' +
-      '<div class="cc"><span class="et">Circa</span>' +
-        '<span class="mt">' + soles(p.financiado) + '</span></div>' +
-      '<div class="tt"><span class="et">Total</span>' +
-        '<span class="mt">' + soles(p.total) + '</span></div>' +
-    '</div>' +
-    (items ? '<button class="toggle" onclick="verItems(\'' + p.id + '\')">Ver productos (' +
-             (p.items || []).length + ')</button><div class="items" id="it-' + p.id +
-             '" style="display:none">' + items + '</div>' : '') +
-    '<label class="subir" id="up-' + p.id + '">Subir voucher firmado' +
-      '<input type="file" accept="image/*,application/pdf" capture="environment" ' +
-      'onchange="subir(\'' + p.id + '\', this)"></label>' +
-    '<div class="otras">' +
-      '<button class="noent" onclick="abrirCaja(\'' + p.id + '\',\'cash\')">Pago todo en efectivo</button>' +
-      '<button class="noent" onclick="abrirCaja(\'' + p.id + '\',\'no\')">No se entrego el pedido</button>' +
+    '<div class="fila">' +
+      '<div class="izq">' +
+        '<div class="l1"><b>' + esc(p.numero) + '</b><span>' + fecha(p.created_at) + '</span></div>' +
+        '<div class="bodega">' + esc(p.bodega) + '</div>' +
+        (p.direccion ? '<div class="l3">' + esc(p.direccion) + '</div>' : '') +
+        vendedorLinea(p) +
+        '<div class="plata">' +
+          '<span class="ef' + cero + '">Efectivo transporte <b>' + soles(p.cobra_efectivo) + '</b></span>' +
+          '<span class="sep">|</span>' +
+          '<span class="cc">Circa <b>' + soles(p.financiado) + '</b></span>' +
+        '</div>' +
+        (items ? '<button class="toggle" onclick="verItems(\'' + p.id + '\')">Ver ' +
+                 (p.items || []).length + ' productos</button><div class="items" id="it-' + p.id +
+                 '" style="display:none">' + items + '</div>' : '') +
+      '</div>' +
+      '<div class="der">' +
+        '<label class="subir" id="up-' + p.id + '">Subir<br>voucher' +
+          '<input type="file" accept="image/*,application/pdf" capture="environment" ' +
+          'onchange="subir(\'' + p.id + '\', this)"></label>' +
+        '<button class="noent" onclick="abrirCaja(\'' + p.id + '\',\'cash\')">Pago efectivo</button>' +
+        '<button class="noent" onclick="abrirCaja(\'' + p.id + '\',\'no\')">No se entrego</button>' +
+      '</div>' +
     '</div>' +
     '<div class="motivo" id="m-no-' + p.id + '">' +
-      '<div class="cap">Por que no se entrego</div>' +
+      '<div class="cap">Por que no se entrego el pedido ' + esc(p.numero) + '</div>' +
       '<textarea rows="2" placeholder="Cerrado, no habia quien reciba, rechazo el pedido..."></textarea>' +
       '<button onclick="reportar(\'' + p.id + '\',\'no_entregado\')">Reportar no entregado</button>' +
     '</div>' +
@@ -206,7 +243,6 @@ function filaHistoria(p){
     '<div class="l1"><b>' + esc(p.numero) + '</b>' +
       '<span class="badge ' + (ok ? 'ok' : 'no') + '">' + etiqueta + '</span></div>' +
     '<div class="bodega">' + esc(p.bodega) + '</div>' +
-    vendedorLinea(p) +
     '<div class="l3">' + hora(r.reportado_at) + ' · ' + soles(p.total) +
       (Number(p.cobra_efectivo) > 0 ? ' · efectivo ' + soles(p.cobra_efectivo) : '') + '</div>' +
     (r.observacion ? '<div class="l3">Motivo: ' + esc(r.observacion) + '</div>' : '') +
