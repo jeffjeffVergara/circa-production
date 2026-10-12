@@ -232,6 +232,30 @@ def list_pedidos(estado: Optional[str] = None, incluir_test: bool = False, dist:
         p["bodegas"] = bodegas_map.get(p.get("bodega_id"), {})
         if "items_json" in p and "items" not in p:
             p["items"] = p["items_json"]
+    # Reporte de entrega del transportista (hoja /t/{token}). Solo lectura:
+    # no cambia estados, solo muestra quien subio el voucher y cuando.
+    try:
+        from datetime import timedelta as _td
+        _corte = (datetime.now(timezone.utc) - _td(days=10)).isoformat()
+        _pids = [p["id"] for p in pedidos if (p.get("created_at") or "") >= _corte]
+        if _pids:
+            _reps = _sb_get("entregas_transportista", {
+                "select": "pedido_id,resultado,sustento_url,observacion,reportado_at,transportista_id",
+                "pedido_id": f"in.({','.join(_pids)})",
+                "order": "reportado_at.desc"})
+            _nombres = _sb_map_by_ids("transportistas", "id,nombre",
+                                      [r.get("transportista_id") for r in _reps])
+            _ult = {}
+            for _r in _reps:
+                if _r["pedido_id"] not in _ult:
+                    _r["transportista"] = (_nombres.get(_r.get("transportista_id")) or {}).get("nombre", "")
+                    _ult[_r["pedido_id"]] = _r
+            for p in pedidos:
+                if p["id"] in _ult:
+                    p["entrega_transportista"] = _ult[p["id"]]
+    except Exception as _e:
+        import logging
+        logging.getLogger("circa").error(f"entregas_transportista enrich: {_e}")
     return {"pedidos": pedidos, "distribuidor": dist["nombre_comercial"]}
 
 @router.get("/pedidos/{pedido_id}")
