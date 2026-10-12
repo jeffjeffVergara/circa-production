@@ -19,7 +19,7 @@ import httpx
 from datetime import datetime, timezone, timedelta
 
 from app.routes.distribuidor import (
-    _sb_get, _sb_map_by_ids, _SB_CLIENT, _sb_headers,
+    _sb_get, _sb_patch, _sb_map_by_ids, _SB_CLIENT, _sb_headers,
     SUPABASE_URL, SUPABASE_KEY,
 )
 
@@ -29,6 +29,11 @@ from app.routes.distribuidor import (
 DIAS_POR_ENTREGAR = 4
 # Historia: lo que el transportista ya reporto, solo lectura.
 DIAS_HISTORIA = 2
+# Los NO ENTREGADOS duran mas: un feriado o un domingo en medio no debe
+# borrarlos de la pantalla antes de que se resuelvan.
+DIAS_HISTORIA_NO_ENTREGADO = 3
+# Ventana para que el propio transportista deshaga un reporte equivocado.
+HORAS_DESHACER = 24
 
 ESTADOS_POR_ENTREGAR = (
     "preventa_aceptada", "confirmado", "recibido",
@@ -105,17 +110,22 @@ def pedidos_del_transportista(token: str):
 
     # Reportes recientes: los de este transportista (su historia) y los de
     # cualquiera sobre los candidatos (para no pedir dos veces el mismo voucher).
+    _ventana = max(DIAS_HISTORIA, DIAS_HISTORIA_NO_ENTREGADO)
     mios = _sb_get("entregas_transportista", {
-        "select": "*", "transportista_id": f"eq.{t['id']}",
-        "reportado_at": f"gte.{_iso_hace(DIAS_HISTORIA)}",
+        "select": "*", "transportista_id": f"eq.{t['id']}", "anulado_at": "is.null",
+        "reportado_at": f"gte.{_iso_hace(_ventana)}",
         "order": "reportado_at.desc", "limit": "300",
     })
+    _corte_corto = _iso_hace(DIAS_HISTORIA)
+    mios = [r for r in mios
+            if r.get("resultado") == "no_entregado" or (r.get("reportado_at") or "") >= _corte_corto]
     ids_cand = [p["id"] for p in candidatos]
     ajenos = []
     if ids_cand:
         ajenos = _sb_get("entregas_transportista", {
             "select": "pedido_id,resultado,reportado_at",
             "pedido_id": f"in.({','.join(ids_cand)})",
+            "anulado_at": "is.null",
             "limit": "500",
         })
     ya_reportados = {r["pedido_id"] for r in ajenos} | {r["pedido_id"] for r in mios}
@@ -160,6 +170,7 @@ def pedidos_del_transportista(token: str):
             comercial[_a["bodega_id"]] = {"vendedor": _v.get("nombre") or "",
                                           "vendedor_codigo": _v.get("codigo") or ""}
 
+    _limite_deshacer = (datetime.now(timezone.utc) - timedelta(hours=HORAS_DESHACER)).isoformat()
     por_entregar, historia = [], []
     ultimo_reporte = {}
     for r in mios:
@@ -174,16 +185,20 @@ def pedidos_del_transportista(token: str):
         fila = _resumen_pedido(p, b, comercial.get(p.get("bodega_id")) or {})
         rep = ultimo_reporte.get(pid)
         if rep:
+            fila["estado_reporte"] = rep.get("resultado")
             fila["reporte"] = {
+                "id": rep.get("id"),
                 "resultado": rep.get("resultado"),
                 "sustento_url": rep.get("sustento_url"),
                 "observacion": rep.get("observacion"),
                 "reportado_at": rep.get("reportado_at"),
+                "puede_deshacer": (rep.get("reportado_at") or "") >= _limite_deshacer,
             }
             historia.append(fila)
         elif pid in ya_reportados:
             continue                              # lo reporto otro transportista
         elif p.get("estado") in ESTADOS_POR_ENTREGAR:
+            fila["estado_reporte"] = "pendiente"
             por_entregar.append(fila)
 
     historia.sort(key=lambda x: x["reporte"]["reportado_at"] or "", reverse=True)
@@ -192,6 +207,7 @@ def pedidos_del_transportista(token: str):
         "por_entregar": por_entregar,
         "historia": historia,
         "dias_historia": DIAS_HISTORIA,
+        "dias_historia_no_entregado": DIAS_HISTORIA_NO_ENTREGADO,
     }
 
 
@@ -274,6 +290,37 @@ def reportar(token: str, pedido_id: str,
     # solo en `entregas_transportista`; el portal del distribuidor lo LEE y lo
     # muestra aparte. El sustento oficial del pedido lo sigue poniendo Circa.
     return {"ok": True, "resultado": resultado, "url": url, "numero": pedido.get("numero", "")}
+
+
+@router.delete("/{token}/reportes/{reporte_id}")
+def deshacer_reporte(token: str, reporte_id: str):
+    """ANULA un reporte propio y reciente. No borra nada.
+
+    La fila se queda con `anulado_at` sellado: desaparece de la hoja del
+    transportista y el pedido vuelve a 'por entregar', pero Circa sigue viendo
+    en el portal que hubo un reporte y que se anulo. Un tercero no borra
+    evidencia. Tampoco se toca `pedidos` ni el archivo del storage.
+    """
+    t = _verify_transportista(token)
+    rows = _sb_get("entregas_transportista", {
+        "select": "id,reportado_at,anulado_at",
+        "id": f"eq.{reporte_id}",
+        "transportista_id": f"eq.{t['id']}",
+    })
+    if not rows:
+        raise HTTPException(status_code=404, detail="Ese reporte no es tuyo o ya no existe.")
+    if rows[0].get("anulado_at"):
+        return {"ok": True, "nota": "ya estaba anulado"}
+    limite = (datetime.now(timezone.utc) - timedelta(hours=HORAS_DESHACER)).isoformat()
+    if (rows[0].get("reportado_at") or "") < limite:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Solo se puede deshacer dentro de las {HORAS_DESHACER} horas. Avisa a Circa.")
+    _sb_patch("entregas_transportista",
+              {"anulado_at": datetime.now(timezone.utc).isoformat(),
+               "anulado_por": f"transportista:{t.get('nombre') or t['id']}"},
+              {"id": f"eq.{reporte_id}", "transportista_id": f"eq.{t['id']}"})
+    return {"ok": True}
 
 
 @page_router.get("/t/{token}")

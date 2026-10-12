@@ -72,7 +72,12 @@ h2{font-size:13px;text-transform:uppercase;letter-spacing:1px;color:var(--muted)
 .toggle{background:none;border:none;color:var(--muted);font-size:11.5px;padding:5px 0 0;
         text-decoration:underline;font-family:inherit}
 .items{margin-top:5px;font-size:11.5px;color:var(--muted);line-height:1.6}
-.badge{font-size:10px;padding:3px 8px;border-radius:6px;font-weight:700}
+.badge{font-size:10px;padding:3px 8px;border-radius:6px;font-weight:700;
+       text-transform:uppercase;letter-spacing:.4px}
+.badge.pend{background:rgba(217,119,6,.16);color:#fbbf24}
+.badge.cash{background:rgba(37,99,235,.18);color:#93c5fd}
+.deshacer{background:none;border:none;color:var(--muted);font-size:12px;font-family:inherit;
+          text-decoration:underline;padding:8px 0 0;display:block}
 .badge.ok{background:rgba(22,163,74,.16);color:#4ade80}
 .badge.no{background:rgba(220,38,38,.16);color:#f87171}
 .ver{display:inline-block;margin-top:8px;font-size:12.5px;color:#60a5fa;text-decoration:none;
@@ -175,9 +180,10 @@ function pintar(){
   var h = pend.length ? resumen(pend) : '';
   h += vis.length ? '<div class="lista">' + vis.map(filaPendiente).join('') + '</div>'
                   : '<div class="vacio">No hay pedidos por entregar.</div>';
-  h += '<h2>Subidos (ultimos ' + (DATA.dias_historia || 2) + ' dias)</h2>';
+  h += '<h2>Reportado (' + (DATA.dias_historia || 2) + ' dias · no entregados ' +
+       (DATA.dias_historia_no_entregado || 3) + ')</h2>';
   h += hist.length ? '<div class="lista">' + hist.map(filaHistoria).join('') + '</div>'
-                   : '<div class="vacio">Todavia no subiste nada.</div>';
+                   : '<div class="vacio">Todavia no reportaste nada.</div>';
   document.getElementById('contenido').innerHTML = h;
 }
 
@@ -195,7 +201,8 @@ function filaPendiente(p){
   '<div class="item" id="c-' + p.id + '">' +
     '<div class="fila">' +
       '<div class="izq">' +
-        '<div class="l1"><b>' + esc(p.numero) + '</b><span>' + fecha(p.created_at) + '</span></div>' +
+        '<div class="l1"><b>' + esc(p.numero) + '</b><span>' + fecha(p.created_at) +
+          ' <span class="badge pend">Pendiente</span></span></div>' +
         '<div class="bodega">' + esc(p.bodega) + '</div>' +
         (p.direccion ? '<div class="l3">' + esc(p.direccion) + '</div>' : '') +
         vendedorLinea(p) +
@@ -235,20 +242,53 @@ function filaPendiente(p){
 
 function filaHistoria(p){
   var r = p.reporte || {};
-  var ok = r.resultado !== 'no_entregado';
+  var cls = r.resultado === 'no_entregado' ? 'no'
+          : r.resultado === 'entregado_cash' ? 'cash' : 'ok';
   var etiqueta = r.resultado === 'no_entregado' ? 'No entregado'
-               : r.resultado === 'entregado_cash' ? 'Pago en efectivo' : 'Voucher subido';
+               : r.resultado === 'entregado_cash' ? 'Pago en efectivo' : 'Entregado';
   return '' +
   '<div class="item">' +
     '<div class="l1"><b>' + esc(p.numero) + '</b>' +
-      '<span class="badge ' + (ok ? 'ok' : 'no') + '">' + etiqueta + '</span></div>' +
+      '<span class="badge ' + cls + '">' + etiqueta + '</span></div>' +
     '<div class="bodega">' + esc(p.bodega) + '</div>' +
     '<div class="l3">' + hora(r.reportado_at) + ' · ' + soles(p.total) +
       (Number(p.cobra_efectivo) > 0 ? ' · efectivo ' + soles(p.cobra_efectivo) : '') + '</div>' +
     (r.observacion ? '<div class="l3">Motivo: ' + esc(r.observacion) + '</div>' : '') +
     (r.sustento_url ? '<a class="ver" href="' + esc(r.sustento_url) +
       '" target="_blank" rel="noopener">Ver voucher</a>' : '') +
+    (r.puede_deshacer ? '<button class="deshacer" onclick="deshacer(\'' + r.id +
+      '\',\'' + esc(p.numero) + '\', this)">Me equivoque, deshacer este reporte</button>' : '') +
   '</div>';
+}
+
+var ARMADO = null;
+async function deshacer(reporteId, numero, el){
+  if(ARMADO !== reporteId){            // primer toque: pedir confirmacion en el mismo boton
+    ARMADO = reporteId;
+    el.textContent = 'Seguro? Toca otra vez para borrar';
+    el.style.color = '#f87171';
+    setTimeout(function(){
+      if(ARMADO === reporteId){
+        ARMADO = null;
+        el.textContent = 'Me equivoque, deshacer este reporte';
+        el.style.color = '';
+      }
+    }, 5000);
+    return;
+  }
+  ARMADO = null;
+  el.textContent = 'Borrando...';
+  try {
+    var r = await fetch(API + '/reportes/' + reporteId, {method:'DELETE'});
+    var d = await r.json().catch(function(){ return {}; });
+    if(!r.ok || !d.ok) throw new Error(d.detail || 'No se pudo deshacer');
+    toast('Reporte de ' + numero + ' borrado', 'ok');
+    await cargar();
+  } catch(e){
+    toast(e.message, 'err');
+    el.textContent = 'Me equivoque, deshacer este reporte';
+    el.style.color = '';
+  }
 }
 
 function verItems(id){
