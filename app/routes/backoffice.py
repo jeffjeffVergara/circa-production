@@ -2463,3 +2463,38 @@ def backoffice_bodegas_reporte_sin_enrolar(user: dict = Depends(get_backoffice_u
     rows = get_sin_enrolar(supabase)
     html = render_sin_enrolar_html(rows)
     return HTMLResponse(content=html)
+
+
+class EntranteControlPatch(BaseModel):
+    monto_credito: Optional[float] = Field(default=None, ge=0)
+    pago_confirmado: Optional[bool] = None
+    bodega_id: Optional[str] = None
+    descartada: Optional[bool] = None
+
+
+@router.get("/entrantes")
+def backoffice_list_entrantes(
+    test: Optional[str] = "real",
+    user: dict = Depends(get_backoffice_user),
+):
+    """Bandeja Entrantes. `test=real|test` lo manda el filtro del backoffice."""
+    from app.integration.entrantes import list_entrantes_backoffice
+
+    if test == "test":
+        es_test: bool | None = True
+    elif test == "all":
+        es_test = None
+    else:
+        es_test = False
+    return list_entrantes_backoffice(es_test=es_test)
+
+
+@router.patch("/entrantes/{entrante_id}")
+def backoffice_patch_entrante(
+    entrante_id: str,
+    body: EntranteControlPatch,
+    user: dict = Depends(get_backoffice_writer),
+):
+    from app.integration.entrantes import patch_entrante_backoffice
+
+    return patch_entrante_backoffice(entrante_id, body.model_dump(exclude_unset=True))

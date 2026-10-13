@@ -204,3 +204,66 @@ class TokenResponse(BaseModel):
     )
     distribuidor_id: str
     distribuidor: Optional[str] = None
+
+
+class EntranteItem(BaseModel):
+    sku: Optional[str] = None
+    nombre: str = Field(..., min_length=1)
+    cantidad: float = Field(..., gt=0)
+    precio_unitario: float = Field(..., ge=0)
+    unidad: Optional[str] = "UND"
+    subtotal: Optional[float] = Field(default=None, ge=0)
+
+
+class EntranteCreateRequest(BaseModel):
+    """Pedido del distribuidor que todavía no es una pre-venta Circa."""
+
+    external_id: str = Field(..., min_length=1, max_length=80, description="Número de documento en el sistema del socio")
+    bodega_nombre: str = Field(..., min_length=1, max_length=200, description="Nombre de la bodega tal como viene en el pedido")
+    fecha: Optional[str] = Field(default=None, description="YYYY-MM-DD")
+    items: list[EntranteItem] = Field(..., min_length=1)
+    total_pedido: Optional[float] = Field(default=None, ge=0, description="Si se omite, se suma de los ítems")
+    descuento_prorrateado: float = Field(default=0, ge=0)
+    bodega_id: Optional[str] = None
+    bodega_external_id: Optional[str] = None
+    telefono_whatsapp: Optional[str] = None
+    monto_credito: Optional[float] = Field(default=None, ge=0, description="Cuánto de ese total pide crédito Circa")
+    pago_confirmado: bool = False
+
+
+class EntrantePatchRequest(BaseModel):
+    monto_credito: Optional[float] = Field(default=None, ge=0)
+    pago_confirmado: Optional[bool] = None
+    bodega_id: Optional[str] = None
+    descartada: Optional[bool] = None
+
+
+class EntranteResponse(BaseModel):
+    id: str
+    external_id: str
+    es_test: bool
+    data_mode: Literal["prod", "test"]
+    bodega_nombre: str
+    fecha: Optional[str] = None
+    items: list[Any] = []
+    total_pedido: float
+    descuento_prorrateado: float
+    monto_productos: float
+    bodega_id: Optional[str] = None
+    bodega_razon_social: Optional[str] = None
+    bodega_estado: Optional[str] = None
+    match_score: Optional[int] = None
+    candidatos: list[Any] = []
+    existe_en_circa: bool
+    bodega_activa: bool
+    monto_credito: Optional[float] = None
+    pago_confirmado: bool
+    estado: Literal["sin_match", "pendiente_monto", "pendiente_pago", "lista", "descartada"]
+    created: Optional[bool] = None
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+
+class EntranteListResponse(BaseModel):
+    total: int
+    items: list[EntranteResponse]

@@ -483,6 +483,7 @@ tr:hover td{background:var(--card-hover)}
 <div class="bo-sidebar-label">Principal</div>
 <button type="button" class="bo-nav-item" onclick="goHome()" id="nav-home">🏠 Home</button>
 <div class="bo-sidebar-label">Herramientas</div>
+<button type="button" class="bo-nav-item" onclick="showTab('entrantes')" id="nav-entrantes">📥 Entrantes</button>
 <button type="button" class="bo-nav-item" onclick="showTab('procesos')" id="nav-procesos">⚙️ Procesos batch</button>
 <button type="button" class="bo-nav-item bo-write" onclick="showTab('soporte')" id="nav-soporte">💬 Soporte WA</button>
 <button type="button" class="bo-nav-item" onclick="showTab('creditmodel')" id="nav-creditmodel">📈 Modelo líneas</button>
@@ -971,6 +972,29 @@ Relación operativa entre vendedores de campo y bodegas. Usa los filtros para se
 </div>
 </div>
 
+<!-- ENTRANTES -->
+<div id="view-entrantes" style="display:none">
+<div class="section">
+<h2>📥 Entrantes
+<span style="font-size:12px;color:var(--muted);font-weight:400">pedidos del distribuidor antes de ser pre-venta</span>
+<button class="btn btn-outline btn-small" style="float:right;margin-top:-4px" onclick="loadEntrantes()">🔄 Actualizar</button>
+</h2>
+<p style="font-size:13px;color:var(--muted);margin:-8px 0 16px;max-width:860px">
+Llegan por <code>POST /api/v1/entrantes</code> (reales) o <code>POST /api/v1/test/entrantes</code> (pruebas).
+No crean un pedido Circa. El match, si existe, si está activa, el monto de crédito y el pago se marcan aquí.
+</p>
+<div class="table-wrap">
+<table>
+<thead><tr>
+<th>Documento</th><th>Bodega en el archivo</th><th>Fecha</th><th>Total</th>
+<th>Match</th><th>Existe</th><th>Activa</th><th>Monto crédito</th><th>Pago</th><th></th>
+</tr></thead>
+<tbody id="entrantesBody"><tr><td colspan="10" class="empty">Cargando...</td></tr></tbody>
+</table>
+</div>
+</div>
+</div>
+
 <!-- PROCESOS BATCH -->
 <div id="view-procesos" style="display:none">
 <div class="section">
@@ -1109,7 +1133,8 @@ function login(){
       applyReadOnlyUi();
       applySidebarState();
       refreshAll();
-      if(location.hash === '#soporte') showTab('soporte');
+      if(location.hash === '#entrantes') showTab('entrantes');
+      else if(location.hash === '#soporte') showTab('soporte');
       else if(location.hash === '#procesos') showTab('procesos');
       else if(location.hash === '#creditmodel') showTab('creditmodel');
       else if(location.hash === '#observability') showTab('observability');
@@ -1155,7 +1180,7 @@ function apiPatch(path, body){
 }
 
 var MAIN_TABS = ['dashboard','bodegas','pagos','cobranzas','scoring','pedidos','vendedores','carteras'];
-var SIDEBAR_NAV = ['procesos','soporte','creditmodel','observability','controlpanel'];
+var SIDEBAR_NAV = ['entrantes','procesos','soporte','creditmodel','observability','controlpanel'];
 var ALL_VIEWS = MAIN_TABS.concat(SIDEBAR_NAV);
 
 function updateSidebarToggleBtn(){
@@ -1267,7 +1292,8 @@ function showTab(name){
     vendedores: 'Cargando vendedores…',
     carteras: 'Cargando carteras…',
     soporte: 'Cargando inbox WhatsApp…',
-    procesos: 'Cargando procesos batch…'
+    procesos: 'Cargando procesos batch…',
+    entrantes: 'Cargando entrantes…'
   };
   var loaders = {
     dashboard: refreshAll,
@@ -1282,7 +1308,8 @@ function showTab(name){
     vendedores: loadVendedores,
     carteras: loadCarteras,
     soporte: loadSoporteInbox,
-    procesos: loadBatchCenter
+    procesos: loadBatchCenter,
+    entrantes: loadEntrantes
   };
   var loadFn = loaders[name];
   if(!loadFn){
@@ -4105,7 +4132,8 @@ function notifyPinResult(msg, type){
       applyReadOnlyUi();
       applySidebarState();
       refreshAll();
-      if(location.hash === '#soporte') showTab('soporte');
+      if(location.hash === '#entrantes') showTab('entrantes');
+      else if(location.hash === '#soporte') showTab('soporte');
       else if(location.hash === '#procesos') showTab('procesos');
       else if(location.hash === '#creditmodel') showTab('creditmodel');
       else if(location.hash === '#observability') showTab('observability');
@@ -4114,6 +4142,77 @@ function notifyPinResult(msg, type){
   }
 })();
 
+
+function _entranteSiNo(v){
+  return v ? '<span class="badge" style="background:rgba(34,197,94,.18);color:#4ade80">sí</span>'
+           : '<span class="badge" style="background:rgba(148,163,184,.15);color:#94a3b8">no</span>';
+}
+
+function loadEntrantes(){
+  return api('/api/backoffice/entrantes').then(function(d){
+    var rows = d.items || [];
+    var body = document.getElementById('entrantesBody');
+    if(!rows.length){
+      body.innerHTML = '<tr><td colspan="10" class="empty">No hay entrantes en este modo.</td></tr>';
+      return;
+    }
+    body.innerHTML = rows.map(function(r){
+      var monto = r.monto_credito == null ? '' : Number(r.monto_credito);
+      var match = r.bodega_id ? ((r.match_score != null ? r.match_score + ' · ' : '') + (r.bodega_id || '').slice(0, 8)) : 'sin match';
+      var disabled = isReadOnly() || r.estado === 'descartada' ? 'disabled' : '';
+      return '<tr>'+
+        '<td><strong>'+_esc(r.external_id)+'</strong><div style="font-size:11px;color:var(--muted)">'+_esc(r.estado)+'</div></td>'+
+        '<td>'+_esc(r.bodega_nombre)+'</td>'+
+        '<td>'+_esc(r.fecha || '—')+'</td>'+
+        '<td>S/ '+Number(r.total_pedido || 0).toFixed(2)+'</td>'+
+        '<td>'+_esc(match)+'</td>'+
+        '<td>'+_entranteSiNo(r.existe_en_circa)+'</td>'+
+        '<td>'+_entranteSiNo(r.bodega_activa)+'</td>'+
+        '<td><input '+disabled+' id="ent-monto-'+r.id+'" type="number" min="0" step="0.01" value="'+monto+'" style="width:90px"></td>'+
+        '<td><input '+disabled+' id="ent-pago-'+r.id+'" type="checkbox" '+(r.pago_confirmado ? 'checked' : '')+'></td>'+
+        '<td><button type="button" class="btn btn-outline btn-small bo-write" '+disabled+' onclick="saveEntrante(\''+r.id+'\')">Guardar</button> '+
+        (r.estado === 'descartada'
+          ? '<button type="button" class="btn btn-outline btn-small bo-write" onclick="restoreEntrante(\''+r.id+'\')">Restaurar</button>'
+          : '<button type="button" class="btn btn-outline btn-small bo-write" onclick="discardEntrante(\''+r.id+'\')">Descartar</button>')+
+        '</td></tr>';
+    }).join('');
+  }).catch(function(e){
+    document.getElementById('entrantesBody').innerHTML = '<tr><td colspan="10" class="empty">'+_esc(e.message || 'No se pudo cargar')+'</td></tr>';
+  });
+}
+
+function _esc(s){
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+  });
+}
+
+function saveEntrante(id){
+  var montoEl = document.getElementById('ent-monto-'+id);
+  var pagoEl = document.getElementById('ent-pago-'+id);
+  var raw = (montoEl && montoEl.value || '').trim();
+  var body = { pago_confirmado: !!(pagoEl && pagoEl.checked) };
+  body.monto_credito = raw === '' ? null : Number(raw);
+  return apiPatch('/api/backoffice/entrantes/'+id, body).then(function(x){
+    if(!x.ok) throw new Error((x.d && x.d.detail) || 'No se pudo guardar');
+    showToast('Entrante actualizado','success');
+    return loadEntrantes();
+  }).catch(function(e){ showToast(e.message || 'Error','error'); });
+}
+
+function discardEntrante(id){
+  return apiPatch('/api/backoffice/entrantes/'+id, {descartada: true}).then(function(x){
+    if(!x.ok) throw new Error((x.d && x.d.detail) || 'No se pudo descartar');
+    return loadEntrantes();
+  }).catch(function(e){ showToast(e.message || 'Error','error'); });
+}
+
+function restoreEntrante(id){
+  return apiPatch('/api/backoffice/entrantes/'+id, {descartada: false}).then(function(x){
+    if(!x.ok) throw new Error((x.d && x.d.detail) || 'No se pudo restaurar');
+    return loadEntrantes();
+  }).catch(function(e){ showToast(e.message || 'Error','error'); });
+}
 
 // ============================================================
 // FASE 3: Toggle Real/Test, alerta sobregiro, tab Bodegas

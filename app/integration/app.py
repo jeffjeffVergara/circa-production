@@ -21,6 +21,7 @@ from fastapi.responses import HTMLResponse
 from app.integration.auth import get_current_distribuidor
 from app.integration import schemas as S
 from app.integration import service as svc
+from app.integration import entrantes as ent
 from app.services import prospect_media as media
 
 DESCRIPTION = """
@@ -370,6 +371,55 @@ def _register_business_routes(router: APIRouter, *, es_test: bool) -> None:
     async def patch_estado(pedido_id: str, body: S.PedidoEstadoPatch, dist: DistDep):
         return svc.patch_pedido_estado(
             dist, pedido_id, body.estado, body.comentario, es_test=es_test,
+        )
+
+    @router.post(
+        "/entrantes",
+        response_model=S.EntranteResponse,
+        summary=f"Enviar entrante ({modo})",
+        tags=[f"Entrantes{tag_suffix}"],
+    )
+    async def create_entrante(body: S.EntranteCreateRequest, dist: DistDep):
+        """Pedido del distribuidor antes de ser pre-venta Circa.
+
+        Idempotente por `external_id`. No crea pedido ni reserva línea.
+        """
+        return ent.upsert_entrante(dist, body.model_dump(), es_test=es_test)
+
+    @router.get(
+        "/entrantes",
+        response_model=S.EntranteListResponse,
+        summary=f"Listar entrantes ({modo})",
+        tags=[f"Entrantes{tag_suffix}"],
+    )
+    async def list_entrantes(
+        dist: DistDep,
+        estado: Optional[str] = None,
+        limit: int = Query(50, ge=1, le=200),
+        offset: int = Query(0, ge=0),
+    ):
+        return ent.list_entrantes(
+            dist, es_test=es_test, estado=estado, limit=limit, offset=offset,
+        )
+
+    @router.get(
+        "/entrantes/{entrante_id}",
+        response_model=S.EntranteResponse,
+        summary=f"Obtener entrante ({modo})",
+        tags=[f"Entrantes{tag_suffix}"],
+    )
+    async def get_entrante(entrante_id: str, dist: DistDep):
+        return ent.get_entrante(dist, entrante_id, es_test=es_test)
+
+    @router.patch(
+        "/entrantes/{entrante_id}",
+        response_model=S.EntranteResponse,
+        summary=f"Actualizar controles del entrante ({modo})",
+        tags=[f"Entrantes{tag_suffix}"],
+    )
+    async def patch_entrante(entrante_id: str, body: S.EntrantePatchRequest, dist: DistDep):
+        return ent.patch_entrante(
+            dist, entrante_id, body.model_dump(exclude_unset=True), es_test=es_test,
         )
 
 
