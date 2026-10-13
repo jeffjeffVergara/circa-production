@@ -35,6 +35,7 @@ from app.services import db
 from app.services.fees import calculate_fee, format_rate_pct, fee_regimen_para_pedido_nuevo
 from app.services.internal_auth import verify_admin_token
 from app.services.meta_commerce_handlers import MetaWaContext, normalize_wa_phone, try_handle_commerce_interactive
+from app.services.wa_identity import clave_conversacion
 from pydantic import BaseModel
 from app.config import TWILIO_FROM
 from datetime import date, timedelta
@@ -454,10 +455,21 @@ async def meta_webhook_incoming(request: Request):
     messages = parse_incoming(body)
     
     for msg in messages:
-        telefono = normalize_wa_phone(msg["from"])
+        telefono = clave_conversacion(msg.get("from") or "", msg.get("user_id") or "")
+        if not telefono:
+            logger.warning(
+                "webhook sin teléfono ni identificador; no se responde id=%s body=%s",
+                msg.get("message_id") or "",
+                (msg.get("body") or "")[:40],
+            )
+            continue
         body_text = msg["body"]
         media_url = None
         wa_ctx = MetaWaContext.from_phone(telefono)
+        user_id = (msg.get("user_id") or "").strip()
+        if user_id and wa_ctx.bodega and (wa_ctx.bodega.get("wa_user_id") or "") != user_id:
+            db.guardar_wa_user_id(wa_ctx.bodega_id, user_id)
+            wa_ctx.bodega["wa_user_id"] = user_id
         bodega_id_msg = wa_ctx.bodega_id
         track_message(
             telefono=telefono,
@@ -474,6 +486,8 @@ async def meta_webhook_incoming(request: Request):
                 "mime_type": msg.get("mime_type", ""),
                 "caption": msg.get("caption", ""),
                 "filename": msg.get("filename", ""),
+                "user_id": msg.get("user_id") or "",
+                "username": msg.get("username") or "",
             },
         )
         

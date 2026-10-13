@@ -45,11 +45,41 @@ def upsert_session(telefono: str, fase: str, datos: dict = None, bodega_id: str 
         sb.table("sesiones").insert(payload).execute()
 
 # ── BODEGAS ───────────────────────────────────
-def get_bodega_by_phone(telefono: str):
-    """Bodega por WhatsApp; prueba variantes +51 / sin + / solo dígitos."""
-    tel = (telefono or "").strip()
-    if not tel:
+def get_bodega_by_wa_user_id(user_id: str):
+    """Bodega por el identificador de WhatsApp (BSUID), cuando el webhook no trae teléfono."""
+    uid = (user_id or "").strip().lstrip("+")
+    if not uid or uid.isdigit():
         return None
+    try:
+        r = sb.table("bodegas").select("*").eq("wa_user_id", uid).limit(1).execute()
+    except Exception as e:
+        logger_db.warning("lookup wa_user_id: %s", e)
+        return None
+    return r.data[0] if r.data else None
+
+
+def guardar_wa_user_id(bodega_id: str, user_id: str) -> None:
+    """Guarda el BSUID junto al teléfono. No tumba el webhook si la columna aún no existe."""
+    uid = (user_id or "").strip().lstrip("+")
+    if not bodega_id or not uid or uid.isdigit():
+        return
+    try:
+        sb.table("bodegas").update({"wa_user_id": uid}).eq("id", bodega_id).execute()
+    except Exception as e:
+        logger_db.warning("guardar wa_user_id %s: %s", bodega_id, e)
+
+
+def get_bodega_by_phone(telefono: str):
+    """Bodega por WhatsApp; prueba variantes +51 / sin + / solo dígitos.
+
+    Si la clave no es un teléfono, busca por ``wa_user_id`` (usuario de WhatsApp).
+    """
+    tel = (telefono or "").strip()
+    if not tel or tel == "+":
+        return None
+    compact = tel.lstrip("+").replace(" ", "")
+    if compact and not compact.isdigit():
+        return get_bodega_by_wa_user_id(compact)
     variants: list[str] = []
     seen: set[str] = set()
 

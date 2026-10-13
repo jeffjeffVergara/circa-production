@@ -30,24 +30,51 @@ import os
 logger = logging.getLogger("circa.meta.webhook")
 
 
-def _contact_names(contacts) -> dict[str, str]:
-    """Nombre por wa_id. Un contacto sin wa_id no tumba el webhook.
+def _contacts(contacts) -> list[dict]:
+    """Contactos del webhook. Uno sin wa_id no tumba el parseo.
 
-    El teléfono del mensaje viene en ``messages[].from``. ``wa_id`` solo
-    aporta el nombre. Si falta, el mensaje se procesa igual.
+    El teléfono del mensaje, si Meta lo manda, viene en ``messages[].from``.
+    Si la persona usa nombre de usuario, ``wa_id`` y ``from`` pueden faltar
+    y el identificador llega en ``user_id`` / ``from_user_id``.
     """
-    names: dict[str, str] = {}
+    out: list[dict] = []
     for c in contacts or []:
         if not isinstance(c, dict):
             logger.warning("webhook contact ignorado: no es objeto")
             continue
-        wa_id = c.get("wa_id")
-        if not wa_id:
-            logger.warning("webhook contact sin wa_id; se procesa el mensaje igual")
-            continue
         profile = c.get("profile") if isinstance(c.get("profile"), dict) else {}
-        names[str(wa_id)] = profile.get("name") or ""
-    return names
+        wa_id = str(c.get("wa_id") or "")
+        user_id = str(c.get("user_id") or "")
+        parent = str(c.get("parent_user_id") or "")
+        if not wa_id:
+            logger.warning(
+                "webhook contact sin wa_id; se procesa el mensaje igual user_id=%s",
+                user_id or parent or "-",
+            )
+        if not wa_id and not user_id and not parent:
+            continue
+        out.append({
+            "wa_id": wa_id,
+            "user_id": user_id,
+            "parent_user_id": parent,
+            "name": profile.get("name") or "",
+            "username": profile.get("username") or "",
+        })
+    return out
+
+
+def _match_contact(contacts: list[dict], phone: str, user_id: str) -> dict:
+    if phone:
+        for c in contacts:
+            if c.get("wa_id") and c["wa_id"] == str(phone):
+                return c
+    if user_id:
+        for c in contacts:
+            if c.get("user_id") == user_id or c.get("parent_user_id") == user_id:
+                return c
+    if not phone and len(contacts) == 1:
+        return contacts[0]
+    return {}
 
 
 def verify_webhook(mode: str, token: str, challenge: str) -> str | None:
@@ -151,13 +178,20 @@ def parse_incoming(body: dict) -> list[dict]:
                     logger.debug(f"Status update: {status.get('status')} for {status.get('id')}")
                 continue
             
-            # Nombre opcional. El teléfono está en messages[].from.
-            contacts = _contact_names(value.get("contacts"))
+            # Nombre opcional. Teléfono en messages[].from; si falta, user_id.
+            contacts = _contacts(value.get("contacts"))
             
             for msg in value.get("messages", []):
+                phone = msg.get("from") or ""
+                user_id = str(msg.get("from_user_id") or msg.get("from_parent_user_id") or "")
+                contact = _match_contact(contacts, phone, user_id)
+                if not user_id:
+                    user_id = contact.get("user_id") or contact.get("parent_user_id") or ""
                 parsed = {
-                    "from": msg.get("from", ""),
-                    "name": contacts.get(msg.get("from", ""), ""),
+                    "from": phone,
+                    "user_id": user_id,
+                    "username": contact.get("username") or "",
+                    "name": contact.get("name") or "",
                     "type": msg.get("type", ""),
                     "message_id": msg.get("id", ""),
                     "timestamp": msg.get("timestamp", ""),
@@ -237,8 +271,9 @@ def parse_incoming(body: dict) -> list[dict]:
                     logger.info(f"Unsupported message type: {msg_type}")
                 
                 logger.info(
-                    f"📩 From: {parsed['from']} | Type: {parsed['type']} | "
-                    f"Body: '{parsed['body'][:50]}' | Button: {parsed['button_id']}"
+                    f"📩 From: {parsed['from'] or '-'} | User: {parsed['user_id'] or '-'} | "
+                    f"Type: {parsed['type']} | Body: '{parsed['body'][:50]}' | "
+                    f"Button: {parsed['button_id']}"
                 )
                 
                 messages.append(parsed)

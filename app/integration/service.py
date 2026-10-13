@@ -201,6 +201,8 @@ def upsert_bodega(dist: dict, body: dict, *, es_test: bool = False) -> dict:
         row = find_bodega(dist_id, telefono=tel, es_test=es_test)
     if not row:
         raise HTTPException(status_code=500, detail="Bodega creada pero no se pudo leer")
+    from app.services.cuenta_lista_wa import avisar_cuenta_lista
+    avisar_cuenta_lista(tel, razon, row.get("id"))
     return _bodega_out(row, created=True)
 
 

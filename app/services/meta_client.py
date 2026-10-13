@@ -50,7 +50,8 @@ def _log_envio(
         from app.services.analytics import track_message
         from app.services import db as _db
 
-        tel = to if str(to).startswith("+") else f"+{str(to).lstrip('+')}"
+        from app.services.wa_identity import telefono_para_log
+        tel = telefono_para_log(to)
         if not bodega_id:
             b = _db.get_bodega_by_phone(tel) or _db.get_bodega_by_phone(tel.lstrip("+"))
             bodega_id = b.get("id") if b else None
@@ -155,10 +156,19 @@ def send_text_sync(
     bodega_id: str | None = None, pedido_id: str | None = None,
 ) -> bool:
     """Envío de texto desde código síncrono, registrando llegue o no."""
-    to_n = str(to).lstrip("+").replace(" ", "")
+    from app.services.wa_identity import direccion_envio
+
     payload = {"type": "text", "text": {"preview_url": False, "body": text}}
+    addr = direccion_envio(to)
+    log_to = addr.get("to") or addr.get("recipient") or ""
+    if not addr:
+        logger.warning("send_text_sync sin destino (%s)", contexto)
+        _log_envio(to="", payload=payload, ok=False, status=None,
+                   error="sin destino", contexto=contexto,
+                   bodega_id=bodega_id, pedido_id=pedido_id)
+        return False
     if not _access_token():
-        _log_envio(to=to_n, payload=payload, ok=False, status=None,
+        _log_envio(to=log_to, payload=payload, ok=False, status=None,
                    error="META_ACCESS_TOKEN vacío", contexto=contexto,
                    bodega_id=bodega_id, pedido_id=pedido_id)
         return False
@@ -167,7 +177,7 @@ def send_text_sync(
             f"{GRAPH_API_URL}/{_phone_number_id()}/messages",
             headers=_headers(),
             json={"messaging_product": "whatsapp", "recipient_type": "individual",
-                  "to": to_n, **payload},
+                  **addr, **payload},
             timeout=15.0,
         )
         ok = r.status_code in (200, 201)
@@ -179,16 +189,67 @@ def send_text_sync(
                 msg_id = ""
         else:
             logger.error("Meta API error %s (%s): %s", r.status_code, contexto, r.text[:300])
-        _log_envio(to=to_n, payload=payload, msg_id=msg_id, ok=ok,
+        _log_envio(to=log_to, payload=payload, msg_id=msg_id, ok=ok,
                    status=r.status_code, error="" if ok else r.text,
                    contexto=contexto, bodega_id=bodega_id, pedido_id=pedido_id)
         return ok
     except Exception as e:
         logger.error("send_text_sync %s: %s", contexto, e, exc_info=True)
-        _log_envio(to=to_n, payload=payload, ok=False, status=None,
+        _log_envio(to=log_to, payload=payload, ok=False, status=None,
                    error=f"{type(e).__name__}: {e}", contexto=contexto,
                    bodega_id=bodega_id, pedido_id=pedido_id)
         return False
+
+
+def send_template_sync(
+    to: str, template_name: str, language: str = "es", components: list | None = None,
+    *, contexto: str = "", bodega_id: str | None = None,
+) -> tuple[bool, str]:
+    """Plantilla desde código síncrono. Teléfono en ``to``, identificador en ``recipient``."""
+    from app.services.wa_identity import direccion_envio
+
+    template = {"name": template_name, "language": {"code": language}}
+    if components:
+        template["components"] = components
+    payload = {"type": "template", "template": template}
+    addr = direccion_envio(to)
+    log_to = addr.get("to") or addr.get("recipient") or ""
+    if not addr:
+        _log_envio(to="", payload=payload, ok=False, status=None,
+                   error="sin destino", contexto=contexto, bodega_id=bodega_id)
+        return False, "sin destino"
+    if not _access_token():
+        _log_envio(to=log_to, payload=payload, ok=False, status=None,
+                   error="META_ACCESS_TOKEN vacío", contexto=contexto, bodega_id=bodega_id)
+        return False, "META_ACCESS_TOKEN vacío"
+    try:
+        r = httpx.post(
+            f"{GRAPH_API_URL}/{_phone_number_id()}/messages",
+            headers=_headers(),
+            json={"messaging_product": "whatsapp", "recipient_type": "individual",
+                  **addr, **payload},
+            timeout=15.0,
+        )
+        ok = r.status_code in (200, 201)
+        msg_id = ""
+        if ok:
+            try:
+                msg_id = r.json().get("messages", [{}])[0].get("id", "")
+            except Exception:
+                msg_id = ""
+        else:
+            logger.error("template %s/%s %s: %s", template_name, language, r.status_code, r.text[:300])
+        err = "" if ok else r.text
+        _log_envio(to=log_to, payload=payload, msg_id=msg_id, ok=ok,
+                   status=r.status_code, error=err,
+                   contexto=contexto, bodega_id=bodega_id)
+        return ok, err
+    except Exception as e:
+        logger.error("send_template_sync %s: %s", template_name, e, exc_info=True)
+        err = f"{type(e).__name__}: {e}"
+        _log_envio(to=log_to, payload=payload, ok=False, status=None,
+                   error=err, contexto=contexto, bodega_id=bodega_id)
+        return False, err
 
 
 async def _send(to: str, payload: dict) -> dict | None:
@@ -202,14 +263,20 @@ async def _send(to: str, payload: dict) -> dict | None:
     Returns:
         API response dict or None on error
     """
-    # Normalize phone number
-    to = to.lstrip("+").replace(" ", "")
-    
+    from app.services.wa_identity import direccion_envio
+
+    addr = direccion_envio(to)
+    log_to = addr.get("to") or addr.get("recipient") or ""
+    if not addr:
+        logger.warning("envio WA sin destino")
+        _log_envio(to="", payload=payload, ok=False, status=None, error="sin destino")
+        return None
+
     url = f"{GRAPH_API_URL}/{_phone_number_id()}/messages"
     body = {
         "messaging_product": "whatsapp",
         "recipient_type": "individual",
-        "to": to,
+        **addr,
         **payload,
     }
     

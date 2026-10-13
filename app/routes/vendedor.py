@@ -1848,8 +1848,9 @@ async def api_afiliar(
     if ruc_digits:
         filtro += f",ruc.eq.{ruc_digits}"
     filtro += ")"
-    existentes = sb.table("bodegas").select("id, razon_social, telefono_whatsapp") \
-        .or_(f"dni_representante.eq.{dni_digits},telefono_whatsapp.eq.{tel_e164}") \
+    existentes = sb.table("bodegas").select(
+        "id, razon_social, telefono_whatsapp, onboarding_fase"
+    ).or_(f"dni_representante.eq.{dni_digits},telefono_whatsapp.eq.{tel_e164}") \
         .limit(1).execute().data
 
     solo_dni = len(ruc_digits) != 11
@@ -1876,6 +1877,9 @@ async def api_afiliar(
             sb.table("bodegas").update(patch).eq("id", b["id"]).execute()
         except Exception as e:
             logger.warning(f"No se pudo actualizar bodega existente {b['id']}: {e}")
+        if (b.get("onboarding_fase") or "") == "precargada":
+            from app.services.cuenta_lista_wa import avisar_cuenta_lista
+            avisar_cuenta_lista(b.get("telefono_whatsapp") or tel_e164, razon_social, b.get("id"))
         return JSONResponse({
             "ok": True, "razon_social": b.get("razon_social") or razon_social,
             "dni": dni_digits, "ruc": ruc_digits, "duplicado": True,
@@ -1917,6 +1921,9 @@ async def api_afiliar(
         }).execute()
     except Exception as e:
         logger.warning(f"No se pudo mapear bodega_vendedores: {e}")
+
+    from app.services.cuenta_lista_wa import avisar_cuenta_lista
+    avisar_cuenta_lista(tel_e164, razon_social, bodega_id)
 
     return JSONResponse({
         "ok": True, "razon_social": razon_social,
