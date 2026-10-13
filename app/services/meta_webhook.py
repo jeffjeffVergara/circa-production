@@ -30,6 +30,26 @@ import os
 logger = logging.getLogger("circa.meta.webhook")
 
 
+def _contact_names(contacts) -> dict[str, str]:
+    """Nombre por wa_id. Un contacto sin wa_id no tumba el webhook.
+
+    El teléfono del mensaje viene en ``messages[].from``. ``wa_id`` solo
+    aporta el nombre. Si falta, el mensaje se procesa igual.
+    """
+    names: dict[str, str] = {}
+    for c in contacts or []:
+        if not isinstance(c, dict):
+            logger.warning("webhook contact ignorado: no es objeto")
+            continue
+        wa_id = c.get("wa_id")
+        if not wa_id:
+            logger.warning("webhook contact sin wa_id; se procesa el mensaje igual")
+            continue
+        profile = c.get("profile") if isinstance(c.get("profile"), dict) else {}
+        names[str(wa_id)] = profile.get("name") or ""
+    return names
+
+
 def verify_webhook(mode: str, token: str, challenge: str) -> str | None:
     """
     Verify webhook subscription (GET request from Meta).
@@ -131,9 +151,8 @@ def parse_incoming(body: dict) -> list[dict]:
                     logger.debug(f"Status update: {status.get('status')} for {status.get('id')}")
                 continue
             
-            # Get contact info
-            contacts = {c["wa_id"]: c.get("profile", {}).get("name", "")
-                       for c in value.get("contacts", [])}
+            # Nombre opcional. El teléfono está en messages[].from.
+            contacts = _contact_names(value.get("contacts"))
             
             for msg in value.get("messages", []):
                 parsed = {
