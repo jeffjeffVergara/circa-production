@@ -1,14 +1,19 @@
 """Entrantes: pedido del distribuidor antes del flujo de pre-venta."""
 from __future__ import annotations
 
+import re
 from datetime import datetime, timezone
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException
 
 from app.integration.service import data_mode_label, find_bodega, normalizar_telefono
 from app.services import db
 from app.services.preventa_excel import match_bodega_por_nombre
+
+LIMA = ZoneInfo("America/Lima")
+_FRAC = re.compile(r"\.(\d+)")
 
 _SELECT = (
     "id,distribuidor_id,es_test,external_id,bodega_nombre,fecha,items,"
@@ -62,7 +67,7 @@ def _out(row: dict, *, created: bool | None = None, bodega: dict | None = None) 
         "es_test": bool(row.get("es_test")),
         "data_mode": data_mode_label(bool(row.get("es_test"))),
         "bodega_nombre": row.get("bodega_nombre"),
-        "fecha": None if row.get("fecha") is None else str(row.get("fecha"))[:10],
+        "fecha": _fecha_lima(row.get("fecha")),
         "items": row.get("items") or [],
         "total_pedido": _f(row.get("total_pedido")) or 0,
         "descuento_prorrateado": _f(row.get("descuento_prorrateado")) or 0,
@@ -86,15 +91,53 @@ def _out(row: dict, *, created: bool | None = None, bodega: dict | None = None) 
     return out
 
 
+def _from_iso(raw: str) -> datetime:
+    """Acepta la fracción de Postgres (3–6 dígitos no siempre) en Python 3.10."""
+    s = raw.strip().replace("Z", "+00:00").replace(" ", "T")
+
+    def _pad(match: re.Match) -> str:
+        return "." + (match.group(1) + "000000")[:6]
+
+    s = _FRAC.sub(_pad, s, count=1)
+    return datetime.fromisoformat(s)
+
+
 def _parse_fecha(value: str | None):
+    """Fecha y hora. Sin zona se toma GMT-5. Solo día queda a las 00:00 GMT-5."""
     if not value:
         return None
-    raw = str(value).strip()[:10]
+    raw = str(value).strip()
     try:
-        datetime.strptime(raw, "%Y-%m-%d")
+        if re.fullmatch(r"\d{4}-\d{2}-\d{2}", raw):
+            y, m, d = (int(p) for p in raw.split("-"))
+            dt = datetime(y, m, d, tzinfo=LIMA)
+        else:
+            dt = _from_iso(raw)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=LIMA)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail="fecha debe ser YYYY-MM-DD") from exc
-    return raw
+        raise HTTPException(
+            status_code=400,
+            detail="fecha debe ser YYYY-MM-DD o YYYY-MM-DDTHH:MM[:SS], hora en GMT-5 si no trae zona",
+        ) from exc
+    return dt.astimezone(timezone.utc).isoformat()
+
+
+def _fecha_lima(value) -> str | None:
+    if value is None or value == "":
+        return None
+    raw = str(value).strip()
+    try:
+        if re.fullmatch(r"\d{4}-\d{2}-\d{2}", raw):
+            y, m, d = (int(p) for p in raw.split("-"))
+            dt = datetime(y, m, d, tzinfo=LIMA)
+        else:
+            dt = _from_iso(raw)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+    except ValueError:
+        return raw
+    return dt.astimezone(LIMA).isoformat(timespec="seconds")
 
 
 def _norm_items(items: list[dict]) -> list[dict]:

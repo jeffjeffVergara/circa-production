@@ -986,7 +986,7 @@ No crean un pedido Circa. El match, si existe, si está activa, el monto de cré
 <div class="table-wrap">
 <table>
 <thead><tr>
-<th>Documento</th><th>Bodega en el archivo</th><th>Fecha</th><th>Total</th>
+<th>Documento</th><th>Bodega en el archivo</th><th>Fecha y hora (GMT-5)</th><th>Total</th>
 <th>Match</th><th>Existe</th><th>Activa</th><th>Monto crédito</th><th>Pago</th><th></th>
 </tr></thead>
 <tbody id="entrantesBody"><tr><td colspan="10" class="empty">Cargando...</td></tr></tbody>
@@ -4143,19 +4143,30 @@ function notifyPinResult(msg, type){
 })();
 
 
+function _fmtFechaLima(iso){
+  if(!iso) return '—';
+  var m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/);
+  if(!m) return _esc(iso);
+  return m[3]+'/'+m[2]+'/'+m[1]+' '+m[4]+':'+m[5];
+}
+
 function _entranteSiNo(v){
   return v ? '<span class="badge" style="background:rgba(34,197,94,.18);color:#4ade80">sí</span>'
            : '<span class="badge" style="background:rgba(148,163,184,.15);color:#94a3b8">no</span>';
 }
 
+var _entrantesCache = {};
+
 function loadEntrantes(){
   return api('/api/backoffice/entrantes').then(function(d){
     var rows = d.items || [];
     var body = document.getElementById('entrantesBody');
+    _entrantesCache = {};
     if(!rows.length){
       body.innerHTML = '<tr><td colspan="10" class="empty">No hay entrantes en este modo.</td></tr>';
       return;
     }
+    rows.forEach(function(r){ _entrantesCache[r.id] = r; });
     body.innerHTML = rows.map(function(r){
       var monto = r.monto_credito == null ? '' : Number(r.monto_credito);
       var match = r.bodega_id ? ((r.match_score != null ? r.match_score + ' · ' : '') + (r.bodega_id || '').slice(0, 8)) : 'sin match';
@@ -4163,14 +4174,15 @@ function loadEntrantes(){
       return '<tr>'+
         '<td><strong>'+_esc(r.external_id)+'</strong><div style="font-size:11px;color:var(--muted)">'+_esc(r.estado)+'</div></td>'+
         '<td>'+_esc(r.bodega_nombre)+'</td>'+
-        '<td>'+_esc(r.fecha || '—')+'</td>'+
+        '<td>'+_fmtFechaLima(r.fecha)+'</td>'+
         '<td>S/ '+Number(r.total_pedido || 0).toFixed(2)+'</td>'+
         '<td>'+_esc(match)+'</td>'+
         '<td>'+_entranteSiNo(r.existe_en_circa)+'</td>'+
         '<td>'+_entranteSiNo(r.bodega_activa)+'</td>'+
         '<td><input '+disabled+' id="ent-monto-'+r.id+'" type="number" min="0" step="0.01" value="'+monto+'" style="width:90px"></td>'+
         '<td><input '+disabled+' id="ent-pago-'+r.id+'" type="checkbox" '+(r.pago_confirmado ? 'checked' : '')+'></td>'+
-        '<td><button type="button" class="btn btn-outline btn-small bo-write" '+disabled+' onclick="saveEntrante(\''+r.id+'\')">Guardar</button> '+
+        '<td><button type="button" class="btn btn-outline btn-small" onclick="openEntranteDetalle(\''+r.id+'\')">Ver pedido</button> '+
+        '<button type="button" class="btn btn-outline btn-small bo-write" '+disabled+' onclick="saveEntrante(\''+r.id+'\')">Guardar</button> '+
         (r.estado === 'descartada'
           ? '<button type="button" class="btn btn-outline btn-small bo-write" onclick="restoreEntrante(\''+r.id+'\')">Restaurar</button>'
           : '<button type="button" class="btn btn-outline btn-small bo-write" onclick="discardEntrante(\''+r.id+'\')">Descartar</button>')+
@@ -4185,6 +4197,47 @@ function _esc(s){
   return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
     return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
   });
+}
+
+function openEntranteDetalle(id){
+  var r = _entrantesCache[id];
+  if(!r) return;
+  var items = r.items || [];
+  var nRegalos = 0;
+  var itemRows = items.map(function(it){
+    var nombre = it.nombre || it.descripcion || '';
+    var total = Number(it.subtotal != null ? it.subtotal : 0);
+    var regalo = total === 0 || String(nombre).toUpperCase().indexOf('BONIFICAC') === 0;
+    if(regalo) nRegalos += 1;
+    return '<tr>'+
+      '<td class="mono">'+_esc(it.sku || it.sku_distribuidor || '')+'</td>'+
+      '<td style="font-size:11px">'+_esc(nombre)+'</td>'+
+      '<td>'+_esc(it.cantidad)+'</td>'+
+      '<td>'+_esc(it.unidad || 'UND')+'</td>'+
+      '<td class="mono">S/ '+Number(it.precio_unitario || 0).toFixed(2)+'</td>'+
+      '<td class="mono">S/ '+total.toFixed(2)+'</td>'+
+      '<td>'+(regalo ? '<span class="import-badge warn">Regalo</span>' : '—')+'</td></tr>';
+  }).join('') || '<tr><td colspan="7" class="empty">Sin ítems</td></tr>';
+  var nItems = items.length - nRegalos;
+  var monto = r.monto_credito == null ? '—' : ('S/ '+Number(r.monto_credito).toFixed(2));
+  document.getElementById('modalContainer').innerHTML =
+    '<div class="modal-overlay open" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:980px;max-height:92vh;overflow:auto">'+
+    '<h3>Detalle del pedido</h3>'+
+    '<p style="color:var(--muted);font-size:12px;margin-bottom:12px">'+
+      _esc(r.external_id)+' · '+_esc(r.bodega_nombre || '—')+' · '+_fmtFechaLima(r.fecha)+
+      ' · '+_esc(r.estado)+'</p>'+
+    '<div class="import-summary">'+
+      '<span>Ítems: <strong>'+nItems+'</strong></span>'+
+      '<span>Regalos: <strong>'+nRegalos+'</strong></span>'+
+      '<span>Total: <strong>S/ '+Number(r.total_pedido || 0).toFixed(2)+'</strong></span>'+
+      '<span>Descuento: <strong>S/ '+Number(r.descuento_prorrateado || 0).toFixed(2)+'</strong></span>'+
+      '<span>Crédito: <strong>'+monto+'</strong></span>'+
+      '<span>Pago: <strong>'+(r.pago_confirmado ? 'sí' : 'no')+'</strong></span>'+
+    '</div>'+
+    '<div class="import-preview-wrap"><table class="import-preview-table"><thead><tr>'+
+      '<th>Codigo</th><th>Descripcion</th><th>Cantidad</th><th>Unidad</th><th>P. Unitario</th><th>Total</th><th>Tipo</th>'+
+    '</tr></thead><tbody>'+itemRows+'</tbody></table></div>'+
+    '<div class="modal-actions"><button class="btn btn-outline" onclick="closeModal()">Cerrar</button></div></div></div>';
 }
 
 function saveEntrante(id){

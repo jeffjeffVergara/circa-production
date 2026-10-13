@@ -220,7 +220,10 @@ class EntranteCreateRequest(BaseModel):
 
     external_id: str = Field(..., min_length=1, max_length=80, description="Número de documento en el sistema del socio")
     bodega_nombre: str = Field(..., min_length=1, max_length=200, description="Nombre de la bodega tal como viene en el pedido")
-    fecha: Optional[str] = Field(default=None, description="YYYY-MM-DD")
+    fecha: Optional[str] = Field(
+        default=None,
+        description="Fecha y hora. YYYY-MM-DD o YYYY-MM-DDTHH:MM[:SS]. Sin zona se interpreta en GMT-5. Solo día queda a las 00:00 GMT-5.",
+    )
     items: list[EntranteItem] = Field(..., min_length=1)
     total_pedido: Optional[float] = Field(default=None, ge=0, description="Si se omite, se suma de los ítems")
     descuento_prorrateado: float = Field(default=0, ge=0)

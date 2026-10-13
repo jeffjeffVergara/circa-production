@@ -5,7 +5,10 @@ os.environ.setdefault("SUPABASE_URL", "http://localhost")
 os.environ.setdefault("SUPABASE_SERVICE_KEY", "test-key")
 os.environ.setdefault("SUPABASE_KEY", "test-key")
 
-from app.integration.entrantes import estado_entrante, totales_items
+import pytest
+from fastapi import HTTPException
+
+from app.integration.entrantes import _fecha_lima, _parse_fecha, estado_entrante, totales_items
 
 
 def test_sin_bodega_queda_sin_match():
@@ -40,3 +43,20 @@ def test_total_sale_de_los_items_si_no_viene():
     assert total == 21.0
     assert desc == 1
     assert productos == 22.0
+
+
+def test_solo_dia_queda_a_medianoche_gmt5():
+    assert _fecha_lima(_parse_fecha("2026-10-12")) == "2026-10-12T00:00:00-05:00"
+
+
+def test_hora_sin_zona_se_toma_en_gmt5():
+    assert _fecha_lima(_parse_fecha("2026-10-12T22:52:00")) == "2026-10-12T22:52:00-05:00"
+
+
+def test_utc_se_muestra_en_gmt5():
+    assert _fecha_lima("2026-10-13T03:52:36.900215+00:00") == "2026-10-12T22:52:36-05:00"
+
+
+def test_fecha_invalida():
+    with pytest.raises(HTTPException):
+        _parse_fecha("12/10/2026")
