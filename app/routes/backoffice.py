@@ -1089,11 +1089,40 @@ async def pago_distribuidor_completo(
 @router.post("/pedido/{pedido_id}/pago-distribuidor/sustento")
 async def subir_sustento_pago_distribuidor(pedido_id: str, file: UploadFile = File(...),
                                             user: dict = Depends(get_backoffice_writer)):
-    """Sustento del pago de Circa al distribuidor (pestaña Pagos a distribuidores)."""
-    return await _subir_sustento_pago(
+    """Sustento del pago de Circa al distribuidor (pestaña Pagos a distribuidores).
+
+    Subir la constancia MARCA el pago. Antes era un segundo paso manual
+    ("Marcar pagado") y el 04-oct-2026 se dejo de dar: 51 pedidos quedaron con
+    constancia subida y sin `circa_pagado_dist_at`, S/5,986.56 que la base
+    reportaba como deuda viva a ZOOM. La constancia ES la prueba del pago, asi
+    que el sello va con ella y no depende de que alguien se acuerde.
+    """
+    from app.routes.backoffice_ops import marcar_pago_distribuidor_handler
+
+    sustento = await _subir_sustento_pago(
         pedido_id, file, "pagos_distribuidor",
         "pago_distribuidor_sustento_url", "pago_distribuidor_sustento_subido_at", user,
     )
+
+    marcado, ya_estaba, error_marca = False, False, None
+    try:
+        marcar_pago_distribuidor_handler(pedido_id, user=user)
+        marcado = True
+    except HTTPException as e:
+        if e.status_code == 400 and "Ya marcado" in str(e.detail):
+            ya_estaba = True
+        else:
+            # El sustento ya quedo guardado; no lo perdemos por fallar el sello.
+            error_marca = str(e.detail)
+    except Exception as e:
+        error_marca = str(e)
+
+    log_action(user=user, action="pago_distribuidor_sustento_y_marca", entity_type="pedido",
+               entity_id=pedido_id, pedido_id=pedido_id,
+               comment=f"marcado={marcado} ya_estaba={ya_estaba} error={error_marca or '-'}")
+
+    return {**sustento, "marcado_pagado": marcado or ya_estaba,
+            "ya_estaba_pagado": ya_estaba, "error_marca": error_marca}
 
 
 class VendedorCreate(ReauthMixin):

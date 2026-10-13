@@ -33,3 +33,90 @@ Privados_con_lineas_*
 _backup_*.json
 ~$*
 _to_delete/
+
+# ── Ampliacion 2026-10-12: outputs de scripts locales ─────────────────────
+# Regla: este repo es codigo. Los reportes que generan los scripts en la Mac
+# NO entran. git solo ignora lo que nunca trackeo, asi que lo ya commiteado
+# se saca aparte con `git rm --cached`.
+
+# Datos de clientes (cierra el hueco del incidente 2026-07-27)
+contratos_pendientes/
+contratos_regen/
+contratos_regenerados.zip
+*.zip
+BACKUP_*.json
+historico_esquema_julio/
+
+# Reportes y mensajeria generados por los scripts
+CIRCA_Correo_Vencimientos_*
+CIRCA_Vencimientos_*
+CIRCA_Mensaje_*
+CIRCA_Mensajes_*
+Mensaje_GRUPO_*
+Mensajes_PRIVADOS_*
+mensaje_grupo_*
+mensajes_privados_*
+CIRCA_Comisiones_*
+Auditoria_Comisiones_*
+Corte_v2_*
+Cobranzas_por_vendedor_*
+Entregas_supervisor_*
+CIRCA_Activas_Heredadas_*
+CIRCA_Heredadas_*
+CIRCA_Visitas_Hoy_*
+CIRCA_PorEnrolar_*
+CIRCA_Roster_*
+CIRCA_Planner_*
+CIRCA_Ayuda_Memoria_*
+lote2_*.txt
+
+# Logs y corridas
+logs_*/
+_logs_*/
+run_logs/
+runlogs*/
+run_2026-*/
+logs_diario/
+logs_circa.txt
+*_out.txt
+*_err.txt
+*_stdout*.txt
+*_stderr*.txt
+_verif_*.txt
+_e.txt
+_p.txt
+_ep.txt
+
+# Scratch y diagnostico
+_diag_*.py
+_archivado_*.py
+_v_subida_por_paola_*.txt
+patch_*.py
+fix_*.py
+Claude outputs/
+
+# LibreOffice / Excel abiertos
+.~lock.*#
+
+# ── Ampliacion 2026-10-12 (segunda pasada) ───────────────────────────────
+# Cargas con DNI y telefonos de bodegueros. NUNCA al repo.
+CIRCA_carga_lote1_*
+BD CLIENTES ZOOM*
+CIRCA_Maestro_Carga_Bodegas_*
+Circa_Lineas_Bodegas_*
+Circa_enroladas_*
+Crosswalk_FFVV_*
+CIRCA_Cambio_Zonas_*
+*_SICHA_*.xlsx
+*_MENDOZA_*.xlsx
+
+# Backups con guion (los *.bak_* ya estaban, estos no)
+*.bak-*
+
+# Scratch
+err[0-9].txt
+main
+skills-lock.json
+
+# Insumos con datos de bodegueros: viven en el proyecto, nunca en git
+_datos_clientes/

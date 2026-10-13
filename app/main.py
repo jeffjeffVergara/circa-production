@@ -12,6 +12,7 @@ from app.routes.distribuidor import router as distribuidor_router
 from app.routes.support_inbox import router as support_inbox_router
 from app.routes.vendedor import router as vendedor_router
 from app.routes.backoffice import router as backoffice_router
+from app.routes.transportista import router as transportista_router, page_router as transportista_page_router
 from twilio.twiml.messaging_response import MessagingResponse
 from app.state_machine import handle_message
 from app.services.twilio_client import (
@@ -76,6 +77,8 @@ app.include_router(distribuidor_router)
 app.include_router(support_inbox_router)
 app.include_router(vendedor_router)
 app.include_router(backoffice_router)
+app.include_router(transportista_router)
+app.include_router(transportista_page_router)
 
 # Integration API v1 (socios) — Swagger propio en /api/v1/docs
 from app.integration import integration_app  # noqa: E402

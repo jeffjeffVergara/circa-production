@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0b0f17">
+<title>Circa · Reparto</title>
+<style>
+:root{--bg:#0b0f17;--card:#141a24;--border:#222c3a;--text:#e8eef6;--muted:#8da0b8;
+      --green:#16a34a;--blue:#2563eb;--amber:#d97706;--red:#dc2626}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;background:var(--bg);color:var(--text);
+     font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+     padding-bottom:40px}
+.top{position:sticky;top:0;z-index:10;background:var(--bg);border-bottom:1px solid var(--border);
+     padding:12px 16px;display:flex;align-items:center;justify-content:space-between}
+.brand{font-weight:800;letter-spacing:1px;font-size:15px}
+.who{font-size:12px;color:var(--muted)}
+.btn-top{background:transparent;border:1px solid var(--border);color:var(--muted);
+         padding:7px 12px;border-radius:8px;font-size:12px;font-family:inherit}
+.wrap{padding:16px;max-width:620px;margin:0 auto}
+.aviso{background:rgba(217,119,6,.12);border:1px solid rgba(217,119,6,.4);color:#fbbf24;
+       border-radius:12px;padding:12px 14px;font-size:13px;line-height:1.45;margin-bottom:18px}
+.aviso b{color:#fde68a}
+h2{font-size:13px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);
+   margin:26px 0 10px;font-weight:700}
+.resumen{background:var(--card);border:1px solid var(--border);border-radius:14px;
+         padding:13px 14px;margin-bottom:14px}
+.rtop{display:flex;align-items:baseline;gap:9px;margin-bottom:10px}
+.rnum{font-size:27px;font-weight:800;line-height:1}
+.rtxt{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.7px}
+.chips{display:flex;gap:7px;flex-wrap:wrap}
+.chip{background:#0f141d;border:1px solid var(--border);color:var(--muted);font-family:inherit;
+      font-size:12px;padding:7px 11px;border-radius:9px;white-space:nowrap}
+.chip b{color:var(--text);font-weight:700}
+.chip.on{border-color:var(--blue);background:rgba(37,99,235,.16);color:#bfdbfe}
+.chip.on b{color:#fff}
+.lista{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:0 13px}
+.item{padding:13px 0;border-bottom:1px solid var(--border)}
+.item:last-child{border-bottom:none}
+.fila{display:flex;gap:11px;align-items:flex-start}
+.izq{flex:1;min-width:0}
+.der{width:108px;flex:none;display:flex;flex-direction:column;gap:5px}
+.l1{display:flex;justify-content:space-between;gap:8px;font-size:11px;color:var(--muted);
+    letter-spacing:.3px;margin-bottom:4px}
+.l1 b{color:#93c5fd;font-weight:700}
+.bodega{font-weight:700;font-size:14.5px;line-height:1.25}
+.l3{font-size:11.5px;color:var(--muted);margin-top:3px;line-height:1.35}
+.l4{font-size:11.5px;color:var(--muted);margin-top:3px}
+.l4 span{color:#cbd5e1}
+.plata{margin-top:7px;font-size:12.5px;font-variant-numeric:tabular-nums;line-height:1.7}
+.plata b{font-weight:700}
+.ef b{color:#4ade80}
+.ef.cero b{color:var(--muted)}
+.cc b{color:#93c5fd}
+.sep{color:var(--border);margin:0 7px}
+.tt b{color:var(--text)}
+.subir{display:block;text-align:center;background:var(--green);color:#fff;font-weight:700;
+       font-size:12.5px;line-height:1.25;padding:11px 6px;border-radius:9px;border:none;
+       font-family:inherit}
+.subir.busy{opacity:.6}
+.noent{background:#0f141d;border:1px solid var(--border);color:var(--muted);font-size:11px;
+       font-family:inherit;padding:8px 4px;border-radius:8px;line-height:1.2}
+.cap{font-size:12px;color:var(--muted);line-height:1.4;margin-bottom:7px}
+.adj{display:block;text-align:center;border:1px dashed var(--border);color:var(--muted);
+     font-size:12px;padding:10px;border-radius:9px;margin-top:8px}
+.adj.listo{border-style:solid;border-color:rgba(22,163,74,.5);color:#4ade80}
+.motivo{display:none;margin-top:10px}
+.motivo textarea{width:100%;background:#0f141d;border:1px solid var(--border);color:var(--text);
+                 border-radius:9px;padding:10px;font-size:13px;font-family:inherit;resize:vertical}
+.motivo button{margin-top:8px;width:100%;background:var(--amber);color:#111;border:none;
+               padding:11px;border-radius:9px;font-weight:700;font-family:inherit;font-size:14px}
+.toggle{background:none;border:none;color:var(--muted);font-size:11.5px;padding:5px 0 0;
+        text-decoration:underline;font-family:inherit}
+.items{margin-top:5px;font-size:11.5px;color:var(--muted);line-height:1.6}
+.badge{font-size:10px;padding:3px 8px;border-radius:6px;font-weight:700;
+       text-transform:uppercase;letter-spacing:.4px}
+.badge.pend{background:rgba(217,119,6,.16);color:#fbbf24}
+.badge.cash{background:rgba(37,99,235,.18);color:#93c5fd}
+.deshacer{background:none;border:none;color:var(--muted);font-size:12px;font-family:inherit;
+          text-decoration:underline;padding:8px 0 0;display:block}
+.badge.ok{background:rgba(22,163,74,.16);color:#4ade80}
+.badge.no{background:rgba(220,38,38,.16);color:#f87171}
+.ver{display:inline-block;margin-top:8px;font-size:12.5px;color:#60a5fa;text-decoration:none;
+     border:1px solid var(--border);padding:7px 11px;border-radius:9px}
+.vacio{color:var(--muted);font-size:13px;padding:18px;text-align:center;
+       border:1px dashed var(--border);border-radius:12px}
+.toast{position:fixed;left:16px;right:16px;bottom:18px;background:#111827;border:1px solid var(--border);
+       border-radius:11px;padding:13px 15px;font-size:13px;opacity:0;transform:translateY(12px);
+       transition:.22s;pointer-events:none;z-index:50}
+.toast.on{opacity:1;transform:none}
+.toast.err{border-color:rgba(220,38,38,.6);color:#fca5a5}
+.toast.ok{border-color:rgba(22,163,74,.6);color:#86efac}
+input[type=file]{display:none}
+</style>
+</head>
+<body>
+<div class="top">
+  <div><div class="brand">CIRCA</div><div class="who" id="who">Reparto</div></div>
+  <button class="btn-top" onclick="cargar()" id="btnRef">Actualizar</button>
+</div>
+
+<div class="wrap">
+  <div class="aviso">
+    Antes de subir: pide al cliente que <b>firme el voucher</b> y anote el monto.
+    Sube la foto del <b>voucher ya firmado</b> — es el sustento de la entrega.
+  </div>
+  <div id="contenido"><div class="vacio">Cargando...</div></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+var TOKEN = location.pathname.split('/').filter(Boolean).pop() || '';
+var API = '/api/transportista/' + TOKEN;
+var DATA = {por_entregar: [], historia: []};
+
+function toast(msg, tipo){
+  var t = document.getElementById('toast');
+  t.className = 'toast on ' + (tipo || 'ok');
+  t.textContent = msg;
+  setTimeout(function(){ t.className = 'toast'; }, 3800);
+}
+function esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, function(c){
+  return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+function soles(n){ return 'S/' + Number(n || 0).toFixed(2); }
+function fecha(iso){
+  if(!iso) return '';
+  return new Date(iso).toLocaleDateString('es-PE', {day:'2-digit', month:'short'});
+}
+function hora(iso){
+  if(!iso) return '';
+  var d = new Date(iso);
+  return d.toLocaleString('es-PE', {day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit'});
+}
+
+async function cargar(){
+  var b = document.getElementById('btnRef');
+  b.textContent = '...';
+  try {
+    var r = await fetch(API + '/pedidos');
+    if(!r.ok) throw new Error(r.status === 404 ? 'Link invalido. Pide uno nuevo a Circa.' : 'No se pudo cargar');
+    DATA = await r.json();
+    document.getElementById('who').textContent = DATA.transportista || 'Reparto';
+    pintar();
+  } catch(e){
+    document.getElementById('contenido').innerHTML =
+      '<div class="vacio">' + esc(e.message) + '</div>';
+  }
+  b.textContent = 'Actualizar';
+}
+
+var FILTRO = 'todos';
+
+function diaKey(iso){ return (iso || '').slice(0, 10); }
+
+function resumen(pend){
+  var dias = {}, orden = [];
+  pend.forEach(function(p){
+    var k = diaKey(p.created_at);
+    if(!(k in dias)){ dias[k] = 0; orden.push(k); }
+    dias[k]++;
+  });
+  orden.sort().reverse();
+  var chips = '<button class="chip' + (FILTRO === 'todos' ? ' on' : '') +
+              '" onclick="filtrar(\'todos\')">Todos <b>' + pend.length + '</b></button>';
+  chips += orden.map(function(k){
+    return '<button class="chip' + (FILTRO === k ? ' on' : '') + '" onclick="filtrar(\'' + k +
+           '\')">' + fecha(k + 'T12:00:00') + ' <b>' + dias[k] + '</b></button>';
+  }).join('');
+  return '<div class="resumen"><div class="rtop"><div class="rnum">' + pend.length +
+         '</div><div class="rtxt">pedidos por entregar</div></div>' +
+         '<div class="chips">' + chips + '</div></div>';
+}
+
+function filtrar(k){ FILTRO = k; pintar(); window.scrollTo(0, 0); }
+
+function pintar(){
+  var pend = DATA.por_entregar || [], hist = DATA.historia || [];
+  var vis = FILTRO === 'todos' ? pend : pend.filter(function(p){ return diaKey(p.created_at) === FILTRO; });
+  var h = pend.length ? resumen(pend) : '';
+  h += vis.length ? '<div class="lista">' + vis.map(filaPendiente).join('') + '</div>'
+                  : '<div class="vacio">No hay pedidos por entregar.</div>';
+  h += '<h2>Reportado (' + (DATA.dias_historia || 2) + ' dias · no entregados ' +
+       (DATA.dias_historia_no_entregado || 3) + ')</h2>';
+  h += hist.length ? '<div class="lista">' + hist.map(filaHistoria).join('') + '</div>'
+                   : '<div class="vacio">Todavia no reportaste nada.</div>';
+  document.getElementById('contenido').innerHTML = h;
+}
+
+function vendedorLinea(p){
+  if(!p.vendedor) return '';
+  return '<div class="l4">Vendedor: <span>' +
+         (p.vendedor_codigo ? esc(p.vendedor_codigo) + ' · ' : '') + esc(p.vendedor) + '</span></div>';
+}
+
+function filaPendiente(p){
+  var items = (p.items || []).map(function(i){
+    return esc(i.cantidad) + ' x ' + esc(i.nombre); }).join('<br>');
+  var cero = Number(p.cobra_efectivo) > 0 ? '' : ' cero';
+  return '' +
+  '<div class="item" id="c-' + p.id + '">' +
+    '<div class="fila">' +
+      '<div class="izq">' +
+        '<div class="l1"><b>' + esc(p.numero) + '</b><span>' + fecha(p.created_at) +
+          ' <span class="badge pend">Pendiente</span></span></div>' +
+        '<div class="bodega">' + esc(p.bodega) + '</div>' +
+        (p.direccion ? '<div class="l3">' + esc(p.direccion) + '</div>' : '') +
+        vendedorLinea(p) +
+        '<div class="plata">' +
+          '<span class="ef' + cero + '">Efectivo transporte <b>' + soles(p.cobra_efectivo) + '</b></span>' +
+          '<span class="sep">|</span>' +
+          '<span class="cc">Circa <b>' + soles(p.financiado) + '</b></span>' +
+        '</div>' +
+        (items ? '<button class="toggle" onclick="verItems(\'' + p.id + '\')">Ver ' +
+                 (p.items || []).length + ' productos</button><div class="items" id="it-' + p.id +
+                 '" style="display:none">' + items + '</div>' : '') +
+      '</div>' +
+      '<div class="der">' +
+        '<label class="subir" id="up-' + p.id + '">Subir<br>voucher' +
+          '<input type="file" accept="image/*,application/pdf" capture="environment" ' +
+          'onchange="subir(\'' + p.id + '\', this)"></label>' +
+        '<button class="noent" onclick="abrirCaja(\'' + p.id + '\',\'cash\')">Pago TODO<br>en efectivo</button>' +
+        '<button class="noent" onclick="abrirCaja(\'' + p.id + '\',\'no\')">No se entrego</button>' +
+      '</div>' +
+    '</div>' +
+    '<div class="motivo" id="m-no-' + p.id + '">' +
+      '<div class="cap">Por que no se entrego el pedido ' + esc(p.numero) + '</div>' +
+      '<textarea rows="2" placeholder="Cerrado, no habia quien reciba, rechazo el pedido..."></textarea>' +
+      '<button onclick="reportar(\'' + p.id + '\',\'no_entregado\')">Reportar no entregado</button>' +
+    '</div>' +
+    '<div class="motivo" id="m-cash-' + p.id + '">' +
+      '<div class="cap">El cliente pago los ' + soles(p.total) + ' completos en efectivo. ' +
+        'Si firmo voucher, subelo igual.</div>' +
+      '<textarea rows="2" placeholder="Nota (opcional)"></textarea>' +
+      '<label class="adj" id="adj-' + p.id + '">Adjuntar voucher (opcional)' +
+        '<input type="file" accept="image/*,application/pdf" capture="environment" ' +
+        'onchange="marcarAdj(\'' + p.id + '\')"></label>' +
+      '<button onclick="reportar(\'' + p.id + '\',\'entregado_cash\')">Reportar pago en efectivo</button>' +
+    '</div>' +
+  '</div>';
+}
+
+function filaHistoria(p){
+  var r = p.reporte || {};
+  var cls = r.resultado === 'no_entregado' ? 'no'
+          : r.resultado === 'entregado_cash' ? 'cash' : 'ok';
+  var etiqueta = r.resultado === 'no_entregado' ? 'No entregado'
+               : r.resultado === 'entregado_cash' ? 'Pago todo en efectivo' : 'Entregado';
+  return '' +
+  '<div class="item">' +
+    '<div class="l1"><b>' + esc(p.numero) + '</b>' +
+      '<span class="badge ' + cls + '">' + etiqueta + '</span></div>' +
+    '<div class="bodega">' + esc(p.bodega) + '</div>' +
+    '<div class="l3">' + hora(r.reportado_at) + '</div>' +
+    '<div class="plata">' +
+      '<span class="ef' + (Number(p.cobra_efectivo) > 0 ? '' : ' cero') +
+        '">Efectivo transporte <b>' + soles(p.cobra_efectivo) + '</b></span>' +
+      '<span class="sep">|</span>' +
+      '<span class="cc">Circa <b>' + soles(p.financiado) + '</b></span>' +
+      '<span class="sep">|</span>' +
+      '<span class="tt">Total <b>' + soles(p.total) + '</b></span>' +
+    '</div>' +
+    (r.observacion ? '<div class="l3">Motivo: ' + esc(r.observacion) + '</div>' : '') +
+    (r.sustento_url ? '<a class="ver" href="' + esc(r.sustento_url) +
+      '" target="_blank" rel="noopener">Ver voucher</a>' : '') +
+    (r.puede_deshacer ? '<button class="deshacer" onclick="deshacer(\'' + r.id +
+      '\',\'' + esc(p.numero) + '\', this)">Me equivoque, deshacer este reporte</button>' : '') +
+  '</div>';
+}
+
+var ARMADO = null;
+async function deshacer(reporteId, numero, el){
+  if(ARMADO !== reporteId){            // primer toque: pedir confirmacion en el mismo boton
+    ARMADO = reporteId;
+    el.textContent = 'Seguro? Toca otra vez para borrar';
+    el.style.color = '#f87171';
+    setTimeout(function(){
+      if(ARMADO === reporteId){
+        ARMADO = null;
+        el.textContent = 'Me equivoque, deshacer este reporte';
+        el.style.color = '';
+      }
+    }, 5000);
+    return;
+  }
+  ARMADO = null;
+  el.textContent = 'Borrando...';
+  try {
+    var r = await fetch(API + '/reportes/' + reporteId, {method:'DELETE'});
+    var d = await r.json().catch(function(){ return {}; });
+    if(!r.ok || !d.ok) throw new Error(d.detail || 'No se pudo deshacer');
+    toast('Reporte de ' + numero + ' borrado', 'ok');
+    await cargar();
+  } catch(e){
+    toast(e.message, 'err');
+    el.textContent = 'Me equivoque, deshacer este reporte';
+    el.style.color = '';
+  }
+}
+
+function verItems(id){
+  var d = document.getElementById('it-' + id);
+  d.style.display = d.style.display === 'none' ? 'block' : 'none';
+}
+function abrirCaja(id, cual){
+  var abrir = document.getElementById('m-' + cual + '-' + id);
+  var otra  = document.getElementById('m-' + (cual === 'no' ? 'cash' : 'no') + '-' + id);
+  if(otra) otra.style.display = 'none';
+  abrir.style.display = abrir.style.display === 'block' ? 'none' : 'block';
+}
+function marcarAdj(id){
+  var l = document.getElementById('adj-' + id);
+  var f = l.querySelector('input').files[0];
+  l.classList.add('listo');
+  l.firstChild.nodeValue = f ? 'Voucher listo: ' + f.name : 'Adjuntar voucher (opcional)';
+}
+
+async function subir(id, input){
+  var f = input.files && input.files[0];
+  if(!f) return;
+  var lbl = document.getElementById('up-' + id);
+  lbl.classList.add('busy');
+  lbl.firstChild.nodeValue = 'Subiendo...';
+  var fd = new FormData();
+  fd.append('resultado', 'entregado');
+  fd.append('file', f);
+  try {
+    await enviar(id, fd);
+  } catch(e){
+    lbl.classList.remove('busy');
+    lbl.firstChild.nodeValue = 'Reintentar';
+    input.value = '';
+  }
+}
+
+async function reportar(id, resultado){
+  var caja = document.getElementById('m-' + (resultado === 'no_entregado' ? 'no' : 'cash') + '-' + id);
+  var nota = caja.querySelector('textarea').value.trim();
+  if(resultado === 'no_entregado' && !nota){ toast('Escribe el motivo', 'err'); return; }
+  var btn = caja.querySelector('button');
+  btn.disabled = true;
+  var txt = btn.textContent;
+  btn.textContent = 'Enviando...';
+  var fd = new FormData();
+  fd.append('resultado', resultado);
+  if(nota) fd.append('motivo', nota);
+  var adj = document.getElementById('adj-' + id);
+  var f = adj && adj.querySelector('input').files[0];
+  if(f) fd.append('file', f);
+  try {
+    await enviar(id, fd);
+  } catch(e){
+    btn.disabled = false;
+    btn.textContent = txt;
+  }
+}
+
+async function enviar(id, fd){
+  try {
+    var r = await fetch(API + '/pedidos/' + id + '/reporte', {method:'POST', body:fd});
+    var d = await r.json().catch(function(){ return {}; });
+    if(!r.ok || !d.ok) throw new Error(d.detail || 'No se pudo enviar');
+    var msg = d.resultado === 'no_entregado' ? 'Reportado como no entregado'
+            : d.resultado === 'entregado_cash' ? 'Reportado: pago todo en efectivo'
+            : 'Voucher de ' + (d.numero || '') + ' subido';
+    toast(msg, 'ok');
+    await cargar();
+  } catch(e){
+    toast(e.message, 'err');
+    throw e;
+  }
+}
+
+cargar();
+setInterval(cargar, 120000);
+</script>
+</body>
+</html>
