@@ -23,7 +23,7 @@ El requerimiento describe cuatro cosas que Circa necesita. Aquí se traduce cada
 | # | Del requerimiento | Cómo se cubre |
 |---|-------------------|---------------|
 | 1 | Historial de compras | **Archivo** (CSV/Excel). No es un servicio en línea. |
-| 2 | Preventas en línea | `POST /preventas` + consulta de estado |
+| 2 | Preventas en línea | El pedido del Excel entra antes por `POST /entrantes`. El financiamiento sigue en `POST /preventas` cuando Circa lo acepta. |
 | 3 | Estados de despacho y entrega | `PATCH /pedidos/{id}/estado` |
 | 4 | Botón Circa | BsSoft construye el componente; llama a los servicios de este anexo |
 
@@ -87,6 +87,7 @@ La llave de cruce de negocio sigue siendo **DNI (8) o RUC (11)**. El `external_i
 | SVC-02 | Precargar bodega (+ fotos) | BsSoft | `POST` | `/bodegas` | §6.2 Caso A | Disponible hoy (multipart) |
 | SVC-03 | Actualizar datos de bodega | BsSoft | `PATCH` | `/bodegas/{id}` | Corregir WhatsApp / dirección | Disponible hoy |
 | SVC-04 | Solicitar financiamiento | BsSoft | `POST` | `/preventas` | §4 Flujo 2 · §6.3 Caso B | Disponible hoy (`monto_a_financiar` + `plazo_dias`) |
+| Entrantes | Pedido antes de la pre-venta | BsSoft | `POST` | `/entrantes` | Guía [GUIA_ENTRANTES_BSSOFT.md](./GUIA_ENTRANTES_BSSOFT.md) | Disponible hoy en pruebas. No crea pedido ni reserva línea. |
 | SVC-05 | Consultar resultado | BsSoft | `GET` | `/preventas/{id}` o `/pedidos/{id}` | §4.2 · punto abierto 2 | Disponible hoy (consulta) |
 | SVC-06 | Listar preventas / pedidos | BsSoft | `GET` | `/preventas` · `/pedidos` | Conciliación | Disponible hoy |
 | SVC-07 | Informar despacho / entrega | BsSoft | `PATCH` | `/pedidos/{id}/estado` | §5 Flujo 3 | Disponible hoy |

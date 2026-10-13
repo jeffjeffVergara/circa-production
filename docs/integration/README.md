@@ -34,6 +34,7 @@ Detalle de contratos y flujos: ver la [guía ZOOM](./GUIA_ZOOM_PRUEBAS.md).
 |-----------|-----------|
 | [DOCUMENTO_SERVICIOS_CORE.md](./DOCUMENTO_SERVICIOS_CORE.md) | **Auth + SVC-01 + SVC-02 + SVC-04** (flujo completo) |
 | [GUIA_ZOOM_PRUEBAS.md](./GUIA_ZOOM_PRUEBAS.md) | **Compartir con ZOOM** — test only + credenciales |
+| [GUIA_ENTRANTES_BSSOFT.md](./GUIA_ENTRANTES_BSSOFT.md) | **Compartir con BsSoft** — entrantes, antes de la pre-venta |
 | Este README | Índice + referencia general |
 | [ANEXO_A_servicios_BsSoft.md](./ANEXO_A_servicios_BsSoft.md) | Catálogo detallado SVC-00…07 |
 | [CASOS_PRUEBA_SVC01.md](./CASOS_PRUEBA_SVC01.md) | Matriz QA de `situacion` |
@@ -110,6 +111,7 @@ Authorization: Bearer <access_token>
 | **SVC-02** | `POST` | `/bodegas` | Precarga **multipart** + fotos |
 | **SVC-03** | `PATCH` | `/bodegas/{id}` | Corregir datos (JSON) |
 | **SVC-04** | `POST` | `/preventas` | Financiar: **`monto_a_financiar`** + **`plazo_dias`** |
+| **Entrantes** | `POST` | `/entrantes` | Pedido del Excel **antes** de SVC-04. No crea pre-venta. |
 | **SVC-05** | `GET` | `/preventas/{id}` · `/pedidos/{id}` | Resultado / polling |
 | **SVC-06** | `GET` | `/preventas` · `/pedidos` | Listar |
 | **SVC-07** | `PATCH` | `/pedidos/{id}/estado` | Despacho / entrega |
@@ -234,6 +236,8 @@ Carpetas: **00 · Auth**, **01 · Producción**, **02 · Pruebas** (con Examples
 | `migrations/20260814_integration_external_ids.sql` | `external_id` bodegas/pedidos |
 | `migrations/20260903_distribuidores_api_tokens_dual.sql` | tokens duales + client credentials |
 | `migrations/20260904_bodegas_fotos_precarga.sql` | `foto_dueno_url`, `foto_bodega_url` |
+| `migrations/20261012_entrantes.sql` | Bandeja `entrantes` (pedido antes de la pre-venta) |
+| `migrations/20261012_entrantes_fecha_timestamptz.sql` | `fecha` con hora; el día suelto queda a las 00:00 GMT-5 |
 
 ---
 

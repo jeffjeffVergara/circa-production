@@ -441,6 +441,7 @@ Auth
 | **SVC-02** | `POST` | `/bodegas` | Precarga + fotos |
 | SVC-03 | `PATCH` | `/bodegas/{id}` | Corregir datos |
 | **SVC-04** | `POST` | `/preventas` | Financiar |
+| **Entrantes** | `POST` | `/entrantes` | Pedido del Excel, antes de financiar. Ver guía BsSoft. |
 | SVC-05 | `GET` | `/preventas/{id}` | Resultado |
 | SVC-06 | `GET` | `/preventas` · `/pedidos` | Listar |
 | SVC-07 | `PATCH` | `/pedidos/{id}/estado` | Despacho |
@@ -452,6 +453,7 @@ Auth
 | Doc | Contenido |
 |-----|-----------|
 | [GUIA_ZOOM_PRUEBAS.md](./GUIA_ZOOM_PRUEBAS.md) | Credenciales + datos de prueba + quick start |
+| [GUIA_ENTRANTES_BSSOFT.md](./GUIA_ENTRANTES_BSSOFT.md) | Pedido del Excel antes de la pre-venta |
 | [ANEXO_A_servicios_BsSoft.md](./ANEXO_A_servicios_BsSoft.md) | Contrato detallado de todos los SVC |
 | [CASOS_PRUEBA_SVC01.md](./CASOS_PRUEBA_SVC01.md) | Matriz QA de `situacion` |
 | [README.md](./README.md) | Índice general |

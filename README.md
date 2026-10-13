@@ -21,6 +21,7 @@ Backend **MVP** de **Circa**: crédito embebido orientado a **bodegas en Perú**
 | `app/state_machine.py` | Máquina de estados del chat (`handle_message`): sesión en BD, fases (bienvenida, RUC/DNI, menú, carrito, etc.) y señales a `meta_client`. |
 | `app/services/` | Negocio: `db`, `meta_client`, identidad (RUC/DNI), tracking, cobranza, contratos, PIN, fees, etc. |
 | `app/routes/distribuidor.py` | API del distribuidor (token) para pedidos y estados. |
+| `app/integration/` | API de socios (`/api/v1` y `/api/v1/test`): bodegas, pre-venta y **entrantes**. |
 | `app/flows/` | Handlers de **WhatsApp Flows** (onboarding, catálogo, PIN) y cifrado (`crypto`). |
 | `static/` | HTML del catálogo web, PIN, admin distribuidor y **backoffice** (`/backoffice`). |
 
@@ -46,6 +47,7 @@ Para exponer el webhook (desarrollo): túnel tipo `ngrok http 8000` y configurar
 | Documento | Contenido |
 |-----------|-----------|
 | [**Estados por journey**](docs/JOURNEY_ESTADOS.md) | **Guía de estados:** onboarding, venta, preventa, cobranza, vendedor WA, diagramas |
+| [`docs/integration/README.md`](docs/integration/README.md) | **API de socios:** auth, SVC-01…07 y [entrantes para BsSoft](docs/integration/GUIA_ENTRANTES_BSSOFT.md) |
 | [`docs/flows/README.md`](docs/flows/README.md) | **Mapa de flujos**, matriz de escenarios (~50), smoke P0 |
 | [`docs/flows/figma/README.md`](docs/flows/figma/README.md) | **Guía Figma:** wireframes, diagramas, componentes, journeys funcional + técnico |
 | [`arquitectura.md`](arquitectura.md) | Arquitectura técnica, diagramas Mermaid |

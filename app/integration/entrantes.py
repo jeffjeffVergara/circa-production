@@ -193,7 +193,6 @@ def _norm_items(items: list[dict]) -> list[dict]:
             "codigo": codigo,
             "sku": codigo.lstrip("0") or "0",
             "descripcion": desc,
-            "nombre": desc,
             "cantidad": cant,
             "unidad": str(it.get("unidad") or "UND").strip() or "UND",
             "precio_unitario": precio,
