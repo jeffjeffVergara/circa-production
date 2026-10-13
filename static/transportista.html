@@ -54,6 +54,7 @@ h2{font-size:13px;text-transform:uppercase;letter-spacing:1px;color:var(--muted)
 .ef.cero b{color:var(--muted)}
 .cc b{color:#93c5fd}
 .sep{color:var(--border);margin:0 7px}
+.tt b{color:var(--text)}
 .subir{display:block;text-align:center;background:var(--green);color:#fff;font-weight:700;
        font-size:12.5px;line-height:1.25;padding:11px 6px;border-radius:9px;border:none;
        font-family:inherit}
@@ -251,8 +252,15 @@ function filaHistoria(p){
     '<div class="l1"><b>' + esc(p.numero) + '</b>' +
       '<span class="badge ' + cls + '">' + etiqueta + '</span></div>' +
     '<div class="bodega">' + esc(p.bodega) + '</div>' +
-    '<div class="l3">' + hora(r.reportado_at) + ' · ' + soles(p.total) +
-      (Number(p.cobra_efectivo) > 0 ? ' · efectivo ' + soles(p.cobra_efectivo) : '') + '</div>' +
+    '<div class="l3">' + hora(r.reportado_at) + '</div>' +
+    '<div class="plata">' +
+      '<span class="ef' + (Number(p.cobra_efectivo) > 0 ? '' : ' cero') +
+        '">Efectivo transporte <b>' + soles(p.cobra_efectivo) + '</b></span>' +
+      '<span class="sep">|</span>' +
+      '<span class="cc">Circa <b>' + soles(p.financiado) + '</b></span>' +
+      '<span class="sep">|</span>' +
+      '<span class="tt">Total <b>' + soles(p.total) + '</b></span>' +
+    '</div>' +
     (r.observacion ? '<div class="l3">Motivo: ' + esc(r.observacion) + '</div>' : '') +
     (r.sustento_url ? '<a class="ver" href="' + esc(r.sustento_url) +
       '" target="_blank" rel="noopener">Ver voucher</a>' : '') +
