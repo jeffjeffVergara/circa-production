@@ -380,9 +380,19 @@ def _register_business_routes(router: APIRouter, *, es_test: bool) -> None:
         tags=[f"Entrantes{tag_suffix}"],
     )
     async def create_entrante(body: S.EntranteCreateRequest, dist: DistDep):
-        """Pedido del distribuidor antes de ser pre-venta Circa.
+        """Recibe el pedido tal como sale del Excel DIMAX. No crea una pre-venta ni reserva línea.
 
-        Idempotente por `external_id`. No crea pedido ni reserva línea.
+        Obligatorio: `external_id`, `bodega_nombre`, `fecha` y `items`.
+        Cada ítem lleva `codigo`, `descripcion`, `cantidad`, `unidad`, `precio_unitario`,
+        `subtotal` (antes de descuento) y `total` (monto cobrado). `total` 0, o una
+        descripción que empieza con BONIFICACION, es regalo y no suma.
+        La hora sin zona se toma en GMT-5.
+
+        Para cruzar la bodega, si los tienen: `bodega_id`, `bodega_external_id` o
+        `telefono_whatsapp`. `monto_credito` y `pago_confirmado` pueden omitirse:
+        Circa los completa en la bandeja.
+
+        Idempotente por `external_id`: reenviar el mismo documento actualiza las líneas.
         """
         return ent.upsert_entrante(dist, body.model_dump(), es_test=es_test)
 

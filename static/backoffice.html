@@ -980,7 +980,8 @@ Relación operativa entre vendedores de campo y bodegas. Usa los filtros para se
 <button class="btn btn-outline btn-small" style="float:right;margin-top:-4px" onclick="loadEntrantes()">🔄 Actualizar</button>
 </h2>
 <p style="font-size:13px;color:var(--muted);margin:-8px 0 16px;max-width:860px">
-Llegan por <code>POST /api/v1/entrantes</code> (reales) o <code>POST /api/v1/test/entrantes</code> (pruebas).
+Llegan por <code>POST /api/v1/entrantes</code> (reales) o <code>POST /api/v1/test/entrantes</code> (pruebas),
+con el documento, la bodega, la fecha y hora, y las líneas del Excel (Codigo, Descripcion, Cantidad, Unidad, P. Unitario, SubTotal, Total).
 No crean un pedido Circa. El match, si existe, si está activa, el monto de crédito y el pago se marcan aquí.
 </p>
 <div class="table-wrap">
@@ -4205,19 +4206,21 @@ function openEntranteDetalle(id){
   var items = r.items || [];
   var nRegalos = 0;
   var itemRows = items.map(function(it){
-    var nombre = it.nombre || it.descripcion || '';
-    var total = Number(it.subtotal != null ? it.subtotal : 0);
-    var regalo = total === 0 || String(nombre).toUpperCase().indexOf('BONIFICAC') === 0;
+    var nombre = it.descripcion || it.nombre || '';
+    var cobrado = it.total != null ? Number(it.total) : Number(it.subtotal || 0);
+    var antes = (it.total != null && it.subtotal != null) ? Number(it.subtotal) : cobrado;
+    var regalo = !!it.es_regalo || cobrado === 0 || String(nombre).toUpperCase().indexOf('BONIFICAC') === 0;
     if(regalo) nRegalos += 1;
     return '<tr>'+
-      '<td class="mono">'+_esc(it.sku || it.sku_distribuidor || '')+'</td>'+
+      '<td class="mono">'+_esc(it.codigo || it.sku || it.sku_distribuidor || '')+'</td>'+
       '<td style="font-size:11px">'+_esc(nombre)+'</td>'+
       '<td>'+_esc(it.cantidad)+'</td>'+
       '<td>'+_esc(it.unidad || 'UND')+'</td>'+
       '<td class="mono">S/ '+Number(it.precio_unitario || 0).toFixed(2)+'</td>'+
-      '<td class="mono">S/ '+total.toFixed(2)+'</td>'+
+      '<td class="mono">S/ '+antes.toFixed(2)+'</td>'+
+      '<td class="mono">S/ '+cobrado.toFixed(2)+'</td>'+
       '<td>'+(regalo ? '<span class="import-badge warn">Regalo</span>' : '—')+'</td></tr>';
-  }).join('') || '<tr><td colspan="7" class="empty">Sin ítems</td></tr>';
+  }).join('') || '<tr><td colspan="8" class="empty">Sin ítems</td></tr>';
   var nItems = items.length - nRegalos;
   var monto = r.monto_credito == null ? '—' : ('S/ '+Number(r.monto_credito).toFixed(2));
   document.getElementById('modalContainer').innerHTML =
@@ -4235,7 +4238,7 @@ function openEntranteDetalle(id){
       '<span>Pago: <strong>'+(r.pago_confirmado ? 'sí' : 'no')+'</strong></span>'+
     '</div>'+
     '<div class="import-preview-wrap"><table class="import-preview-table"><thead><tr>'+
-      '<th>Codigo</th><th>Descripcion</th><th>Cantidad</th><th>Unidad</th><th>P. Unitario</th><th>Total</th><th>Tipo</th>'+
+      '<th>Codigo</th><th>Descripcion</th><th>Cantidad</th><th>Unidad</th><th>P. Unitario</th><th>SubTotal</th><th>Total</th><th>Tipo</th>'+
     '</tr></thead><tbody>'+itemRows+'</tbody></table></div>'+
     '<div class="modal-actions"><button class="btn btn-outline" onclick="closeModal()">Cerrar</button></div></div></div>';
 }

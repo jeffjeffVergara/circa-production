@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any, Literal, Optional
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class ErrorResponse(BaseModel):
@@ -207,31 +207,101 @@ class TokenResponse(BaseModel):
 
 
 class EntranteItem(BaseModel):
-    sku: Optional[str] = None
-    nombre: str = Field(..., min_length=1)
-    cantidad: float = Field(..., gt=0)
-    precio_unitario: float = Field(..., ge=0)
-    unidad: Optional[str] = "UND"
-    subtotal: Optional[float] = Field(default=None, ge=0)
+    """Una fila del Excel DIMAX: Codigo, Descripcion, Cantidad, Unidad, P. Unitario, SubTotal, Total."""
+
+    codigo: str = Field(..., min_length=1, description="Columna Codigo", examples=["004521"])
+    descripcion: str = Field(..., min_length=1, description="Columna Descripcion", examples=["CAFETAL SELECTO 24x200g"])
+    cantidad: float = Field(..., gt=0, description="Columna Cantidad", examples=[3])
+    unidad: str = Field(default="UND", description="Columna Unidad. Si no viene, UND", examples=["UND x 24"])
+    precio_unitario: float = Field(..., ge=0, description="Columna P. Unitario", examples=[10.30])
+    subtotal: float = Field(..., ge=0, description="Columna SubTotal, antes de descuento", examples=[32.10])
+    total: float = Field(..., ge=0, description="Columna Total, monto cobrado. 0 = regalo", examples=[30.90])
+
+    @model_validator(mode="before")
+    @classmethod
+    def _alias_columnas(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        data = dict(data)
+        if not str(data.get("codigo") or "").strip() and data.get("sku"):
+            data["codigo"] = data["sku"]
+        if not str(data.get("descripcion") or "").strip() and data.get("nombre"):
+            data["descripcion"] = data["nombre"]
+        return data
 
 
 class EntranteCreateRequest(BaseModel):
-    """Pedido del distribuidor que todavía no es una pre-venta Circa."""
+    """Pedido del distribuidor, con los mismos datos del Excel DIMAX. Todavía no es una pre-venta."""
 
-    external_id: str = Field(..., min_length=1, max_length=80, description="Número de documento en el sistema del socio")
-    bodega_nombre: str = Field(..., min_length=1, max_length=200, description="Nombre de la bodega tal como viene en el pedido")
-    fecha: Optional[str] = Field(
-        default=None,
-        description="Fecha y hora. YYYY-MM-DD o YYYY-MM-DDTHH:MM[:SS]. Sin zona se interpreta en GMT-5. Solo día queda a las 00:00 GMT-5.",
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "external_id": "PV-2026-000451",
+                "bodega_nombre": "URBANO CHIHUANTITO DAVID GENARO",
+                "fecha": "2026-10-12T09:40:00",
+                "bodega_external_id": "CLI-10442",
+                "telefono_whatsapp": "989153197",
+                "items": [
+                    {
+                        "codigo": "004521",
+                        "descripcion": "CAFETAL SELECTO 24x200g",
+                        "cantidad": 3,
+                        "unidad": "UND x 24",
+                        "precio_unitario": 10.30,
+                        "subtotal": 32.10,
+                        "total": 30.90,
+                    },
+                    {
+                        "codigo": "001102",
+                        "descripcion": "BONIFICACION GALLETA SODA",
+                        "cantidad": 1,
+                        "unidad": "UND",
+                        "precio_unitario": 0,
+                        "subtotal": 2.50,
+                        "total": 0,
+                    },
+                ],
+            }
+        }
+    )
+
+    external_id: str = Field(
+        ...,
+        min_length=1,
+        max_length=80,
+        description="Número de documento en el sistema del socio. Reenviar el mismo valor actualiza el pedido.",
+    )
+    bodega_nombre: str = Field(
+        ...,
+        min_length=1,
+        max_length=200,
+        description="Nombre de la bodega tal como sale en el pedido",
+    )
+    fecha: str = Field(
+        ...,
+        min_length=10,
+        description="Fecha y hora del pedido. Sin zona se toma GMT-5. Solo día queda a las 00:00 GMT-5.",
+        examples=["2026-10-12T09:40:00"],
     )
     items: list[EntranteItem] = Field(..., min_length=1)
-    total_pedido: Optional[float] = Field(default=None, ge=0, description="Si se omite, se suma de los ítems")
-    descuento_prorrateado: float = Field(default=0, ge=0)
-    bodega_id: Optional[str] = None
-    bodega_external_id: Optional[str] = None
-    telefono_whatsapp: Optional[str] = None
-    monto_credito: Optional[float] = Field(default=None, ge=0, description="Cuánto de ese total pide crédito Circa")
-    pago_confirmado: bool = False
+    bodega_external_id: Optional[str] = Field(
+        default=None,
+        description="Código del cliente en el sistema del socio, si lo tienen",
+    )
+    telefono_whatsapp: Optional[str] = Field(
+        default=None,
+        description="Celular de la bodega. 9 dígitos o +51XXXXXXXXX",
+    )
+    bodega_id: Optional[str] = Field(default=None, description="UUID Circa de la bodega, si ya lo conocen")
+    monto_credito: Optional[float] = Field(
+        default=None,
+        ge=0,
+        description="Cuánto de ese total pide crédito Circa. Puede omitirse y completarse después.",
+    )
+    pago_confirmado: bool = Field(
+        default=False,
+        description="True cuando el pago del tramo Circa ya está confirmado",
+    )
 
 
 class EntrantePatchRequest(BaseModel):
@@ -252,6 +322,8 @@ class EntranteResponse(BaseModel):
     total_pedido: float
     descuento_prorrateado: float
     monto_productos: float
+    n_items: int = 0
+    n_regalos: int = 0
     bodega_id: Optional[str] = None
     bodega_razon_social: Optional[str] = None
     bodega_estado: Optional[str] = None

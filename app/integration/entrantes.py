@@ -41,16 +41,33 @@ def estado_entrante(
     return "lista"
 
 
-def totales_items(items: list[dict], total_pedido: float | None, descuento: float) -> tuple[float, float, float]:
-    calculado = 0.0
+def _es_regalo(descripcion: str, total: float, marca: bool = False) -> bool:
+    return bool(marca) or total == 0 or descripcion.upper().startswith("BONIFICAC")
+
+
+def _item_es_regalo(it: dict) -> bool:
+    if it.get("es_regalo"):
+        return True
+    desc = str(it.get("descripcion") or it.get("nombre") or "")
+    charged = it.get("total")
+    if charged is None:
+        charged = it.get("subtotal") if it.get("subtotal") is not None else 0
+    return _es_regalo(desc, float(charged or 0))
+
+
+def totales_items(items: list[dict]) -> tuple[float, float, float]:
+    """Total cobrado, descuento y monto antes de descuento. Los regalos no suman."""
+    total = desc = 0.0
     for it in items:
-        if it.get("subtotal") is not None:
-            calculado += float(it["subtotal"])
-        else:
-            calculado += float(it["cantidad"]) * float(it["precio_unitario"])
-    calculado = round(calculado, 2)
-    total = round(float(total_pedido), 2) if total_pedido is not None else calculado
-    desc = round(float(descuento or 0), 2)
+        if it.get("es_regalo"):
+            continue
+        line_total = float(it["total"])
+        line_sub = float(it.get("subtotal") if it.get("subtotal") is not None else line_total)
+        total += line_total
+        gap = round(line_sub - line_total, 2)
+        if gap > 0:
+            desc += gap
+    total, desc = round(total, 2), round(desc, 2)
     return total, desc, round(total + desc, 2)
 
 
@@ -72,6 +89,8 @@ def _out(row: dict, *, created: bool | None = None, bodega: dict | None = None) 
         "total_pedido": _f(row.get("total_pedido")) or 0,
         "descuento_prorrateado": _f(row.get("descuento_prorrateado")) or 0,
         "monto_productos": _f(row.get("monto_productos")) or 0,
+        "n_items": sum(1 for it in (row.get("items") or []) if not _item_es_regalo(it)),
+        "n_regalos": sum(1 for it in (row.get("items") or []) if _item_es_regalo(it)),
         "bodega_id": row.get("bodega_id"),
         "match_score": row.get("match_score"),
         "candidatos": row.get("candidatos") or [],
@@ -141,19 +160,46 @@ def _fecha_lima(value) -> str | None:
 
 
 def _norm_items(items: list[dict]) -> list[dict]:
+    """Líneas con las columnas del Excel DIMAX. `sku`/`nombre` se aceptan como alias."""
     out = []
     for it in items:
+        codigo = str(it.get("codigo") or it.get("sku") or "").strip()
+        if not codigo:
+            raise HTTPException(status_code=400, detail="cada ítem necesita codigo")
+        desc = str(it.get("descripcion") or it.get("nombre") or "").strip()
+        if not desc:
+            raise HTTPException(status_code=400, detail="cada ítem necesita descripcion")
         cant = float(it["cantidad"])
-        precio = float(it["precio_unitario"])
-        sub = it.get("subtotal")
-        sub_f = round(float(sub), 2) if sub is not None else round(cant * precio, 2)
+        if cant <= 0:
+            raise HTTPException(status_code=400, detail="cantidad debe ser mayor a 0")
+        precio = round(float(it["precio_unitario"]), 4)
+        if it.get("total") is not None:
+            total_l = round(float(it["total"]), 2)
+        elif it.get("subtotal") is not None:
+            total_l = round(float(it["subtotal"]), 2)
+        else:
+            total_l = round(cant * precio, 2)
+        if it.get("subtotal") is not None and it.get("total") is not None:
+            subt = round(float(it["subtotal"]), 2)
+        else:
+            subt = total_l
+        if subt + 0.009 < total_l:
+            raise HTTPException(
+                status_code=400,
+                detail=f"subtotal no puede ser menor que total en {codigo}",
+            )
+        regalo = _es_regalo(desc, total_l, bool(it.get("es_regalo")))
         out.append({
-            "sku": (it.get("sku") or "") or None,
-            "nombre": (it.get("nombre") or "").strip(),
+            "codigo": codigo,
+            "sku": codigo.lstrip("0") or "0",
+            "descripcion": desc,
+            "nombre": desc,
             "cantidad": cant,
-            "unidad": it.get("unidad") or "UND",
-            "precio_unitario": round(precio, 4),
-            "subtotal": sub_f,
+            "unidad": str(it.get("unidad") or "UND").strip() or "UND",
+            "precio_unitario": precio,
+            "subtotal": subt,
+            "total": total_l,
+            "es_regalo": regalo,
         })
     return out
 
@@ -233,9 +279,7 @@ def _payload(
         "updated_at": now,
     }
     if items is not None:
-        total, desc, productos = totales_items(
-            items, body.get("total_pedido"), body.get("descuento_prorrateado") or 0,
-        )
+        total, desc, productos = totales_items(items)
         if monto_credito is not None and float(monto_credito) > total + 0.009:
             raise HTTPException(
                 status_code=400,

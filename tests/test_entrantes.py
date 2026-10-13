@@ -7,8 +7,10 @@ os.environ.setdefault("SUPABASE_KEY", "test-key")
 
 import pytest
 from fastapi import HTTPException
+from pydantic import ValidationError
 
-from app.integration.entrantes import _fecha_lima, _parse_fecha, estado_entrante, totales_items
+from app.integration.entrantes import _fecha_lima, _norm_items, _parse_fecha, estado_entrante, totales_items
+from app.integration.schemas import EntranteCreateRequest
 
 
 def test_sin_bodega_queda_sin_match():
@@ -34,15 +36,82 @@ def test_descartada_pisa_los_checks():
     ) == "descartada"
 
 
-def test_total_sale_de_los_items_si_no_viene():
-    total, desc, productos = totales_items(
-        [{"cantidad": 2, "precio_unitario": 10.5, "subtotal": None}],
-        None,
-        1,
-    )
-    assert total == 21.0
-    assert desc == 1
-    assert productos == 22.0
+def test_total_cobra_el_total_y_el_descuento_sale_del_subtotal():
+    items = _norm_items([
+        {
+            "codigo": "004521",
+            "descripcion": "CAFETAL SELECTO 24x200g",
+            "cantidad": 3,
+            "unidad": "UND x 24",
+            "precio_unitario": 10.30,
+            "subtotal": 32.10,
+            "total": 30.90,
+        },
+        {
+            "codigo": "001102",
+            "descripcion": "BONIFICACION GALLETA SODA",
+            "cantidad": 1,
+            "unidad": "UND",
+            "precio_unitario": 0,
+            "subtotal": 2.50,
+            "total": 0,
+        },
+    ])
+    assert items[0]["sku"] == "4521"
+    assert items[0]["es_regalo"] is False
+    assert items[1]["es_regalo"] is True
+    total, desc, productos = totales_items(items)
+    assert total == 30.90
+    assert desc == 1.20
+    assert productos == 32.10
+
+
+def test_subtotal_menor_que_total_se_rechaza():
+    with pytest.raises(HTTPException):
+        _norm_items([{
+            "codigo": "1",
+            "descripcion": "CAFETAL",
+            "cantidad": 1,
+            "precio_unitario": 10,
+            "subtotal": 8,
+            "total": 10,
+        }])
+
+
+def test_el_pedido_exige_las_columnas_del_excel():
+    body = EntranteCreateRequest.model_validate({
+        "external_id": "PV-2026-000451",
+        "bodega_nombre": "URBANO CHIHUANTITO DAVID GENARO",
+        "fecha": "2026-10-12T09:40:00",
+        "items": [{
+            "codigo": "004521",
+            "descripcion": "CAFETAL SELECTO 24x200g",
+            "cantidad": 3,
+            "unidad": "UND x 24",
+            "precio_unitario": 10.30,
+            "subtotal": 32.10,
+            "total": 30.90,
+        }],
+    })
+    assert body.fecha == "2026-10-12T09:40:00"
+    assert body.pago_confirmado is False
+    assert body.monto_credito is None
+
+
+def test_sin_total_de_linea_no_entra():
+    with pytest.raises(ValidationError):
+        EntranteCreateRequest.model_validate({
+            "external_id": "PV-1",
+            "bodega_nombre": "BODEGA",
+            "fecha": "2026-10-12T09:40:00",
+            "items": [{
+                "codigo": "004521",
+                "descripcion": "CAFETAL",
+                "cantidad": 1,
+                "precio_unitario": 10,
+                "subtotal": 10,
+            }],
+        })
 
 
 def test_solo_dia_queda_a_medianoche_gmt5():
