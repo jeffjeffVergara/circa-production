@@ -457,10 +457,18 @@ async def meta_webhook_incoming(request: Request):
     for msg in messages:
         telefono = clave_conversacion(msg.get("from") or "", msg.get("user_id") or "")
         if not telefono:
-            logger.warning(
-                "webhook sin teléfono ni identificador; no se responde id=%s body=%s",
+            logger.error(
+                "webhook sin teléfono ni identificador; no se puede responder id=%s body=%s",
                 msg.get("message_id") or "",
                 (msg.get("body") or "")[:40],
+            )
+            track_message(
+                telefono="",
+                direction="inbound",
+                message_id=msg.get("message_id", ""),
+                message_type=msg.get("type", ""),
+                content=msg.get("body") or "",
+                metadata={"sin_destino": True, "name": msg.get("name") or ""},
             )
             continue
         body_text = msg["body"]

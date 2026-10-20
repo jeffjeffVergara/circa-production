@@ -22,10 +22,13 @@ Incoming message structure:
   }]
 }
 """
+import base64
+import binascii
 import logging
 import hmac
 import hashlib
 import os
+import re
 
 logger = logging.getLogger("circa.meta.webhook")
 
@@ -61,6 +64,27 @@ def _contacts(contacts) -> list[dict]:
             "username": profile.get("username") or "",
         })
     return out
+
+
+_WAMID_USER_RE = re.compile(rb"([A-Z]{2}\.(?:ENT\.)?[A-Za-z0-9]{6,128})")
+
+
+def user_id_desde_wamid(message_id: str) -> str:
+    """Identificador del remitente que Meta embebe en el wamid (``PE.123...``).
+
+    Respaldo cuando el webhook no trae ni ``from`` ni ``from_user_id``.
+    """
+    raw = (message_id or "").strip()
+    if raw.startswith("wamid."):
+        raw = raw[len("wamid."):]
+    if not raw:
+        return ""
+    try:
+        decoded = base64.b64decode(raw + "=" * (-len(raw) % 4))
+    except (binascii.Error, ValueError):
+        return ""
+    m = _WAMID_USER_RE.search(decoded)
+    return m.group(1).decode("ascii") if m else ""
 
 
 def _match_contact(contacts: list[dict], phone: str, user_id: str) -> dict:
@@ -187,6 +211,15 @@ def parse_incoming(body: dict) -> list[dict]:
                 contact = _match_contact(contacts, phone, user_id)
                 if not user_id:
                     user_id = contact.get("user_id") or contact.get("parent_user_id") or ""
+                if not phone and not user_id:
+                    user_id = user_id_desde_wamid(msg.get("id", ""))
+                    logger.warning(
+                        "webhook sin from ni user_id; claves msg=%s contact=%s user_id_wamid=%s",
+                        sorted(msg.keys()),
+                        sorted((value.get("contacts") or [{}])[0].keys())
+                        if isinstance((value.get("contacts") or [{}])[0], dict) else "-",
+                        user_id or "-",
+                    )
                 parsed = {
                     "from": phone,
                     "user_id": user_id,

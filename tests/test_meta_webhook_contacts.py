@@ -1,5 +1,26 @@
 """Un contacto sin wa_id no debe tumbar el parseo del webhook."""
-from app.services.meta_webhook import parse_incoming
+from app.services.meta_webhook import parse_incoming, user_id_desde_wamid
+
+WAMID_MAYHUIRE = "wamid.HBgTUEUuNDA0MTAxODcxOTUzNDU5MBUUABIYIEFDNEU3QzM0NDE2Q0NGNzVEQUM1Q0ZBRDFENUZGODVGAA=="
+
+
+def test_user_id_sale_del_wamid():
+    assert user_id_desde_wamid(WAMID_MAYHUIRE) == "PE.4041018719534590"
+    assert user_id_desde_wamid("") == ""
+    assert user_id_desde_wamid("wamid.no-es-base64!!") == ""
+
+
+def test_sin_from_ni_user_id_usa_el_wamid():
+    parsed = parse_incoming({
+        "object": "whatsapp_business_account",
+        "entry": [{"changes": [{"value": {
+            "contacts": [{"profile": {"name": "Rosendo"}}],
+            "messages": [{"id": WAMID_MAYHUIRE, "type": "text", "text": {"body": "Hola"}}],
+        }}]}],
+    })
+    assert parsed[0]["from"] == ""
+    assert parsed[0]["user_id"] == "PE.4041018719534590"
+    assert parsed[0]["body"] == "Hola"
 
 
 def _payload(contacts, messages=None):
